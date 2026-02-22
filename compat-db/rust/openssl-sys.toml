@@ -1,0 +1,7 @@
+[[dependency]]
+ecosystem = "rust"
+name = "openssl-sys"
+verdict = "incompatible"
+reason = "FFI to native OpenSSL library. Wasm cannot link native C libraries."
+alternative = "rustls"
+migration_guide = "https://warpgrid.dev/guides/rust-openssl-to-rustls"

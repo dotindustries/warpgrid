@@ -1,0 +1,7 @@
+[[dependency]]
+ecosystem = "go"
+name = "github.com/lib/pq"
+verdict = "shim_compatible"
+reason = "Uses raw TCP sockets via net.Dial for Postgres wire protocol."
+shim = "database_proxy"
+notes = "Works transparently with WarpGrid database proxy shim."

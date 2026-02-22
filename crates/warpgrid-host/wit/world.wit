@@ -1,0 +1,13 @@
+package warpgrid:shim@0.1.0;
+
+/// The WarpGrid shim world.
+///
+/// Guest components that target WarpGrid import these interfaces to access
+/// host-provided filesystem, DNS, signal, database, and threading services.
+world warpgrid-shims {
+    import filesystem;
+    import dns;
+    import signals;
+    import database-proxy;
+    import threading;
+}

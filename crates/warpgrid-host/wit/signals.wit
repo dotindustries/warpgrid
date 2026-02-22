@@ -1,0 +1,24 @@
+package warpgrid:shim@0.1.0;
+
+/// Signal delivery shim interface.
+///
+/// Provides lifecycle signal handling for Wasm modules via a
+/// register-and-poll model.
+interface signals {
+    /// Lifecycle signal types delivered by the orchestrator.
+    enum signal-type {
+        /// Graceful termination request (equivalent to SIGTERM).
+        terminate,
+        /// Configuration reload hint (equivalent to SIGHUP).
+        hangup,
+        /// Interrupt request (equivalent to SIGINT).
+        interrupt,
+    }
+
+    /// Register interest in receiving a specific signal type.
+    /// Only signals matching registered interest will be enqueued.
+    on-signal: func(signal: signal-type) -> result<_, string>;
+
+    /// Dequeue the oldest pending signal, or return none if the queue is empty.
+    poll-signal: func() -> option<signal-type>;
+}

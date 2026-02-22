@@ -1,0 +1,15 @@
+[package]
+name = "warp-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid Wasmtime runtime sandbox"
+
+[dependencies]
+warp-core.workspace = true
+warpgrid-host.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

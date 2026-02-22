@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features
+      - name: Test
+        run: cargo test --all
+
+  wasi-libc:
+    name: Build & Test wasi-libc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+        with:
+          version: "v41.0.0"
+
+      - name: Cache wasi-sdk
+        id: cache-wasi-sdk
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: wasi-sdk-30.0-x86_64-linux
+
+      - name: Cache wasi-libc source
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/src-stock
+            build/src-patched
+          key: wasi-libc-${{ hashFiles('libc-patches/UPSTREAM_REF') }}
+
+      - name: Build stock wasi-libc
+        run: scripts/build-libc.sh --stock
+
+      - name: Build patched wasi-libc
+        run: scripts/build-libc.sh --patched
+
+      - name: Test both sysroots
+        run: scripts/test-libc.sh --all

@@ -1,0 +1,14 @@
+{
+  "id": "03c78c59-f78b-4212-b756-a424d27a2ba0",
+  "status": "running",
+  "startedAt": "2026-02-22T11:43:31.750Z",
+  "updatedAt": "2026-02-22T13:31:48.392Z",
+  "agentPlugin": "claude",
+  "trackerPlugin": "beads-bv",
+  "epicId": "warpgrid-agm",
+  "currentIteration": 8,
+  "maxIterations": 10,
+  "totalTasks": 0,
+  "tasksCompleted": 8,
+  "cwd": "/Users/janosveres/workspace/dot-inc/warpgrid"
+}

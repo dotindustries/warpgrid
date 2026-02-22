@@ -1,0 +1,5 @@
+[[dependency]]
+ecosystem = "rust"
+name = "tokio"
+verdict = "compatible"
+notes = "Fully compatible with wasm32-wasip2 target. Async runtime works natively."

@@ -1,0 +1,13 @@
+[package]
+name = "warp-pack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid packaging CLI — compile source to WASI components"
+
+[dependencies]
+warp-core.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+hex.workspace = true

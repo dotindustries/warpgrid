@@ -1,0 +1,9 @@
+/target
+/build
+**/*.rs.bk
+*.swp
+*.swo
+.DS_Store
+.env
+.env.local
+*.log

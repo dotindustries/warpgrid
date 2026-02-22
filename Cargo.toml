@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/warp-core",
+    "crates/warp-analyzer",
+    "crates/warp-pack",
+    "crates/warp-compat",
+    "crates/warp-runtime",
+    "crates/warp-cli",
+    "crates/warpgrid-host",
+    "crates/warpgrid-state",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+sha2 = "0.10"
+hex = "0.4"
+walkdir = "2"
+regex = "1"
+semver = "1"
+
+wasmtime = { version = "41", features = ["component-model", "async", "component-model-async"] }
+wasmtime-wasi = { version = "41", features = ["p3"] }
+
+# Internal crates
+warp-core = { path = "crates/warp-core" }
+warp-analyzer = { path = "crates/warp-analyzer" }
+warp-pack = { path = "crates/warp-pack" }
+warp-compat = { path = "crates/warp-compat" }
+warp-runtime = { path = "crates/warp-runtime" }
+warpgrid-host = { path = "crates/warpgrid-host" }
+warpgrid-state = { path = "crates/warpgrid-state" }

@@ -1,0 +1,6 @@
+[[dependency]]
+ecosystem = "typescript"
+name = "sharp"
+verdict = "incompatible"
+reason = "Native C++ binding to libvips for image processing."
+alternative = "wasm-vips or @aspect-build/sharp-wasm"

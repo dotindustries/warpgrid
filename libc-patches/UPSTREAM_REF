@@ -1,0 +1,8 @@
+# wasi-libc upstream pin
+# This file records the exact upstream commit that the WarpGrid patch series applies to.
+# Update this file when rebasing patches onto a new upstream version.
+#
+# Repository: https://github.com/WebAssembly/wasi-libc
+# Last updated: 2026-02-22
+TAG=wasi-sdk-30
+COMMIT=ec0effd769df5f05b647216578bcf5d3b5449725

@@ -1,0 +1,11 @@
+[package]
+name = "warp-compat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid POSIX compatibility shim layer"
+
+[dependencies]
+warp-core.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
