@@ -1,0 +1,22 @@
+[package]
+name = "warpgrid-trigger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid HTTP trigger — bridges inbound HTTP to wasi-http components"
+
+[dependencies]
+warp-core.workspace = true
+warp-runtime = { path = "../warp-runtime" }
+warpgrid-host.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
+wasmtime-wasi-http = "41"
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http = "1"
+http-body-util = "0.1"
+bytes = "1"

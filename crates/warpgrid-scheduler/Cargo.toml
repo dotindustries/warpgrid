@@ -1,0 +1,16 @@
+[package]
+name = "warpgrid-scheduler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid scheduler — deployment scheduling, instance pool management, and load balancing"
+
+[dependencies]
+warp-core.workspace = true
+warp-runtime = { path = "../warp-runtime" }
+warpgrid-host = { path = "../warpgrid-host" }
+warpgrid-state = { path = "../warpgrid-state" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+thiserror.workspace = true

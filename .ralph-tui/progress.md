@@ -81,6 +81,14 @@ after each iteration and it's included in prompts for context.
 - Patches applied via `git am --3way` on the patched source checkout
 - macOS lacks GNU `timeout` — use `perl -e "alarm N; exec @ARGV"` as portable fallback
 
+### Weak Symbols in Wasm Static Archives
+- wasm-ld treats weak references differently than ELF linkers in static archives
+- A weak `extern` reference (`extern __attribute__((weak))`) in one .a member will NOT pull a weak definition from another .a member
+- The linker creates an `undefined_weak` trap stub instead — calling it executes `unreachable`
+- Fix: make the `extern` declaration strong (normal `extern`), keep only the definition as `__attribute__((weak))`
+- Strong reference (`U` in nm) forces wasm-ld to pull the archive member containing the weak definition (`W` in nm)
+- The weak definition can still be overridden at link time by a strong definition from another object
+
 ### Patch Maintenance Workflow (rebase-libc.sh)
 - Patches stored as numbered `git format-patch` files in `libc-patches/*.patch`
 - Apply with `git am --3way` for 3-way merge conflict resolution
@@ -245,5 +253,46 @@ after each iteration and it's included in prompts for context.
   - `git clone --depth 50` is necessary (not `--depth 1`) for `git am` to work — the 3-way merge needs some history context to resolve patches
   - `git am --abort` must be called after a failed `git am` to clean up the mailbox state before attempting the next patch or before re-applying
   - Patch dependency validation uses a simple numbering convention: 0001-0008 with known dependency chains (socket depends on filesystem, gethostbyname depends on getaddrinfo, etc.)
+---
+
+## 2026-02-22 - warpgrid-agm.25
+- Implemented US-203: Patch DNS getaddrinfo to route through WarpGrid shim
+- Completed and verified getaddrinfo() interception in wasi-libc's bottom-half netdb.c
+- Fixed critical wasm-ld weak symbol linking bug discovered during testing
+- Files changed:
+  - MOD: `build/src-patched/libc-bottom-half/sources/netdb.c` — WarpGrid DNS shim interception in getaddrinfo(), warpgrid_build_addrinfo() helper for packed address conversion
+  - NEW: `build/src-patched/libc-bottom-half/sources/warpgrid_dns_shim.c` — weak default stub returning 0 for graceful degradation
+  - MOD: `build/src-patched/libc-bottom-half/CMakeLists.txt` — added warpgrid_dns_shim.c to wasip2 build sources
+  - NEW: `libc-patches/0001-dns-getaddrinfo-shim.patch` — exported git format-patch (11KB, 225 insertions)
+  - MOD: `libc-patches/tests/test_dns_getaddrinfo.c` — updated AI_NUMERICHOST test to tolerate WASI runtime limitations
+- **Learnings:**
+  - **CRITICAL: wasm-ld weak symbol semantics differ from ELF.** In static archives (.a), a weak reference (`extern __attribute__((weak))`) in one archive member will NOT cause wasm-ld to pull a weak definition from another archive member. The linker creates an `undefined_weak` trap stub instead. Fix: make the extern declaration non-weak (strong reference), keep only the definition as weak.
+  - `nm` output key: lowercase `w` = weak undefined (import), uppercase `W` = weak defined (export), `U` = strong undefined (forces archive pull)
+  - Wasmtime 20 doesn't provide WASI sockets capabilities to vanilla `wasmtime run` — `ip_name_lookup_resolve_addresses()` returns `EAI_FAIL`. Tests must tolerate this gracefully.
+  - The `build-libc.sh --patched` script clones fresh source + applies patches from `libc-patches/*.patch` — editing files directly in `build/src-patched/` without re-exporting the patch gets overwritten on next build
+  - Correct workflow: edit source → amend commit in patched checkout → `git format-patch` → copy to `libc-patches/` → clean rebuild
+  - Packed address record format (17 bytes: 1 family + 16 address) supports both IPv4 and IPv6 — IPv4 uses only bytes 1-4, remaining 12 bytes zeroed
+---
+
+## 2026-02-22 - warpgrid-agm.28
+- Implemented US-206: Patch fopen/open to intercept virtual filesystem paths
+- Created unified virtual fd mechanism — fopen() works transparently through the same path as open()
+- All 10 TDD tests pass, full test suite (3/3) passes with no regressions
+- Files changed:
+  - NEW: `build/src-patched/libc-bottom-half/sources/warpgrid_fs_shim.c` — weak `__warpgrid_fs_read_virtual()` stub + virtual fd table (32 slots, 8KiB max content per file, base fd 0x70000000)
+  - MOD: `build/src-patched/libc-bottom-half/sources/posix.c` — intercept `__wasilibc_open_nomode()` with `__warpgrid_vfd_open()` before `find_relpath()` call
+  - MOD: `build/src-patched/libc-bottom-half/cloudlibc/src/libc/unistd/read.c` — intercept `read()` with `__warpgrid_vfd_is_virtual()` + `__warpgrid_vfd_read()`
+  - MOD: `build/src-patched/libc-bottom-half/sources/__wasilibc_fd_renumber.c` — intercept `close()` with `__warpgrid_vfd_is_virtual()` + `__warpgrid_vfd_close()`
+  - MOD: `build/src-patched/libc-bottom-half/cloudlibc/src/libc/unistd/lseek.c` — intercept `__lseek()` with `__warpgrid_vfd_is_virtual()` + `__warpgrid_vfd_lseek()`
+  - MOD: `build/src-patched/libc-bottom-half/CMakeLists.txt` — added `sources/warpgrid_fs_shim.c` to wasip2 build
+  - NEW: `libc-patches/0002-fs-virtual-open.patch` — exported patch (312 lines, 206 insertions across 6 files)
+  - NEW: `libc-patches/tests/test_fs_virtual_open.c` — 10 comprehensive tests
+- **Learnings:**
+  - **Unified virtual fd approach eliminates need to patch fopen.c.** The call chain `fopen("r")` → `__wasilibc_open_nomode()` (intercepted) → virtual fd → `__fdopen()` → FILE* with `__stdio_read` callback → `read(virtual_fd)` (intercepted). Since `__fdopen()` for "r" mode never calls `__isatty()` or `fcntl()`, virtual fds work transparently.
+  - **wasip2 readv() delegates to read()** — intercepting `read()` automatically covers `readv()` used by `__stdio_read`. No separate readv patch needed.
+  - **Virtual fd numbering (0x70000000 base) avoids collision** with WASI descriptor table. WASI wasip2 uses a slab allocator starting at low fd numbers (3+). High base ensures no overlap even with many real fds.
+  - **Return value protocol (-2/-1/>=0)** cleanly separates "not virtual" (-2, fall through), "virtual but error" (-1, errno set), and "success" (>=0, virtual fd). This avoids ambiguity between "path not found" and "open error".
+  - **build-libc.sh --clean wipes source tree** — manual edits to `build/src-patched/` are destroyed. Must commit changes and export as patch before rebuilding. The `ensure_source()` function compares HEAD to UPSTREAM_COMMIT and re-clones on mismatch.
+  - **malloc in wasm32-wasip2 works** — virtual fd content is malloc'd + memcpy'd from the stack buffer. The wasi-libc allocator handles this correctly for content up to WARPGRID_FS_MAX_CONTENT (8KiB).
 ---
 

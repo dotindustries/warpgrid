@@ -1,0 +1,312 @@
+From 772c863876ba398c7265a9d00a189b65e2c53e5f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
+Date: Sun, 22 Feb 2026 18:42:16 +0100
+Subject: [PATCH] fs: route fopen/open through WarpGrid virtual filesystem shim
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add a virtual file-descriptor table that intercepts open(), read(),
+close(), and lseek() for paths served by the WarpGrid host runtime
+(e.g. /etc/resolv.conf, /etc/hosts).
+
+The __warpgrid_fs_read_virtual() callback is defined as a weak symbol
+so the host can provide a strong override via the WIT import
+warpgrid:shim/filesystem.read-virtual(path).
+
+Interception points:
+  - posix.c:__wasilibc_open_nomode() — creates virtual fd
+  - read.c:read() — serves from in-memory buffer
+  - __wasilibc_fd_renumber.c:close() — frees virtual fd
+  - lseek.c:__lseek() — seeks within virtual buffer
+
+Since fopen() calls __wasilibc_open_nomode() and __fdopen() creates a
+FILE* whose callbacks use read()/close()/lseek(), fopen() transparently
+works on virtual files without any patch to fopen.c itself.
+
+Part of US-206: Patch fopen/open to intercept virtual filesystem paths.
+---
+ libc-bottom-half/CMakeLists.txt               |   1 +
+ .../cloudlibc/src/libc/unistd/lseek.c         |   9 +
+ .../cloudlibc/src/libc/unistd/read.c          |   9 +
+ .../sources/__wasilibc_fd_renumber.c          |  10 ++
+ libc-bottom-half/sources/posix.c              |  13 ++
+ libc-bottom-half/sources/warpgrid_fs_shim.c   | 164 ++++++++++++++++++
+ 6 files changed, 206 insertions(+)
+ create mode 100644 libc-bottom-half/sources/warpgrid_fs_shim.c
+
+diff --git a/libc-bottom-half/CMakeLists.txt b/libc-bottom-half/CMakeLists.txt
+index 2152be5..468831f 100644
+--- a/libc-bottom-half/CMakeLists.txt
++++ b/libc-bottom-half/CMakeLists.txt
+@@ -152,6 +152,7 @@ if(WASI STREQUAL "p2")
+   list(APPEND bottom_half_sources
+     sources/netdb.c
+     sources/warpgrid_dns_shim.c
++    sources/warpgrid_fs_shim.c
+     sources/wasip2.c
+     sources/wasip2_file.c
+     sources/wasip2_file_utils.c
+diff --git a/libc-bottom-half/cloudlibc/src/libc/unistd/lseek.c b/libc-bottom-half/cloudlibc/src/libc/unistd/lseek.c
+index f48e372..db0aec7 100644
+--- a/libc-bottom-half/cloudlibc/src/libc/unistd/lseek.c
++++ b/libc-bottom-half/cloudlibc/src/libc/unistd/lseek.c
+@@ -19,7 +19,16 @@ static_assert(SEEK_END == __WASI_WHENCE_END, "Value mismatch");
+ static_assert(SEEK_SET == __WASI_WHENCE_SET, "Value mismatch");
+ #endif
+ 
++/* WARPGRID PATCH START — Virtual fd interception */
++extern int __warpgrid_vfd_is_virtual(int fd);
++extern off_t __warpgrid_vfd_lseek(int fd, off_t offset, int whence);
++/* WARPGRID PATCH END */
++
+ off_t __lseek(int fildes, off_t offset, int whence) {
++  /* WARPGRID PATCH START */
++  if (__warpgrid_vfd_is_virtual(fildes))
++    return __warpgrid_vfd_lseek(fildes, offset, whence);
++  /* WARPGRID PATCH END */
+ #if defined(__wasip1__)
+   __wasi_filesize_t new_offset;
+   __wasi_errno_t error =
+diff --git a/libc-bottom-half/cloudlibc/src/libc/unistd/read.c b/libc-bottom-half/cloudlibc/src/libc/unistd/read.c
+index eb84297..59cb3ef 100644
+--- a/libc-bottom-half/cloudlibc/src/libc/unistd/read.c
++++ b/libc-bottom-half/cloudlibc/src/libc/unistd/read.c
+@@ -13,7 +13,16 @@
+ #include <string.h>
+ #endif
+ 
++/* WARPGRID PATCH START — Virtual fd interception */
++extern int __warpgrid_vfd_is_virtual(int fd);
++extern ssize_t __warpgrid_vfd_read(int fd, void *buf, size_t count);
++/* WARPGRID PATCH END */
++
+ ssize_t read(int fildes, void *buf, size_t nbyte) {
++  /* WARPGRID PATCH START */
++  if (__warpgrid_vfd_is_virtual(fildes))
++    return __warpgrid_vfd_read(fildes, buf, nbyte);
++  /* WARPGRID PATCH END */
+ #if defined(__wasip1__)
+   __wasi_iovec_t iov = {.buf = buf, .buf_len = nbyte};
+   size_t bytes_read;
+diff --git a/libc-bottom-half/sources/__wasilibc_fd_renumber.c b/libc-bottom-half/sources/__wasilibc_fd_renumber.c
+index a21bac6..715c82d 100644
+--- a/libc-bottom-half/sources/__wasilibc_fd_renumber.c
++++ b/libc-bottom-half/sources/__wasilibc_fd_renumber.c
+@@ -27,7 +27,17 @@ int __wasilibc_fd_renumber(int fd, int newfd) {
+   return 0;
+ }
+ 
++/* WARPGRID PATCH START — Virtual fd interception */
++extern int __warpgrid_vfd_is_virtual(int fd);
++extern int __warpgrid_vfd_close(int fd);
++/* WARPGRID PATCH END */
++
+ int close(int fd) {
++  /* WARPGRID PATCH START */
++  if (__warpgrid_vfd_is_virtual(fd))
++    return __warpgrid_vfd_close(fd);
++  /* WARPGRID PATCH END */
++
+   // Scan the preopen fds before making any changes.
+   __wasilibc_populate_preopens();
+ 
+diff --git a/libc-bottom-half/sources/posix.c b/libc-bottom-half/sources/posix.c
+index 5d7dd0a..14683d3 100644
+--- a/libc-bottom-half/sources/posix.c
++++ b/libc-bottom-half/sources/posix.c
+@@ -51,8 +51,21 @@ int open(const char *path, int oflag, ...) {
+   return __wasilibc_open_nomode(path, oflag);
+ }
+ 
++/* WARPGRID PATCH START — Virtual fd interception for open()/fopen() */
++extern int __warpgrid_vfd_open(const char *path, int flags);
++/* WARPGRID PATCH END */
++
+ // See the documentation in libc.h
+ int __wasilibc_open_nomode(const char *path, int oflag) {
++  /* WARPGRID PATCH START */
++  {
++    int vfd = __warpgrid_vfd_open(path, oflag);
++    if (vfd >= 0) return vfd;   /* Virtual file opened successfully */
++    if (vfd == -1) return -1;   /* Error (e.g. EROFS for write mode) */
++    /* vfd == -2: not virtual, fall through to real WASI filesystem */
++  }
++  /* WARPGRID PATCH END */
++
+   char *relative_path;
+   int dirfd = find_relpath(path, &relative_path);
+ 
+diff --git a/libc-bottom-half/sources/warpgrid_fs_shim.c b/libc-bottom-half/sources/warpgrid_fs_shim.c
+new file mode 100644
+index 0000000..3e0aacf
+--- /dev/null
++++ b/libc-bottom-half/sources/warpgrid_fs_shim.c
+@@ -0,0 +1,164 @@
++/*
++ * warpgrid_fs_shim.c — Virtual filesystem layer for WarpGrid WASI shim.
++ *
++ * Provides:
++ *   1. Weak default __warpgrid_fs_read_virtual() that returns 0 (not virtual).
++ *      The WarpGrid host runtime provides a strong override via WIT import
++ *      warpgrid:shim/filesystem.read-virtual(path).
++ *
++ *   2. A lightweight virtual file-descriptor table that maps high-numbered fds
++ *      (WARPGRID_VFD_BASE + slot) to in-memory buffers.  This lets fopen(),
++ *      read(), lseek(), and close() work transparently on virtual files.
++ *
++ * SPDX-License-Identifier: BSD-2-Clause
++ */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++/* ── Host callback (weak default) ─────────────────────────────────────── */
++
++/*
++ * The WarpGrid runtime overrides this with a strong definition that calls
++ * the warpgrid:shim/filesystem.read-virtual WIT import.
++ *
++ * Returns:
++ *   >0  Number of bytes written to `out` (path is virtual).
++ *    0  Path is NOT virtual — fall through to real WASI filesystem.
++ */
++__attribute__((__weak__))
++int __warpgrid_fs_read_virtual(const char *path,
++                               unsigned char *out, int out_len) {
++    (void)path; (void)out; (void)out_len;
++    return 0; /* Not virtual — fall through */
++}
++
++/* ── Virtual file-descriptor table ────────────────────────────────────── */
++
++#define WARPGRID_VFD_MAX        32
++#define WARPGRID_VFD_BASE       0x70000000
++#define WARPGRID_FS_MAX_CONTENT 8192
++
++typedef struct {
++    unsigned char *data;    /* malloc'd buffer */
++    int            len;     /* content length  */
++    int            pos;     /* read cursor     */
++    int            in_use;  /* slot active?    */
++} warpgrid_vfd_entry_t;
++
++static warpgrid_vfd_entry_t vfd_table[WARPGRID_VFD_MAX];
++
++/* ── Public API called from patched libc functions ────────────────────── */
++
++/*
++ * Try to open `path` as a virtual file.
++ *
++ * Returns:
++ *   >= 0  Virtual fd (WARPGRID_VFD_BASE + slot).
++ *   -1    Virtual path but open failed (errno set, e.g. EROFS for writes).
++ *   -2    NOT a virtual path — caller should fall through to real WASI.
++ */
++int __warpgrid_vfd_open(const char *path, int flags) {
++    unsigned char tmp_buf[WARPGRID_FS_MAX_CONTENT];
++    int content_len = __warpgrid_fs_read_virtual(path, tmp_buf,
++                                                  sizeof(tmp_buf));
++    if (content_len <= 0)
++        return -2;  /* Not virtual */
++
++    /* Virtual files are read-only */
++    int access_mode = flags & O_ACCMODE;
++    if (access_mode != O_RDONLY) {
++        errno = EROFS;
++        return -1;
++    }
++
++    /* Find a free slot */
++    for (int i = 0; i < WARPGRID_VFD_MAX; i++) {
++        if (!vfd_table[i].in_use) {
++            unsigned char *buf = (unsigned char *)malloc(content_len);
++            if (!buf) {
++                errno = ENOMEM;
++                return -1;
++            }
++            memcpy(buf, tmp_buf, content_len);
++            vfd_table[i].data   = buf;
++            vfd_table[i].len    = content_len;
++            vfd_table[i].pos    = 0;
++            vfd_table[i].in_use = 1;
++            return WARPGRID_VFD_BASE + i;
++        }
++    }
++
++    errno = EMFILE;
++    return -1;
++}
++
++/* Return 1 if `fd` is a virtual fd managed by this table. */
++int __warpgrid_vfd_is_virtual(int fd) {
++    if (fd < WARPGRID_VFD_BASE)
++        return 0;
++    int slot = fd - WARPGRID_VFD_BASE;
++    return (slot >= 0 && slot < WARPGRID_VFD_MAX && vfd_table[slot].in_use);
++}
++
++/* Read from a virtual fd. */
++ssize_t __warpgrid_vfd_read(int fd, void *buf, size_t count) {
++    int slot = fd - WARPGRID_VFD_BASE;
++    if (slot < 0 || slot >= WARPGRID_VFD_MAX || !vfd_table[slot].in_use) {
++        errno = EBADF;
++        return -1;
++    }
++    warpgrid_vfd_entry_t *e = &vfd_table[slot];
++    int avail = e->len - e->pos;
++    if (avail <= 0)
++        return 0;  /* EOF */
++    int to_copy = ((int)count < avail) ? (int)count : avail;
++    memcpy(buf, e->data + e->pos, to_copy);
++    e->pos += to_copy;
++    return to_copy;
++}
++
++/* Close a virtual fd. */
++int __warpgrid_vfd_close(int fd) {
++    int slot = fd - WARPGRID_VFD_BASE;
++    if (slot < 0 || slot >= WARPGRID_VFD_MAX || !vfd_table[slot].in_use) {
++        errno = EBADF;
++        return -1;
++    }
++    free(vfd_table[slot].data);
++    vfd_table[slot].data   = NULL;
++    vfd_table[slot].len    = 0;
++    vfd_table[slot].pos    = 0;
++    vfd_table[slot].in_use = 0;
++    return 0;
++}
++
++/* Seek on a virtual fd. */
++off_t __warpgrid_vfd_lseek(int fd, off_t offset, int whence) {
++    int slot = fd - WARPGRID_VFD_BASE;
++    if (slot < 0 || slot >= WARPGRID_VFD_MAX || !vfd_table[slot].in_use) {
++        errno = EBADF;
++        return -1;
++    }
++    warpgrid_vfd_entry_t *e = &vfd_table[slot];
++    off_t new_pos;
++    switch (whence) {
++    case SEEK_SET: new_pos = offset;            break;
++    case SEEK_CUR: new_pos = e->pos + offset;   break;
++    case SEEK_END: new_pos = e->len + offset;    break;
++    default:
++        errno = EINVAL;
++        return -1;
++    }
++    if (new_pos < 0) {
++        errno = EINVAL;
++        return -1;
++    }
++    if (new_pos > e->len)
++        new_pos = e->len;
++    e->pos = (int)new_pos;
++    return new_pos;
++}
+-- 
+2.52.0
+

@@ -40,6 +40,9 @@ pub struct HostState {
     pub signal_queue: Vec<shim::signals::SignalType>,
     /// Declared threading model (set by guest).
     pub threading_model: Option<shim::threading::ThreadingModel>,
+    /// Optional resource limiter for memory/table enforcement.
+    /// Uses `wasmtime::StoreLimits` for compatibility with `Store::limiter()`.
+    pub limiter: Option<wasmtime::StoreLimits>,
 }
 
 // ── Host trait implementations ─────────────────────────────────────
@@ -243,6 +246,7 @@ impl WarpGridEngine {
             db_proxy,
             signal_queue: Vec::new(),
             threading_model: None,
+            limiter: None,
         }
     }
 }
@@ -310,6 +314,7 @@ mod tests {
             db_proxy: None,
             signal_queue: Vec::new(),
             threading_model: None,
+            limiter: None,
         };
 
         let result = shim::filesystem::Host::open_virtual(&mut state, "/etc/hosts".to_string());
@@ -328,6 +333,7 @@ mod tests {
             db_proxy: None,
             signal_queue: Vec::new(),
             threading_model: None,
+            limiter: None,
         };
 
         shim::signals::Host::on_signal(&mut state, shim::signals::SignalType::Terminate).unwrap();
@@ -352,6 +358,7 @@ mod tests {
             db_proxy: None,
             signal_queue: Vec::new(),
             threading_model: None,
+            limiter: None,
         };
 
         shim::threading::Host::declare_threading_model(

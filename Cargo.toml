@@ -9,6 +9,14 @@ members = [
     "crates/warp-cli",
     "crates/warpgrid-host",
     "crates/warpgrid-state",
+    "crates/warpgrid-trigger",
+    "crates/warpgrid-scheduler",
+    "crates/warpgrid-health",
+    "crates/warpgrid-metrics",
+    "crates/warpgrid-autoscale",
+    "crates/warpgrid-dashboard",
+    "crates/warpgrid-api",
+    "crates/warpd",
 ]
 
 [workspace.package]

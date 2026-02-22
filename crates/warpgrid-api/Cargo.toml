@@ -1,0 +1,16 @@
+[package]
+name = "warpgrid-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid REST API — axum handlers for deployment management"
+
+[dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+warpgrid-metrics = { path = "../warpgrid-metrics" }
+warpgrid-dashboard = { path = "../warpgrid-dashboard" }
+axum = "0.8"
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true

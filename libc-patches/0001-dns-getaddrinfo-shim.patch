@@ -1,0 +1,295 @@
+From 27cd958ecf9ca1395eeeeda54e33394a900d7928 Mon Sep 17 00:00:00 2001
+From: WarpGrid SDK <warpgrid@test.local>
+Date: Sun, 22 Feb 2026 18:13:58 +0100
+Subject: [PATCH] dns: route getaddrinfo through WarpGrid DNS shim
+
+Patch getaddrinfo() in wasi-libc's bottom-half netdb.c to intercept
+hostname resolution through WarpGrid's DNS service registry before
+falling back to the standard WASI ip_name_lookup resolver.
+
+- Add weak symbol __warpgrid_dns_resolve() stub (warpgrid_dns_shim.c)
+  that returns 0 by default, ensuring graceful degradation when the
+  WarpGrid host runtime is absent.
+- Intercept getaddrinfo() calls: when AI_NUMERICHOST is NOT set, call
+  __warpgrid_dns_resolve() first. Positive return builds addrinfo chain
+  from packed results; zero/negative falls through to WASI resolver.
+- AI_NUMERICHOST flag bypasses the shim entirely (numeric IPs skip
+  service registry lookup).
+- Add warpgrid_build_addrinfo() helper to convert packed binary format
+  (17 bytes per record: 1 family + 16 address) to standard addrinfo
+  chain with proper sockaddr_in/sockaddr_in6 population.
+- Add warpgrid_dns_shim.c to CMakeLists.txt wasip2 build sources.
+
+WarpGrid-SDK US-203
+---
+ libc-bottom-half/CMakeLists.txt              |   1 +
+ libc-bottom-half/sources/netdb.c             | 182 +++++++++++++++++++
+ libc-bottom-half/sources/warpgrid_dns_shim.c |  42 +++++
+ 3 files changed, 225 insertions(+)
+ create mode 100644 libc-bottom-half/sources/warpgrid_dns_shim.c
+
+diff --git a/libc-bottom-half/CMakeLists.txt b/libc-bottom-half/CMakeLists.txt
+index 8f85fd6..2152be5 100644
+--- a/libc-bottom-half/CMakeLists.txt
++++ b/libc-bottom-half/CMakeLists.txt
+@@ -151,6 +151,7 @@ endif()
+ if(WASI STREQUAL "p2")
+   list(APPEND bottom_half_sources
+     sources/netdb.c
++    sources/warpgrid_dns_shim.c
+     sources/wasip2.c
+     sources/wasip2_file.c
+     sources/wasip2_file_utils.c
+diff --git a/libc-bottom-half/sources/netdb.c b/libc-bottom-half/sources/netdb.c
+index e93ff13..2fad3b4 100644
+--- a/libc-bottom-half/sources/netdb.c
++++ b/libc-bottom-half/sources/netdb.c
+@@ -3,8 +3,163 @@
+ #include <netdb.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
+ #include <wasi/sockets_utils.h>
+ 
++/* WARPGRID PATCH START — DNS shim for WarpGrid service discovery */
++
++/*
++ * External reference: __warpgrid_dns_resolve
++ *
++ * Default weak definition lives in warpgrid_dns_shim.c (returns 0,
++ * causing fallthrough to the WASI resolver). WarpGrid SDK builds
++ * override the weak definition with a strong one that bridges to the
++ * warpgrid:shim/dns WIT import.
++ *
++ * NOTE: This declaration is intentionally NOT __attribute__((weak)).
++ * In wasm-ld, a weak reference in a static archive member won't pull
++ * the weak definition from another archive member, resulting in an
++ * undefined_weak trap stub at runtime. A strong (normal) reference
++ * forces the linker to pull warpgrid_dns_shim.c.obj from libc.a.
++ *
++ * See warpgrid_dns_shim.c for full ABI documentation.
++ */
++extern int __warpgrid_dns_resolve(const char *hostname, int family,
++                                  unsigned char *out, int out_len);
++
++/* Size of one packed address record from the shim: 1 byte family + 16 bytes addr */
++#define WARPGRID_DNS_ADDR_RECORD_SIZE 17
++/* Maximum addresses the shim can return */
++#define WARPGRID_DNS_MAX_ADDRS 48
++
++/*
++ * Build an addrinfo chain from WarpGrid shim results.
++ *
++ * Converts the packed address records from __warpgrid_dns_resolve into
++ * a standard addrinfo linked list, applying service/port resolution and
++ * hint-based family filtering.
++ */
++static int warpgrid_build_addrinfo(const unsigned char *addrs, int addr_count,
++                                   const char *restrict serv,
++                                   const struct addrinfo *restrict hint,
++                                   struct addrinfo **restrict res) {
++  *res = NULL;
++  struct addrinfo *current = NULL;
++
++  /* Resolve service/port */
++  int port = 0;
++  uint16_t protocol = SERVICE_PROTOCOL_TCP;
++  if (serv != NULL) {
++    port = __wasi_sockets_utils__parse_port(serv);
++    if (port < 0) {
++      const service_entry_t *service =
++          __wasi_sockets_utils__get_service_entry_by_name(serv);
++      if (service) {
++        port = service->port;
++        protocol = service->protocol;
++      } else {
++        return EAI_NONAME;
++      }
++    }
++  }
++
++  int hint_family = hint ? hint->ai_family : AF_UNSPEC;
++
++  for (int i = 0; i < addr_count; i++) {
++    const unsigned char *rec = addrs + (i * WARPGRID_DNS_ADDR_RECORD_SIZE);
++    int rec_family_marker = rec[0];
++    int family;
++    struct sockaddr *addr;
++    socklen_t addrlen;
++
++    if (rec_family_marker == 4) {
++      if (hint_family != AF_UNSPEC && hint_family != AF_INET)
++        continue;
++      family = PF_INET;
++      addrlen = sizeof(struct sockaddr_in);
++      addr = malloc(addrlen);
++      if (!addr) { freeaddrinfo(*res); *res = NULL; return EAI_MEMORY; }
++      struct sockaddr_in sa = {
++          .sin_family = AF_INET,
++          .sin_port = htons(port),
++      };
++      memcpy(&sa.sin_addr, &rec[1], 4);
++      memcpy(addr, &sa, addrlen);
++    } else if (rec_family_marker == 6) {
++      if (hint_family != AF_UNSPEC && hint_family != AF_INET6)
++        continue;
++      family = PF_INET6;
++      addrlen = sizeof(struct sockaddr_in6);
++      addr = malloc(addrlen);
++      if (!addr) { freeaddrinfo(*res); *res = NULL; return EAI_MEMORY; }
++      struct sockaddr_in6 sa6 = {
++          .sin6_family = AF_INET6,
++          .sin6_port = htons(port),
++          .sin6_flowinfo = 0,
++          .sin6_scope_id = 0,
++      };
++      memcpy(&sa6.sin6_addr, &rec[1], 16);
++      memcpy(addr, &sa6, addrlen);
++    } else {
++      continue; /* Unknown family marker, skip */
++    }
++
++    /* Add entries for requested socket types/protocols */
++    int socktypes[2] = {0, 0};
++    int nsocktypes = 0;
++    if (protocol & SERVICE_PROTOCOL_TCP)
++      socktypes[nsocktypes++] = SOCK_STREAM;
++    if (protocol & SERVICE_PROTOCOL_UDP)
++      socktypes[nsocktypes++] = SOCK_DGRAM;
++    if (nsocktypes == 0)
++      socktypes[nsocktypes++] = SOCK_STREAM;
++
++    for (int s = 0; s < nsocktypes; s++) {
++      struct sockaddr *addr_copy;
++      if (s > 0) {
++        /* Need a separate copy for each addrinfo entry */
++        addr_copy = malloc(addrlen);
++        if (!addr_copy) { free(addr); freeaddrinfo(*res); *res = NULL; return EAI_MEMORY; }
++        memcpy(addr_copy, addr, addrlen);
++      } else {
++        addr_copy = addr;
++      }
++
++      struct addrinfo *result = malloc(sizeof(struct addrinfo));
++      if (!result) {
++        if (s > 0) free(addr_copy);
++        else free(addr);
++        freeaddrinfo(*res); *res = NULL;
++        return EAI_MEMORY;
++      }
++      *result = (struct addrinfo){
++          .ai_family = family,
++          .ai_flags = 0,
++          .ai_socktype = socktypes[s],
++          .ai_protocol = 0,
++          .ai_addrlen = addrlen,
++          .ai_addr = addr_copy,
++          .ai_canonname = NULL,
++          .ai_next = NULL,
++      };
++      if (current) {
++        current->ai_next = result;
++        current = result;
++      } else {
++        current = result;
++        *res = result;
++      }
++    }
++  }
++
++  if (*res == NULL)
++    return EAI_NODATA;
++  return 0;
++}
++
++/* WARPGRID PATCH END */
++
+ #ifdef __wasip1__
+ static_assert(SOCK_DGRAM == __WASI_FILETYPE_SOCKET_DGRAM, "value mismatch");
+ static_assert(SOCK_STREAM == __WASI_FILETYPE_SOCKET_STREAM, "value mismatch");
+@@ -171,6 +326,33 @@ int getaddrinfo(const char *restrict host, const char *restrict serv,
+ 
+   *res = NULL;
+   struct addrinfo *current = NULL;
++
++  /* WARPGRID PATCH START — Route through WarpGrid DNS shim */
++  {
++    int flags = hint ? hint->ai_flags : 0;
++
++    /*
++     * AI_NUMERICHOST: The caller asserts the hostname is a numeric IP address.
++     * Bypass the WarpGrid shim entirely — numeric addresses don't need
++     * service registry lookup. Fall through to the WASI resolver which
++     * handles numeric addresses natively.
++     */
++    if (!(flags & AI_NUMERICHOST)) {
++      int family = hint ? hint->ai_family : AF_UNSPEC;
++      unsigned char shim_buf[WARPGRID_DNS_ADDR_RECORD_SIZE * WARPGRID_DNS_MAX_ADDRS];
++      int shim_count = __warpgrid_dns_resolve(host, family,
++                                              shim_buf, sizeof(shim_buf));
++      if (shim_count > 0) {
++        /* WarpGrid shim resolved the hostname — build addrinfo chain
++         * and return without touching the WASI resolver. */
++        return warpgrid_build_addrinfo(shim_buf, shim_count, serv, hint, res);
++      }
++      /* shim_count <= 0: hostname not managed by WarpGrid, fall through
++       * to the standard WASI ip_name_lookup resolver below. */
++    }
++  }
++  /* WARPGRID PATCH END */
++
+   wasip2_string_t name = {.ptr = (uint8_t *)host, .len = strlen(host)};
+   ip_name_lookup_own_resolve_address_stream_t stream;
+   ip_name_lookup_error_code_t error;
+diff --git a/libc-bottom-half/sources/warpgrid_dns_shim.c b/libc-bottom-half/sources/warpgrid_dns_shim.c
+new file mode 100644
+index 0000000..7a35579
+--- /dev/null
++++ b/libc-bottom-half/sources/warpgrid_dns_shim.c
+@@ -0,0 +1,42 @@
++/*
++ * WarpGrid DNS Shim — Weak default stub.
++ *
++ * This file provides the default (no-op) implementation of the WarpGrid
++ * DNS resolution shim function. When linked into a WASI module, this
++ * weak definition serves as a fallback that always returns 0, causing
++ * getaddrinfo() to fall through to the standard WASI ip_name_lookup
++ * resolver.
++ *
++ * When the WarpGrid host runtime provides a strong definition of
++ * __warpgrid_dns_resolve (via the shim layer or a linked module),
++ * that implementation overrides this stub and routes hostname resolution
++ * through WarpGrid's service registry and DNS cache.
++ *
++ * ABI:
++ *   int __warpgrid_dns_resolve(
++ *       const char *hostname,   // Null-terminated hostname to resolve
++ *       int         family,     // AF_UNSPEC=0, AF_INET=2, AF_INET6=10
++ *       unsigned char *out,     // Output buffer for packed address records
++ *       int         out_len     // Size of output buffer in bytes
++ *   );
++ *
++ * Output buffer format (per address record, 17 bytes each):
++ *   byte 0:      address family marker (4 = IPv4, 6 = IPv6)
++ *   bytes 1-4:   IPv4 address (network byte order), or first 4 bytes of IPv6
++ *   bytes 5-16:  remaining IPv6 bytes (zero for IPv4)
++ *
++ * Return values:
++ *   > 0: number of resolved address records written to out buffer
++ *     0: hostname not managed by WarpGrid (caller falls through to default)
++ *   < 0: resolution error (caller falls through to default)
++ */
++
++__attribute__((__weak__))
++int __warpgrid_dns_resolve(const char *hostname, int family,
++                           unsigned char *out, int out_len) {
++    (void)hostname;
++    (void)family;
++    (void)out;
++    (void)out_len;
++    return 0; /* Fall through to default resolver */
++}
+-- 
+2.52.0
+

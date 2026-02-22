@@ -1,0 +1,27 @@
+[package]
+name = "warpd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid daemon — the control plane binary"
+
+[[bin]]
+name = "warpd"
+path = "src/main.rs"
+
+[dependencies]
+warp-core.workspace = true
+warp-runtime = { path = "../warp-runtime" }
+warpgrid-state = { path = "../warpgrid-state" }
+warpgrid-scheduler = { path = "../warpgrid-scheduler" }
+warpgrid-health = { path = "../warpgrid-health" }
+warpgrid-metrics = { path = "../warpgrid-metrics" }
+warpgrid-autoscale = { path = "../warpgrid-autoscale" }
+warpgrid-api = { path = "../warpgrid-api" }
+warpgrid-dashboard = { path = "../warpgrid-dashboard" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+axum = "0.8"

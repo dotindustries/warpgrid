@@ -1,0 +1,12 @@
+[package]
+name = "warpgrid-metrics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid metrics — request tracking, Prometheus exposition, and periodic snapshots"
+
+[dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

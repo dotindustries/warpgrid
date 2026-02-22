@@ -1,0 +1,12 @@
+[package]
+name = "warpgrid-autoscale"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid autoscaler — metrics-driven instance scaling with cooldown windows"
+
+[dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
