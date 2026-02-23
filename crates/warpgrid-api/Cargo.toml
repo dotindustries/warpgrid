@@ -9,6 +9,7 @@ description = "WarpGrid REST API — axum handlers for deployment management"
 warpgrid-state = { path = "../warpgrid-state" }
 warpgrid-metrics = { path = "../warpgrid-metrics" }
 warpgrid-dashboard = { path = "../warpgrid-dashboard" }
+warpgrid-rollout = { path = "../warpgrid-rollout" }
 axum = "0.8"
 tokio.workspace = true
 tracing.workspace = true

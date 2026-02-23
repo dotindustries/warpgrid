@@ -1,7 +1,7 @@
-From 27cd958ecf9ca1395eeeeda54e33394a900d7928 Mon Sep 17 00:00:00 2001
+From fb82e0186998a8f52b75e09c248403e76570318c Mon Sep 17 00:00:00 2001
 From: WarpGrid SDK <warpgrid@test.local>
 Date: Sun, 22 Feb 2026 18:13:58 +0100
-Subject: [PATCH] dns: route getaddrinfo through WarpGrid DNS shim
+Subject: [PATCH 1/7] dns: route getaddrinfo through WarpGrid DNS shim
 
 Patch getaddrinfo() in wasi-libc's bottom-half netdb.c to intercept
 hostname resolution through WarpGrid's DNS service registry before

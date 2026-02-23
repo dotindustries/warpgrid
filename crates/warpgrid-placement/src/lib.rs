@@ -9,9 +9,12 @@
 //!
 //! - **`scorer`** — Node scoring (bin-packing, affinity, balance)
 //! - **`placer`** — Placement engine (assignments, preemption)
+//! - **`convert`** — Type conversions from state store types
 
+pub mod convert;
 pub mod placer;
 pub mod scorer;
 
+pub use convert::{deployment_to_requirements, node_info_to_resources, node_info_to_resources_with_instances};
 pub use placer::{PlacementPlan, Preemption, RunningState, compute_placement, compute_placement_with_preemption};
 pub use scorer::{NodeResources, NodeScore, PlacementRequirements, ScoringWeights, rank_nodes, score_node};

@@ -1,6 +1,8 @@
 /*
  * TDD test for US-206: Patch fopen/open to intercept virtual filesystem paths.
  *
+ * WARPGRID_SHIM_REQUIRED
+ *
  * This test provides a strong override of __warpgrid_fs_read_virtual() that
  * returns known content for specific virtual paths. This simulates the
  * WarpGrid host runtime providing virtual file content.

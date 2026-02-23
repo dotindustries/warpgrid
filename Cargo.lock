@@ -3404,16 +3404,26 @@ dependencies = [
  "anyhow",
  "axum 0.8.8",
  "clap",
+ "openraft",
+ "redb",
+ "serde_json",
  "tokio",
+ "tonic",
+ "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
  "warp-core",
  "warp-runtime",
  "warpgrid-api",
  "warpgrid-autoscale",
+ "warpgrid-cluster",
  "warpgrid-dashboard",
  "warpgrid-health",
  "warpgrid-metrics",
+ "warpgrid-placement",
+ "warpgrid-proxy",
+ "warpgrid-raft",
+ "warpgrid-rollout",
  "warpgrid-scheduler",
  "warpgrid-state",
 ]
@@ -3429,6 +3439,7 @@ dependencies = [
  "tracing",
  "warpgrid-dashboard",
  "warpgrid-metrics",
+ "warpgrid-rollout",
  "warpgrid-state",
 ]
 
@@ -3499,6 +3510,7 @@ dependencies = [
  "rcgen",
  "rustls 0.23.36",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
  "warp-core",
@@ -3546,11 +3558,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "openraft",
+ "prost",
  "redb",
  "serde",
  "serde_json",
  "tokio",
  "tonic",
+ "tonic-build",
  "tracing",
  "warpgrid-state",
 ]
@@ -3571,12 +3585,15 @@ name = "warpgrid-scheduler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "warp-core",
  "warp-runtime",
  "warpgrid-host",
+ "warpgrid-placement",
  "warpgrid-state",
 ]
 

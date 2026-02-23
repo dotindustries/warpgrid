@@ -95,9 +95,19 @@ after each iteration and it's included in prompts for context.
 - `--apply`: reset checkout to UPSTREAM_REF, apply patches sequentially, stop on first failure
 - `--export`: `git format-patch <upstream>..HEAD` regenerates patches from branch
 - `--update <tag>`: clone new upstream, apply patches, update UPSTREAM_REF on success
-- `--validate`: checks numbering order and known dependency constraints (0002→0001, 0005→0004, etc.)
+- `--validate`: checks numbering order and known dependency constraints
 - macOS bash 3.2 compatibility: no `declare -A`, use `case` or string matching
 - `git clone --depth 50` (not --depth 1) needed for `git am` 3-way merge to work
+- **IMPORTANT**: `build-libc.sh --patched` re-clones source and reapplies `.patch` files. Manual edits to `build/src-patched/` are lost. Correct workflow: commit in the git checkout → `rebase-libc.sh --export` → then build
+
+### DNS Shim Functions (wasi-libc)
+- Forward resolve: `__warpgrid_dns_resolve(hostname, family, out, out_len)` → packed 17-byte records
+- Reverse resolve: `__warpgrid_dns_reverse_resolve(addr, family, hostname_out, hostname_out_len)` → hostname string
+- Both use strong-extern / weak-definition pattern (see "Weak Symbols in Wasm Static Archives")
+- Return protocol: >0 = success count/length, 0 = not managed (fallthrough), <0 = error (fallthrough)
+- gethostbyname uses static buffers (POSIX thread-unsafe by design, fine for WASI single-threaded)
+- getnameinfo handles NI_NUMERICHOST (skip name lookup), NI_NUMERICSERV (skip service lookup), NI_NAMEREQD (require name or fail)
+- Bottom-half `netdb.c` needs `<stdio.h>` for `snprintf` (not in original includes)
 
 ### wasip2 Dual send/recv Source Files
 - wasip1 send/recv: `cloudlibc/src/libc/sys/socket/send.c` — uses `__wasi_sock_send()` directly
@@ -375,5 +385,89 @@ after each iteration and it's included in prompts for context.
   - **`deliver_signal()` is per-instance, not per-engine.** Each `SignalsHost` wraps its own `SignalQueue`. The `instance_id` routing mentioned in the acceptance criteria will be handled at the `WarpGridEngine` level (US-121) which maps instance IDs to their respective `SignalsHost`.
   - **Queue bounding uses VecDeque::pop_front for FIFO eviction.** When the queue is full, `pop_front()` drops the oldest signal before `push_back()` adds the new one. This ensures the most recent signals are preserved.
   - **Submodule pattern continues: `signals.rs` + `signals/host.rs`.** Same structure as filesystem and dns — data layer in parent module, WIT Host trait in child module.
+---
+
+## 2026-02-23 - warpgrid-agm.34
+- Implemented US-212: End-to-end database driver compilation and connection test
+- **Raw wire protocol test** (`test_e2e_postgres.c`): 8/8 tests pass — exercises full Postgres lifecycle (DNS → connect → startup → auth → query → terminate → close) through all 5 libc patches
+- **libpq cross-compilation** (`scripts/build-libpq.sh`): PostgreSQL 16.2 libpq compiled to wasm32-wasip2 — 39/39 source files, 0 failures
+- **libpq e2e test** (`test_libpq_e2e.c`): 6/6 tests pass — PQconnectdb, PQexec SELECT 1, PQfinish all work through proxy shim
+- Go/TinyGo test blocked on Domain 3 (US-303..US-305: net.Dial patching)
+- All quality gates pass: `cargo build` OK, `test-libc.sh` 8/8
+- Files changed:
+  - NEW: `libc-patches/tests/test_e2e_postgres.c` — 8 raw wire protocol tests with mock Postgres server state machine
+  - NEW: `libc-patches/tests/test_libpq_e2e.c` — 6 libpq API tests (PQconnectdb, PQexec, PQfinish through proxy)
+  - NEW: `scripts/build-libpq.sh` — Cross-compilation script: downloads PG 16.2 source, creates WASI compat shims (getsockname, geteuid, pqsignal, etc.), compiles 39 .c files into libpq.a
+  - MOD: `scripts/test-libc.sh` — Added LIBPQ_REQUIRED marker support for libpq-dependent tests
+- **Learnings:**
+  - **WASI's sockaddr_un has no sun_path.** Need shim `sys/un.h` providing full struct with `char sun_path[108]` to compile ip.c. Place in `-I` search path before sysroot.
+  - **WASI's select()/poll() return ENOTSUP.** Even with emulated signals, these don't work. Use `--wrap=select` and `--wrap=poll` linker flags to redirect to stubs that return "ready".
+  - **pg_restrict must be defined in pg_config.h.** PostgreSQL's `configure` normally sets this to `__restrict`. Without it, `common/string.h` fails to parse.
+  - **MEMSET_LOOP_LIMIT must be defined.** Used by c.h's `MemSet` macro, normally set by configure.
+  - **Weak symbols in .a archives lose to strong sysroot symbols.** WASI sysroot provides strong `poll()`/`select()` that return ENOTSUP. Weak stubs in libpq.a lose the resolution battle. Solution: `--wrap` at link time.
+  - **libpq calls getsockname() after connect().** Must stub to return a valid IPv4 sockaddr_in, else connection fails with "could not get client address from socket".
+  - **Mock server must send all ParameterStatus messages libpq expects.** Minimum: server_version, server_encoding, client_encoding, is_superuser, session_authorization, DateStyle, IntervalStyle, TimeZone, integer_datetimes, standard_conforming_strings.
+  - **fe-print.c requires popen() — safe to exclude.** Provides legacy PQprint()/PQdisplayTuples() not needed for proxy connections.
+---
+
+## 2026-02-23 - warpgrid-agm.20
+- Implemented US-120: ShimConfig parsing from deployment spec
+- Restructured ShimConfig to use `filesystem`/`dns`/`signals`/`database_proxy`/`threading` boolean fields (replaces `timezone`/`dev_urandom` booleans)
+- Added domain-specific sub-config structs: `DnsConfig`, `FilesystemConfig`, `DatabaseProxyConfig`
+- Implemented `ShimConfig::from_toml(Option<&toml::Value>)` — parses `[shims]` table from raw TOML
+- Unknown shim keys produce `tracing::warn` for forward compatibility (not errors)
+- Missing `[shims]` section returns default config with all shims enabled
+- Each shim supports both boolean form (`dns = false`) and table form (`[dns] ttl_seconds = 60`)
+- 22 new tests (244 total in crate), all quality gates pass
+- Files changed:
+  - MOD: `crates/warpgrid-host/Cargo.toml` — added `toml.workspace = true`
+  - MOD: `crates/warpgrid-host/src/config.rs` — full rewrite: `DnsConfig`, `FilesystemConfig`, `DatabaseProxyConfig` structs + `from_toml()` + 22 tests
+  - MOD: `crates/warpgrid-host/src/engine.rs` — updated `build_host_state()` to use `config.filesystem` instead of `config.timezone || config.dev_urandom`, updated test field names
+  - MOD: `crates/warpgrid-scheduler/src/scheduler.rs` — updated `build_pool_config()` to use new `ShimConfig` field names
+- **Learnings:**
+  - **Dual-form TOML parsing (bool vs table) is clean with `match` on `toml::Value` variants.** `filesystem = true` (boolean) and `[filesystem] enabled = true, timezone_name = "US/Eastern"` (table) can coexist in the same parser by matching on `Value::Boolean` vs `Value::Table`.
+  - **`KNOWN_SHIM_KEYS` constant + iteration over table keys is the simplest forward-compat warning pattern.** Unknown keys just get `tracing::warn`, not errors — this means new upstream shim names don't break old config parsers.
+  - **`DatabaseProxyConfig::to_pool_config()` bridges user-facing seconds to internal `Duration`.** User-facing config uses `u64` seconds (TOML-friendly), internal `PoolConfig` uses `Duration`. The conversion method keeps both representations in sync.
+  - **Replacing `timezone: bool` + `dev_urandom: bool` with single `filesystem: bool` simplifies the model.** The engine always created a full `VirtualFileMap::with_defaults()` when either was true — there was no meaningful case for having timezone but not urandom or vice versa.
+  - **let-chains (`if let Some(x) = expr && let Some(y) = expr2 { ... }`)** are required by clippy's `collapsible_if` lint in Rust edition 2024 — nested `if let` + `if let` is flagged.
+---
+
+## 2026-02-23 - warpgrid-agm.26
+- **What was implemented:** US-204 — Patched gethostbyname() and getnameinfo() in wasi-libc to route through WarpGrid DNS shim
+- **Files changed:**
+  - NEW: `libc-patches/0006-dns-route-gethostbyname-through-WarpGrid-DNS-shim.patch` — gethostbyname patch
+  - NEW: `libc-patches/0007-dns-route-getnameinfo-through-WarpGrid-DNS-reverse-r.patch` — getnameinfo patch
+  - NEW: `libc-patches/tests/test_dns_gethostbyname.c` — 6 test cases for gethostbyname
+  - NEW: `libc-patches/tests/test_dns_getnameinfo.c` — 9 test cases for getnameinfo
+  - MOD: `scripts/rebase-libc.sh` — updated validate dependency map for 0006/0007
+  - (In patched source) MOD: `netdb.c` — replaced gethostbyname/getnameinfo stubs with shim-aware implementations
+  - (In patched source) MOD: `warpgrid_dns_shim.c` — added `__warpgrid_dns_reverse_resolve()` weak stub
+- **Learnings:**
+  - **build-libc.sh re-clones and reapplies patches**: The build script checks HEAD == UPSTREAM_COMMIT, and since patches advance HEAD, it re-clones the source. Manual edits to `build/src-patched/` are lost. The correct workflow is: commit changes in the git checkout → export patches → then build.
+  - **`snprintf` requires `<stdio.h>` in WASI bottom-half**: The original netdb.c doesn't include `<stdio.h>` since the stubs don't need it. The getnameinfo implementation uses `snprintf` for port formatting, requiring the include. This is a header dependency to remember when patching bottom-half sources.
+  - **gethostbyname uses static buffers (POSIX-mandated thread-unsafe API)**: The function returns a pointer to a static `struct hostent`. In WASI's single-threaded model this is safe, but the static buffers must be in file scope (not stack).
+  - **Reverse DNS shim requires a separate function**: getnameinfo needs `__warpgrid_dns_reverse_resolve(addr, family, hostname_out, len)` since the forward `__warpgrid_dns_resolve(hostname, family, addrs_out, len)` can't do IP→hostname lookups.
+  - **Patch numbering drifts from PRD**: PRD expected 0002/0003 for gethostbyname/getnameinfo but filesystem and socket patches took those slots. New patches are 0006/0007. The validate script's dependency map needs updating when patches are added out of PRD order.
+  - **getnameinfo service resolution**: Uses `__wasi_sockets_utils__get_service_entry_by_port()` for port→service name mapping, with NI_DGRAM flag awareness for UDP/TCP protocol filtering.
+---
+
+## 2026-02-23 - warpgrid-agm.37
+- Verified US-301: Fork TinyGo and establish reproducible build pipeline (previously implemented)
+- All 6 acceptance criteria confirmed passing end-to-end
+- Files verified (no changes needed — all existed from prior session):
+  - `scripts/build-tinygo.sh` — 3-mode build script (download/source/build-llvm) with idempotency stamps
+  - `vendor/tinygo/` — TinyGo v0.40.0 source at commit 6970c80d with 14 submodules
+  - `build/tinygo/bin/tinygo` — 140MB pre-built binary (darwin-arm64)
+  - `tests/fixtures/go-hello-world/main.go` — hello-world test fixture
+  - `.github/workflows/ci.yml` — TinyGo CI job with download/source caching
+- **Verification results:**
+  - Idempotency: `build-tinygo.sh --download` correctly skips when stamp matches
+  - Compilation: hello-world → 731,063 byte wasip2 .wasm
+  - Execution: Wasmtime outputs "Hello from TinyGo on WarpGrid!" — PASS
+- **Learnings:**
+  - TinyGo v0.40.0 bundles LLVM 20.1.1 in pre-built binaries — no separate LLVM cache needed for download mode in CI
+  - TINYGOROOT differs by mode: `build/tinygo/` for downloads (has lib/, pkg/, targets/), `vendor/tinygo/` for source builds
+  - wasm-tools and wasm-opt (binaryen) are external dependencies required for wasip2 component model compilation — must be installed separately
+  - TinyGo wasip2 compilation produces a WASI component model binary that needs `wasmtime run --wasm component-model=y` on older Wasmtime versions
 ---
 

@@ -10,7 +10,10 @@ warp-core.workspace = true
 warp-runtime = { path = "../warp-runtime" }
 warpgrid-host = { path = "../warpgrid-host" }
 warpgrid-state = { path = "../warpgrid-state" }
+warpgrid-placement = { path = "../warpgrid-placement" }
 tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 thiserror.workspace = true

@@ -12,6 +12,7 @@ wasmtime-wasi.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
 tracing.workspace = true
 anyhow.workspace = true
+toml.workspace = true
 getrandom = "0.2"
 rustls = { version = "0.23", features = ["ring"] }
 webpki-roots = "0.26"

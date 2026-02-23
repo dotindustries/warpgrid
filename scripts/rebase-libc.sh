@@ -438,13 +438,18 @@ do_validate() {
         fi
 
         # Check dependency constraints (portable — no associative arrays)
-        # Known deps: 0002→0001, 0003→0001, 0005→0004, 0006→0004, 0007→0006, 0008→0007
+        # Known deps:
+        #   0003→0001 (socket-connect depends on dns-getaddrinfo for proxy config via FS)
+        #   0004→0003 (socket-send-recv depends on socket-connect)
+        #   0005→0004 (socket-close depends on socket-send-recv)
+        #   0006→0001 (gethostbyname depends on dns-getaddrinfo shim)
+        #   0007→0001 (getnameinfo depends on dns-getaddrinfo shim)
         local dep=""
         case "${num_str}" in
-            0002|0003) dep="0001" ;;
-            0005|0006) dep="0004" ;;
-            0007)      dep="0006" ;;
-            0008)      dep="0007" ;;
+            0003)      dep="0001" ;;
+            0004)      dep="0003" ;;
+            0005)      dep="0004" ;;
+            0006|0007) dep="0001" ;;
         esac
 
         if [[ -n "${dep}" ]]; then

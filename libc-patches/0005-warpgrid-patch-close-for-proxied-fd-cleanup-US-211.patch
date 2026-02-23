@@ -1,7 +1,7 @@
-From 528f466f92a3317094661a036f28167ca5d6f6be Mon Sep 17 00:00:00 2001
+From bc4b5b193d3d38767038ad7839b24e7c3cf70b14 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
 Date: Sun, 22 Feb 2026 19:28:35 +0100
-Subject: [PATCH] warpgrid: patch close() for proxied fd cleanup (US-211)
+Subject: [PATCH 5/7] warpgrid: patch close() for proxied fd cleanup (US-211)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

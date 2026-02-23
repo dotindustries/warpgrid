@@ -1,19 +1,21 @@
 //! warpd — the WarpGrid daemon.
 //!
-//! Single binary that assembles all WarpGrid subsystems:
-//! - State store (redb)
-//! - Wasm runtime
-//! - Scheduler + instance pools
-//! - Health monitor
-//! - Metrics collector
-//! - Autoscaler
-//! - REST API + dashboard
+//! Single binary that can run in three modes:
+//!
+//! - **standalone** — all subsystems in one process (single-node, no Raft)
+//! - **control-plane** — Raft consensus + cluster gRPC + REST API
+//! - **agent** — worker node that joins a control-plane cluster
 //!
 //! # Usage
 //!
 //! ```text
 //! warpd standalone --port 8443 --data-dir /var/lib/warpgrid
+//! warpd control-plane --api-port 8443 --grpc-port 50051 --data-dir /var/lib/warpgrid
+//! warpd agent --control-plane 10.0.0.1:50051 --address 10.0.0.2 --port 8443
 //! ```
+
+mod agent_mode;
+mod control_plane;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -51,11 +53,68 @@ enum Command {
         #[arg(long, default_value = "30")]
         autoscale_interval: u64,
     },
+
+    /// Run as a control-plane node (Raft leader, cluster gRPC, REST API).
+    ControlPlane {
+        /// HTTP API port.
+        #[arg(long, default_value = "8443")]
+        api_port: u16,
+
+        /// gRPC port for Raft and cluster RPCs.
+        #[arg(long, default_value = "50051")]
+        grpc_port: u16,
+
+        /// Data directory for persistent state.
+        #[arg(long, default_value = "/var/lib/warpgrid")]
+        data_dir: PathBuf,
+
+        /// Raft node ID (unique string identifying this control-plane node).
+        #[arg(long, default_value = "cp-1")]
+        raft_node_id: String,
+
+        /// Metrics snapshot interval in seconds.
+        #[arg(long, default_value = "60")]
+        metrics_interval: u64,
+
+        /// Autoscaler check interval in seconds.
+        #[arg(long, default_value = "30")]
+        autoscale_interval: u64,
+    },
+
+    /// Run as an agent node (worker, joins a control-plane cluster).
+    Agent {
+        /// Address of the control plane's gRPC endpoint (host:port).
+        #[arg(long)]
+        control_plane: String,
+
+        /// This node's advertised address.
+        #[arg(long, default_value = "127.0.0.1")]
+        address: String,
+
+        /// This node's advertised port.
+        #[arg(long, default_value = "8443")]
+        port: u16,
+
+        /// Data directory for local state.
+        #[arg(long, default_value = "/var/lib/warpgrid")]
+        data_dir: PathBuf,
+
+        /// Memory capacity in bytes (default 8GB).
+        #[arg(long, default_value = "8000000000")]
+        capacity_memory_bytes: u64,
+
+        /// CPU weight capacity (default 1000).
+        #[arg(long, default_value = "1000")]
+        capacity_cpu_weight: u32,
+
+        /// Metrics snapshot interval in seconds.
+        #[arg(long, default_value = "60")]
+        metrics_interval: u64,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -73,6 +132,44 @@ async fn main() -> anyhow::Result<()> {
             autoscale_interval,
         } => {
             run_standalone(port, data_dir, metrics_interval, autoscale_interval).await
+        }
+        Command::ControlPlane {
+            api_port,
+            grpc_port,
+            data_dir,
+            raft_node_id,
+            metrics_interval,
+            autoscale_interval,
+        } => {
+            control_plane::run_control_plane(
+                api_port,
+                grpc_port,
+                data_dir,
+                raft_node_id,
+                metrics_interval,
+                autoscale_interval,
+            )
+            .await
+        }
+        Command::Agent {
+            control_plane,
+            address,
+            port,
+            data_dir,
+            capacity_memory_bytes,
+            capacity_cpu_weight,
+            metrics_interval,
+        } => {
+            agent_mode::run_agent(
+                control_plane,
+                address,
+                port,
+                data_dir,
+                capacity_memory_bytes,
+                capacity_cpu_weight,
+                metrics_interval,
+            )
+            .await
         }
     }
 }

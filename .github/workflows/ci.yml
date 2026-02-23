@@ -61,3 +61,44 @@ jobs:
 
       - name: Test both sysroots
         run: scripts/test-libc.sh --all
+
+  tinygo:
+    name: Build & Verify TinyGo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+        with:
+          version: "v41.0.0"
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+
+      - name: Install wasm-opt (binaryen)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Cache TinyGo download
+        id: cache-tinygo-download
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: tinygo-${{ env.TINYGO_TAG || 'v0.40.0' }}-linux-amd64
+
+      - name: Cache TinyGo source
+        id: cache-tinygo-source
+        uses: actions/cache@v4
+        with:
+          path: vendor/tinygo
+          key: tinygo-source-${{ env.TINYGO_TAG || 'v0.40.0' }}
+
+      - name: Build TinyGo
+        run: scripts/build-tinygo.sh --download
+
+      - name: Verify TinyGo
+        run: scripts/build-tinygo.sh --verify

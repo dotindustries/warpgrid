@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package warpgrid.raft;
+
+// RaftService is the inter-node RPC interface for the Raft protocol.
+// All openraft types are serialized as JSON bytes to avoid tight
+// proto-to-openraft coupling.
+service RaftService {
+  // Replicate log entries from leader to follower.
+  rpc AppendEntries(RaftRequest) returns (RaftResponse);
+
+  // Request votes during leader election.
+  rpc Vote(RaftRequest) returns (RaftResponse);
+
+  // Transfer a snapshot from leader to follower.
+  rpc InstallSnapshot(RaftRequest) returns (RaftResponse);
+}
+
+// Generic request wrapper — the payload is a JSON-encoded openraft request.
+message RaftRequest {
+  bytes data = 1;
+}
+
+// Generic response wrapper — the payload is a JSON-encoded openraft response.
+message RaftResponse {
+  bytes data = 1;
+  string error = 2; // Non-empty if the operation failed.
+}

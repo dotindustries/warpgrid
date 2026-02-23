@@ -1,7 +1,8 @@
-From 772c863876ba398c7265a9d00a189b65e2c53e5f Mon Sep 17 00:00:00 2001
+From 4aa93c0670e4169ed003b6d6fcf5a66bc4be5b18 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
 Date: Sun, 22 Feb 2026 18:42:16 +0100
-Subject: [PATCH] fs: route fopen/open through WarpGrid virtual filesystem shim
+Subject: [PATCH 2/7] fs: route fopen/open through WarpGrid virtual filesystem
+ shim
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

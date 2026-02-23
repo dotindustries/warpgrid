@@ -17,6 +17,9 @@ pub enum SchedulerError {
     #[error("module not loaded: {0}")]
     ModuleNotLoaded(String),
 
+    #[error("placement error: {0}")]
+    Placement(String),
+
     #[error("state store error: {0}")]
     State(#[from] warpgrid_state::StateError),
 

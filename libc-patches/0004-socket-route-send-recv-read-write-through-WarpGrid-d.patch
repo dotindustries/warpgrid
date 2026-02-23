@@ -1,8 +1,8 @@
-From 9f95449a03322cbc96c344e3b3c1317a1a045a47 Mon Sep 17 00:00:00 2001
+From 4a334ed27059e40c417c24f34164da6875d209b2 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
 Date: Sun, 22 Feb 2026 19:18:55 +0100
-Subject: [PATCH] socket: route send/recv/read/write through WarpGrid database
- proxy shim
+Subject: [PATCH 4/7] socket: route send/recv/read/write through WarpGrid
+ database proxy shim
 
 Intercept data transfer on proxied file descriptors (those connected via
 the socket proxy shim from 0003) and route through the WarpGrid database

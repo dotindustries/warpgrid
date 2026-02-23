@@ -1,0 +1,227 @@
+From afa0dd1b8664f93c1fca093f75cb67daa5456b86 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
+Date: Mon, 23 Feb 2026 20:22:16 +0100
+Subject: [PATCH 7/7] dns: route getnameinfo through WarpGrid DNS reverse
+ resolve shim
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Replace the getnameinfo() stub with a functional implementation that:
+1. Checks NI_NUMERICHOST/NI_NUMERICSERV flags for direct formatting
+2. Calls __warpgrid_dns_reverse_resolve() for IP→hostname resolution
+3. Falls back to numeric IP formatting when not managed by WarpGrid
+4. Uses wasi-sockets service table for port→service name resolution
+
+Adds __warpgrid_dns_reverse_resolve() weak stub to warpgrid_dns_shim.c
+following the same pattern as __warpgrid_dns_resolve (strong extern in
+netdb.c, weak definition in the shim file).
+
+Handles AF_INET and AF_INET6, validates socklen, returns EAI_FAMILY for
+unsupported families, and EAI_OVERFLOW for buffer too small.
+
+US-204 (part 2 of 2)
+---
+ libc-bottom-half/sources/netdb.c             | 97 +++++++++++++++++++-
+ libc-bottom-half/sources/warpgrid_dns_shim.c | 47 ++++++++--
+ 2 files changed, 131 insertions(+), 13 deletions(-)
+
+diff --git a/libc-bottom-half/sources/netdb.c b/libc-bottom-half/sources/netdb.c
+index 3ff369d..76ecafe 100644
+--- a/libc-bottom-half/sources/netdb.c
++++ b/libc-bottom-half/sources/netdb.c
+@@ -1,6 +1,7 @@
+ #include <arpa/inet.h>
+ #include <errno.h>
+ #include <netdb.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/socket.h>
+@@ -28,6 +29,18 @@
+ extern int __warpgrid_dns_resolve(const char *hostname, int family,
+                                   unsigned char *out, int out_len);
+ 
++/*
++ * External reference: __warpgrid_dns_reverse_resolve
++ *
++ * Reverse DNS resolution — maps IP addresses back to hostnames.
++ * Used by getnameinfo() to look up WarpGrid-managed service names.
++ *
++ * Same weak-symbol pattern as __warpgrid_dns_resolve: strong extern here,
++ * weak definition in warpgrid_dns_shim.c.
++ */
++extern int __warpgrid_dns_reverse_resolve(const unsigned char *addr, int family,
++                                          char *hostname_out, int hostname_out_len);
++
+ /* Size of one packed address record from the shim: 1 byte family + 16 bytes addr */
+ #define WARPGRID_DNS_ADDR_RECORD_SIZE 17
+ /* Maximum addresses the shim can return */
+@@ -429,14 +442,92 @@ void freeaddrinfo(struct addrinfo *p) {
+   }
+ }
+ 
++/* WARPGRID PATCH START — getnameinfo via WarpGrid DNS reverse resolve shim */
++
+ int getnameinfo(const struct sockaddr *restrict sa, socklen_t salen,
+                 char *restrict host, socklen_t hostlen, char *restrict serv,
+                 socklen_t servlen, int flags) {
+-  // TODO wasi-sockets
+-  errno = EOPNOTSUPP;
+-  return EAI_SYSTEM;
++  int af = sa->sa_family;
++  const unsigned char *a;
++  int port;
++
++  switch (af) {
++  case AF_INET:
++    if (salen < sizeof(struct sockaddr_in))
++      return EAI_FAMILY;
++    a = (const unsigned char *)&((const struct sockaddr_in *)sa)->sin_addr;
++    port = ntohs(((const struct sockaddr_in *)sa)->sin_port);
++    break;
++  case AF_INET6:
++    if (salen < sizeof(struct sockaddr_in6))
++      return EAI_FAMILY;
++    a = (const unsigned char *)&((const struct sockaddr_in6 *)sa)->sin6_addr;
++    port = ntohs(((const struct sockaddr_in6 *)sa)->sin6_port);
++    break;
++  default:
++    return EAI_FAMILY;
++  }
++
++  /* Node (hostname) resolution */
++  if (host && hostlen) {
++    if (flags & NI_NUMERICHOST) {
++      /* Caller wants numeric — format IP directly, skip all lookups */
++      if (inet_ntop(af, a, host, hostlen) == NULL)
++        return EAI_OVERFLOW;
++    } else {
++      /* Try WarpGrid reverse DNS shim first */
++      char hostname_buf[256];
++      int rev_result = __warpgrid_dns_reverse_resolve(
++          a, af, hostname_buf, sizeof(hostname_buf));
++
++      if (rev_result > 0) {
++        /* WarpGrid resolved the address to a hostname */
++        if ((size_t)rev_result >= hostlen)
++          return EAI_OVERFLOW;
++        memcpy(host, hostname_buf, rev_result + 1); /* include NUL */
++      } else {
++        /* Not managed by WarpGrid — fall back to numeric format */
++        if (flags & NI_NAMEREQD)
++          return EAI_NONAME;
++        if (inet_ntop(af, a, host, hostlen) == NULL)
++          return EAI_OVERFLOW;
++      }
++    }
++  }
++
++  /* Service (port) resolution */
++  if (serv && servlen) {
++    if (flags & NI_NUMERICSERV) {
++      snprintf(serv, servlen, "%d", port);
++    } else {
++      /* Try service name lookup via wasi-sockets utility */
++      const service_entry_t *entry =
++          __wasi_sockets_utils__get_service_entry_by_port(htons(port));
++      if (entry) {
++        /* Check protocol match */
++        int ok = 0;
++        if ((flags & NI_DGRAM) && (entry->protocol & SERVICE_PROTOCOL_UDP))
++          ok = 1;
++        if (!(flags & NI_DGRAM) && (entry->protocol & SERVICE_PROTOCOL_TCP))
++          ok = 1;
++        if (ok) {
++          if (strlen(entry->s_name) >= servlen)
++            return EAI_OVERFLOW;
++          strcpy(serv, entry->s_name);
++        } else {
++          snprintf(serv, servlen, "%d", port);
++        }
++      } else {
++        snprintf(serv, servlen, "%d", port);
++      }
++    }
++  }
++
++  return 0;
+ }
+ 
++/* WARPGRID PATCH END */
++
+ /* WARPGRID PATCH START — gethostbyname via WarpGrid DNS shim */
+ 
+ /*
+diff --git a/libc-bottom-half/sources/warpgrid_dns_shim.c b/libc-bottom-half/sources/warpgrid_dns_shim.c
+index 7a35579..06e54bc 100644
+--- a/libc-bottom-half/sources/warpgrid_dns_shim.c
++++ b/libc-bottom-half/sources/warpgrid_dns_shim.c
+@@ -1,16 +1,18 @@
+ /*
+- * WarpGrid DNS Shim — Weak default stub.
++ * WarpGrid DNS Shim — Weak default stubs.
+  *
+- * This file provides the default (no-op) implementation of the WarpGrid
+- * DNS resolution shim function. When linked into a WASI module, this
+- * weak definition serves as a fallback that always returns 0, causing
+- * getaddrinfo() to fall through to the standard WASI ip_name_lookup
+- * resolver.
++ * This file provides the default (no-op) implementations of the WarpGrid
++ * DNS resolution shim functions. When linked into a WASI module, these
++ * weak definitions serve as fallbacks that always return 0, causing
++ * callers to fall through to the standard WASI resolver or numeric
++ * formatting.
+  *
+- * When the WarpGrid host runtime provides a strong definition of
+- * __warpgrid_dns_resolve (via the shim layer or a linked module),
+- * that implementation overrides this stub and routes hostname resolution
+- * through WarpGrid's service registry and DNS cache.
++ * When the WarpGrid host runtime provides strong definitions (via the
++ * shim layer or a linked module), those implementations override these
++ * stubs and route DNS resolution through WarpGrid's service registry
++ * and DNS cache.
++ *
++ * === Forward Resolution ===
+  *
+  * ABI:
+  *   int __warpgrid_dns_resolve(
+@@ -29,6 +31,21 @@
+  *   > 0: number of resolved address records written to out buffer
+  *     0: hostname not managed by WarpGrid (caller falls through to default)
+  *   < 0: resolution error (caller falls through to default)
++ *
++ * === Reverse Resolution ===
++ *
++ * ABI:
++ *   int __warpgrid_dns_reverse_resolve(
++ *       const unsigned char *addr,   // Address bytes (4 for IPv4, 16 for IPv6)
++ *       int                  family, // AF_INET=2 or AF_INET6=10
++ *       char *hostname_out,          // Output buffer for null-terminated hostname
++ *       int   hostname_out_len       // Size of output buffer in bytes
++ *   );
++ *
++ * Return values:
++ *   > 0: hostname length (excluding NUL terminator) written to hostname_out
++ *     0: address not managed by WarpGrid (caller falls through to numeric/default)
++ *   < 0: resolution error (caller falls through to numeric/default)
+  */
+ 
+ __attribute__((__weak__))
+@@ -40,3 +57,13 @@ int __warpgrid_dns_resolve(const char *hostname, int family,
+     (void)out_len;
+     return 0; /* Fall through to default resolver */
+ }
++
++__attribute__((__weak__))
++int __warpgrid_dns_reverse_resolve(const unsigned char *addr, int family,
++                                   char *hostname_out, int hostname_out_len) {
++    (void)addr;
++    (void)family;
++    (void)hostname_out;
++    (void)hostname_out_len;
++    return 0; /* Fall through to numeric/default */
++}
+-- 
+2.52.0
+

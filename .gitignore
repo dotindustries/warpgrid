@@ -7,3 +7,4 @@
 .env
 .env.local
 *.log
+/vendor/tinygo

@@ -15,10 +15,22 @@ use tracing::{debug, error, info, warn};
 
 use warp_runtime::{InstancePool, PoolConfig, Runtime};
 use warpgrid_host::config::ShimConfig;
+use warpgrid_placement::convert::{deployment_to_requirements, node_info_to_resources};
+use warpgrid_placement::placer::{PlacementPlan, compute_placement};
+use warpgrid_placement::scorer::ScoringWeights;
 use warpgrid_state::*;
 
 use crate::error::{SchedulerError, SchedulerResult};
 use crate::load_balancer::RoundRobinBalancer;
+
+/// Controls whether the scheduler operates locally or across the cluster.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlacementMode {
+    /// Single-node mode: schedule only on this node (existing behavior).
+    Standalone,
+    /// Multi-node mode: use the placement engine to distribute across nodes.
+    Distributed,
+}
 
 /// Per-deployment scheduling state held in memory.
 struct DeploymentSlot {
@@ -34,6 +46,9 @@ struct DeploymentSlot {
 ///
 /// It reads `DeploymentSpec` from the state store, creates `InstancePool`s
 /// via the runtime, and persists `InstanceState` records back to the store.
+///
+/// In [`PlacementMode::Distributed`] mode, it can also compute multi-node
+/// placement plans via the placement engine.
 pub struct Scheduler {
     /// The Wasm runtime for creating instance pools.
     runtime: Arc<Runtime>,
@@ -43,17 +58,40 @@ pub struct Scheduler {
     slots: Arc<RwLock<HashMap<String, DeploymentSlot>>>,
     /// This node's ID (for instance state records).
     node_id: String,
+    /// Placement mode (standalone or distributed).
+    mode: PlacementMode,
 }
 
 impl Scheduler {
-    /// Create a new scheduler.
+    /// Create a new scheduler in standalone (single-node) mode.
     pub fn new(runtime: Arc<Runtime>, state: StateStore, node_id: String) -> Self {
         Self {
             runtime,
             state,
             slots: Arc::new(RwLock::new(HashMap::new())),
             node_id,
+            mode: PlacementMode::Standalone,
         }
+    }
+
+    /// Create a new scheduler in distributed (multi-node) mode.
+    pub fn new_distributed(
+        runtime: Arc<Runtime>,
+        state: StateStore,
+        node_id: String,
+    ) -> Self {
+        Self {
+            runtime,
+            state,
+            slots: Arc::new(RwLock::new(HashMap::new())),
+            node_id,
+            mode: PlacementMode::Distributed,
+        }
+    }
+
+    /// Returns the current placement mode.
+    pub fn placement_mode(&self) -> PlacementMode {
+        self.mode
     }
 
     /// Schedule a deployment — create an instance pool and warm it up.
@@ -235,13 +273,64 @@ impl Scheduler {
         slots.contains_key(deployment_id)
     }
 
+    /// Compute a distributed placement plan for a deployment.
+    ///
+    /// Only available in [`PlacementMode::Distributed`]. Reads the deployment
+    /// spec and node list from the state store, converts to placement types,
+    /// and runs the placement engine.
+    pub fn compute_distributed_placement(
+        &self,
+        deployment_id: &str,
+    ) -> SchedulerResult<PlacementPlan> {
+        if self.mode != PlacementMode::Distributed {
+            return Err(SchedulerError::Placement(
+                "distributed placement requires PlacementMode::Distributed".to_string(),
+            ));
+        }
+
+        let spec = self
+            .state
+            .get_deployment(deployment_id)
+            .map_err(SchedulerError::State)?
+            .ok_or_else(|| SchedulerError::DeploymentNotFound(deployment_id.to_string()))?;
+
+        let nodes = self
+            .state
+            .list_nodes()
+            .map_err(SchedulerError::State)?;
+
+        if nodes.is_empty() {
+            return Err(SchedulerError::Placement(
+                "no nodes available for placement".to_string(),
+            ));
+        }
+
+        let node_resources: Vec<_> = nodes
+            .iter()
+            .map(|n| node_info_to_resources(n, false))
+            .collect();
+
+        let requirements = deployment_to_requirements(&spec, spec.instances.min);
+        let weights = ScoringWeights::default();
+
+        let plan = compute_placement(&requirements, deployment_id, &node_resources, &weights);
+
+        info!(
+            %deployment_id,
+            assignments = plan.assignments.len(),
+            total_placed = plan.assignments.values().sum::<u32>(),
+            "computed distributed placement"
+        );
+
+        Ok(plan)
+    }
+
     // ── Internal helpers ────────────────────────────────────────────
 
     /// Build a `PoolConfig` from a `DeploymentSpec`.
     fn build_pool_config(&self, spec: &DeploymentSpec) -> PoolConfig {
         let shim_config = ShimConfig {
-            timezone: spec.shims.timezone,
-            dev_urandom: spec.shims.dev_urandom,
+            filesystem: spec.shims.timezone || spec.shims.dev_urandom,
             dns: spec.shims.dns,
             signals: spec.shims.signals,
             database_proxy: spec.shims.database_proxy,
@@ -416,7 +505,7 @@ mod tests {
         assert_eq!(config.memory_limit, 128 * 1024 * 1024);
         assert!(config.shim_config.dns);
         assert!(config.shim_config.database_proxy);
-        assert!(!config.shim_config.timezone);
+        assert!(!config.shim_config.filesystem);
     }
 
     #[tokio::test]
@@ -456,5 +545,127 @@ mod tests {
         let now = epoch_secs();
         // Should be after 2024-01-01.
         assert!(now > 1_704_067_200);
+    }
+
+    // ── Distributed mode tests ──────────────────────────────────────
+
+    fn test_node(id: &str, cap_mem: u64, used_mem: u64) -> NodeInfo {
+        NodeInfo {
+            id: id.to_string(),
+            address: "10.0.0.1".to_string(),
+            port: 8443,
+            capacity_memory_bytes: cap_mem,
+            capacity_cpu_weight: 1000,
+            used_memory_bytes: used_mem,
+            used_cpu_weight: 0,
+            labels: HashMap::new(),
+            last_heartbeat: 1700000000,
+        }
+    }
+
+    #[test]
+    fn distributed_scheduler_creation() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+        let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
+        assert_eq!(scheduler.placement_mode(), PlacementMode::Distributed);
+    }
+
+    #[test]
+    fn scheduler_defaults_to_standalone() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+        let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
+        assert_eq!(scheduler.placement_mode(), PlacementMode::Standalone);
+    }
+
+    #[test]
+    fn standalone_rejects_distributed_placement() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+        let spec = test_deployment("default", "api");
+        state.put_deployment(&spec).unwrap();
+
+        let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
+        let result = scheduler.compute_distributed_placement("default/api");
+        assert!(matches!(result, Err(SchedulerError::Placement(_))));
+    }
+
+    #[test]
+    fn distributed_placement_requires_deployment() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+        let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
+
+        let result = scheduler.compute_distributed_placement("nope/missing");
+        assert!(matches!(result, Err(SchedulerError::DeploymentNotFound(_))));
+    }
+
+    #[test]
+    fn distributed_placement_requires_nodes() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+        let spec = test_deployment("default", "api");
+        state.put_deployment(&spec).unwrap();
+
+        let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
+        let result = scheduler.compute_distributed_placement("default/api");
+        assert!(matches!(result, Err(SchedulerError::Placement(_))));
+    }
+
+    #[test]
+    fn distributed_placement_produces_plan() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+
+        let spec = test_deployment("default", "api");
+        state.put_deployment(&spec).unwrap();
+
+        let node1 = test_node("node-1", 8 * 1024 * 1024 * 1024, 0);
+        let node2 = test_node("node-2", 8 * 1024 * 1024 * 1024, 0);
+        state.put_node(&node1).unwrap();
+        state.put_node(&node2).unwrap();
+
+        let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
+        let plan = scheduler
+            .compute_distributed_placement("default/api")
+            .unwrap();
+
+        assert_eq!(plan.deployment_id, "default/api");
+        let total_placed: u32 = plan.assignments.values().sum();
+        assert_eq!(total_placed, spec.instances.min);
+    }
+
+    #[test]
+    fn distributed_placement_partial_when_constrained() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+
+        let mut spec = test_deployment("default", "big");
+        spec.instances.min = 10;
+        spec.resources.memory_bytes = 256 * 1024 * 1024;
+        state.put_deployment(&spec).unwrap();
+
+        // One small node: 512 MiB => fits 2 instances.
+        let node = test_node("node-1", 512 * 1024 * 1024, 0);
+        state.put_node(&node).unwrap();
+
+        let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
+        let plan = scheduler
+            .compute_distributed_placement("default/big")
+            .unwrap();
+
+        let total_placed: u32 = plan.assignments.values().sum();
+        assert_eq!(total_placed, 2);
+    }
+
+    #[tokio::test]
+    async fn distributed_scheduler_still_supports_local_schedule() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let state = test_state();
+        let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
+
+        let result = scheduler.schedule("default/api").await;
+        assert!(matches!(result, Err(SchedulerError::DeploymentNotFound(_))));
     }
 }

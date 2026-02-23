@@ -1,7 +1,8 @@
-From c3f96c8e5f7306e1e2f04f710d5a356fdc144569 Mon Sep 17 00:00:00 2001
+From 57a1ddcd950e16035d6da3c12e87e39e1ef5d24d Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
 Date: Sun, 22 Feb 2026 18:58:14 +0100
-Subject: [PATCH] socket: route connect() through WarpGrid database proxy shim
+Subject: [PATCH 3/7] socket: route connect() through WarpGrid database proxy
+ shim
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

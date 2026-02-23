@@ -3,10 +3,10 @@
   "sessionId": "03c78c59-f78b-4212-b756-a424d27a2ba0",
   "status": "running",
   "startedAt": "2026-02-22T11:48:10.480Z",
-  "updatedAt": "2026-02-23T15:46:47.323Z",
-  "currentIteration": 11,
+  "updatedAt": "2026-02-23T19:53:04.881Z",
+  "currentIteration": 1,
   "maxIterations": 10,
-  "tasksCompleted": 13,
+  "tasksCompleted": 17,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -137,14 +137,14 @@
       {
         "id": "warpgrid-agm.37",
         "title": "US-301: Fork TinyGo and establish reproducible build pipeline",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "warpgrid-agm.34",
         "title": "US-212: End-to-end database driver compilation and connection test",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "warpgrid-agm.33",
@@ -431,8 +431,8 @@
       {
         "id": "warpgrid-agm.26",
         "title": "US-204: Patch gethostbyname and getnameinfo for WarpGrid DNS",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "warpgrid-agm.22",
@@ -443,8 +443,8 @@
       {
         "id": "warpgrid-agm.20",
         "title": "US-120: Implement ShimConfig parsing from deployment spec",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "warpgrid-agm.17",
@@ -778,17 +778,150 @@
       "durationMs": 299884,
       "startedAt": "2026-02-23T15:31:33.430Z",
       "endedAt": "2026-02-23T15:36:33.314Z"
+    },
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "warpgrid-agm.34",
+      "taskTitle": "US-212: End-to-end database driver compilation and connection test",
+      "taskCompleted": true,
+      "durationMs": 1693922,
+      "startedAt": "2026-02-23T15:46:26.770Z",
+      "endedAt": "2026-02-23T16:14:40.692Z"
+    },
+    {
+      "iteration": 2,
+      "status": "failed",
+      "taskId": "warpgrid-agm.37",
+      "taskTitle": "US-301: Fork TinyGo and establish reproducible build pipeline",
+      "taskCompleted": false,
+      "durationMs": 750024,
+      "startedAt": "2026-02-23T16:17:27.298Z",
+      "endedAt": "2026-02-23T16:29:57.322Z"
+    },
+    {
+      "iteration": 3,
+      "status": "failed",
+      "taskId": "warpgrid-agm.48",
+      "taskTitle": "US-401: Fork ComponentizeJS and establish build pipeline",
+      "taskCompleted": false,
+      "durationMs": 24655,
+      "startedAt": "2026-02-23T16:31:11.614Z",
+      "endedAt": "2026-02-23T16:31:36.269Z"
+    },
+    {
+      "iteration": 4,
+      "status": "failed",
+      "taskId": "warpgrid-agm.68",
+      "taskTitle": "US-601: Scaffold warpgrid-bun crate and bun-sdk npm package",
+      "taskCompleted": false,
+      "durationMs": 25802,
+      "startedAt": "2026-02-23T16:32:50.595Z",
+      "endedAt": "2026-02-23T16:33:16.397Z"
+    },
+    {
+      "iteration": 5,
+      "status": "failed",
+      "taskId": "warpgrid-agm.5",
+      "taskTitle": "US-105: Filesystem shim integration tests",
+      "taskCompleted": false,
+      "durationMs": 24880,
+      "startedAt": "2026-02-23T16:34:31.508Z",
+      "endedAt": "2026-02-23T16:34:56.388Z"
+    },
+    {
+      "iteration": 6,
+      "status": "failed",
+      "taskId": "warpgrid-agm.7",
+      "taskTitle": "US-107: DNS caching with TTL and round-robin selection",
+      "taskCompleted": false,
+      "durationMs": 26062,
+      "startedAt": "2026-02-23T16:36:10.613Z",
+      "endedAt": "2026-02-23T16:36:36.675Z"
+    },
+    {
+      "iteration": 7,
+      "status": "failed",
+      "taskId": "warpgrid-agm.10",
+      "taskTitle": "US-110: Signal handling integration tests",
+      "taskCompleted": false,
+      "durationMs": 45383,
+      "startedAt": "2026-02-23T16:38:42.451Z",
+      "endedAt": "2026-02-23T16:39:27.834Z"
+    },
+    {
+      "iteration": 8,
+      "status": "failed",
+      "taskId": "warpgrid-agm.13",
+      "taskTitle": "US-113: Database proxy unit tests with mock Postgres server",
+      "taskCompleted": false,
+      "durationMs": 43875,
+      "startedAt": "2026-02-23T16:41:46.757Z",
+      "endedAt": "2026-02-23T16:42:30.632Z"
+    },
+    {
+      "iteration": 9,
+      "status": "failed",
+      "taskId": "warpgrid-agm.15",
+      "taskTitle": "US-115: Implement MySQL wire protocol passthrough",
+      "taskCompleted": false,
+      "durationMs": 44064,
+      "startedAt": "2026-02-23T16:43:49.681Z",
+      "endedAt": "2026-02-23T16:44:33.745Z"
+    },
+    {
+      "iteration": 10,
+      "status": "failed",
+      "taskId": "warpgrid-agm.16",
+      "taskTitle": "US-116: Implement Redis RESP protocol passthrough",
+      "taskCompleted": false,
+      "durationMs": 43789,
+      "startedAt": "2026-02-23T16:46:22.780Z",
+      "endedAt": "2026-02-23T16:47:06.569Z"
+    },
+    {
+      "iteration": 11,
+      "status": "completed",
+      "taskId": "warpgrid-agm.20",
+      "taskTitle": "US-120: Implement ShimConfig parsing from deployment spec",
+      "taskCompleted": true,
+      "durationMs": 440726,
+      "startedAt": "2026-02-23T19:01:23.383Z",
+      "endedAt": "2026-02-23T19:08:44.109Z"
+    },
+    {
+      "iteration": 12,
+      "status": "completed",
+      "taskId": "warpgrid-agm.26",
+      "taskTitle": "US-204: Patch gethostbyname and getnameinfo for WarpGrid DNS",
+      "taskCompleted": true,
+      "durationMs": 863472,
+      "startedAt": "2026-02-23T19:12:07.199Z",
+      "endedAt": "2026-02-23T19:26:30.671Z"
+    },
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "warpgrid-agm.37",
+      "taskTitle": "US-301: Fork TinyGo and establish reproducible build pipeline",
+      "taskCompleted": true,
+      "durationMs": 204431,
+      "startedAt": "2026-02-23T19:49:30.000Z",
+      "endedAt": "2026-02-23T19:52:54.431Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/janosveres/workspace/dot-inc/warpgrid",
   "activeTaskIds": [
-    "warpgrid-agm.34",
-    "warpgrid-agm.37",
     "warpgrid-agm.48",
     "warpgrid-agm.68",
     "warpgrid-agm.5",
-    "warpgrid-agm.7"
+    "warpgrid-agm.7",
+    "warpgrid-agm.10",
+    "warpgrid-agm.13",
+    "warpgrid-agm.15",
+    "warpgrid-agm.16",
+    "warpgrid-agm.27"
   ],
   "subagentPanelVisible": true
 }

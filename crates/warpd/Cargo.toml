@@ -19,9 +19,22 @@ warpgrid-metrics = { path = "../warpgrid-metrics" }
 warpgrid-autoscale = { path = "../warpgrid-autoscale" }
 warpgrid-api = { path = "../warpgrid-api" }
 warpgrid-dashboard = { path = "../warpgrid-dashboard" }
+warpgrid-cluster = { path = "../warpgrid-cluster" }
+warpgrid-raft = { path = "../warpgrid-raft" }
+warpgrid-proxy = { path = "../warpgrid-proxy" }
+warpgrid-rollout = { path = "../warpgrid-rollout" }
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true
+serde_json.workspace = true
 axum = "0.8"
+tonic = "0.12"
+redb = "3.1"
+openraft = { version = "0.9", features = ["serde"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+axum = { version = "0.8", features = ["tokio"] }
+warpgrid-placement = { path = "../warpgrid-placement" }

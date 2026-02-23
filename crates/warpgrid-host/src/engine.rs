@@ -206,7 +206,7 @@ impl WarpGridEngine {
         config: &ShimConfig,
         connection_factory: Option<Arc<dyn ConnectionFactory>>,
     ) -> HostState {
-        let filesystem = if config.timezone || config.dev_urandom {
+        let filesystem = if config.filesystem {
             // Use the default virtual file map which includes /dev/null,
             // /dev/urandom, /etc/resolv.conf, /proc/self/, and timezone data.
             let file_map = Arc::new(VirtualFileMap::with_defaults());
@@ -264,11 +264,11 @@ mod tests {
     #[test]
     fn host_state_with_no_shims() {
         let config = ShimConfig {
-            timezone: false,
-            dev_urandom: false,
+            filesystem: false,
             dns: false,
             signals: false,
             database_proxy: false,
+            threading: false,
             ..ShimConfig::default()
         };
 
@@ -303,7 +303,7 @@ mod tests {
 
         assert!(state.filesystem.is_some());
         assert!(state.dns.is_some());
-        assert!(state.db_proxy.is_none()); // database_proxy defaults to false
+        assert!(state.db_proxy.is_none()); // no connection factory provided
     }
 
     #[test]

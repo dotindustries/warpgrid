@@ -1,0 +1,96 @@
+From 0db459a8cfc3c209c70d07b48c3754e12a6330d2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
+Date: Mon, 23 Feb 2026 20:21:03 +0100
+Subject: [PATCH 6/7] dns: route gethostbyname through WarpGrid DNS shim
+
+Replace the gethostbyname() stub with a WarpGrid-shim-aware implementation
+that calls __warpgrid_dns_resolve() to resolve hostnames through the
+WarpGrid service registry before falling back.
+
+Uses the same weak-symbol mechanism established in the getaddrinfo patch:
+strong extern declaration in netdb.c, weak definition in warpgrid_dns_shim.c.
+
+gethostbyname returns AF_INET addresses only (POSIX semantics). The result
+is stored in static buffers, consistent with the thread-unsafe POSIX API
+contract (acceptable in WASI's single-threaded model).
+
+US-204 (part 1 of 2)
+---
+ libc-bottom-half/sources/netdb.c | 57 +++++++++++++++++++++++++++++++-
+ 1 file changed, 56 insertions(+), 1 deletion(-)
+
+diff --git a/libc-bottom-half/sources/netdb.c b/libc-bottom-half/sources/netdb.c
+index 2fad3b4..3ff369d 100644
+--- a/libc-bottom-half/sources/netdb.c
++++ b/libc-bottom-half/sources/netdb.c
+@@ -437,11 +437,66 @@ int getnameinfo(const struct sockaddr *restrict sa, socklen_t salen,
+   return EAI_SYSTEM;
+ }
+ 
++/* WARPGRID PATCH START — gethostbyname via WarpGrid DNS shim */
++
++/*
++ * Static buffers for gethostbyname result.
++ * gethostbyname is inherently thread-unsafe (POSIX returns pointer to static
++ * data), which is fine for WASI's single-threaded model.
++ */
++static struct hostent wg_he;
++static char *wg_he_aliases[1] = {NULL};
++static char *wg_he_addr_list[WARPGRID_DNS_MAX_ADDRS + 1];
++static unsigned char wg_he_addrs[WARPGRID_DNS_MAX_ADDRS * 4];
++static char wg_he_name[256];
++
+ struct hostent *gethostbyname(const char *name) {
+-  // TODO wasi-sockets
++  if (name == NULL) {
++    h_errno = HOST_NOT_FOUND;
++    return NULL;
++  }
++
++  unsigned char shim_buf[WARPGRID_DNS_ADDR_RECORD_SIZE * WARPGRID_DNS_MAX_ADDRS];
++  int shim_count = __warpgrid_dns_resolve(name, AF_INET,
++                                          shim_buf, sizeof(shim_buf));
++
++  if (shim_count > 0) {
++    /* Extract IPv4 addresses from packed shim output */
++    int found = 0;
++    for (int i = 0; i < shim_count && found < WARPGRID_DNS_MAX_ADDRS; i++) {
++      const unsigned char *rec = shim_buf + (i * WARPGRID_DNS_ADDR_RECORD_SIZE);
++      if (rec[0] == 4) { /* IPv4 only for gethostbyname */
++        memcpy(wg_he_addrs + (found * 4), &rec[1], 4);
++        wg_he_addr_list[found] = (char *)(wg_he_addrs + (found * 4));
++        found++;
++      }
++    }
++
++    if (found == 0) {
++      h_errno = NO_DATA;
++      return NULL;
++    }
++    wg_he_addr_list[found] = NULL;
++
++    strncpy(wg_he_name, name, sizeof(wg_he_name) - 1);
++    wg_he_name[sizeof(wg_he_name) - 1] = '\0';
++
++    wg_he.h_name = wg_he_name;
++    wg_he.h_aliases = wg_he_aliases;
++    wg_he.h_addrtype = AF_INET;
++    wg_he.h_length = 4;
++    wg_he.h_addr_list = wg_he_addr_list;
++
++    return &wg_he;
++  }
++
++  /* shim_count <= 0: hostname not managed by WarpGrid, no other resolver */
++  h_errno = HOST_NOT_FOUND;
+   return NULL;
+ }
+ 
++/* WARPGRID PATCH END */
++
+ struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type) {
+   // TODO wasi-sockets
+   return NULL;
+-- 
+2.52.0
+
