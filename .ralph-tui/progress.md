@@ -99,6 +99,24 @@ after each iteration and it's included in prompts for context.
 - macOS bash 3.2 compatibility: no `declare -A`, use `case` or string matching
 - `git clone --depth 50` (not --depth 1) needed for `git am` 3-way merge to work
 
+### wasip2 Dual send/recv Source Files
+- wasip1 send/recv: `cloudlibc/src/libc/sys/socket/send.c` — uses `__wasi_sock_send()` directly
+- wasip2 send/recv: `sources/send.c` — uses descriptor table vtable dispatch via `sendto()`
+- For `wasm32-wasip2` target, cmake builds the `sources/` versions, NOT the cloudlibc versions
+- Patching the cloudlibc versions has NO EFFECT on wasip2 builds — always check which source cmake compiles
+- `sources/send.c`: `send()` → `sendto()` → `entry->vtable->sendto()`
+- `sources/recv.c`: `recv()` → `recvfrom()` → `entry->vtable->recvfrom()`
+- Proxy interception goes in `send()`/`recv()` BEFORE the delegation to `sendto()`/`recvfrom()`
+
+### Socket Proxy Shim Architecture
+- Socket proxy uses a **side table** (not separate fd space) to track proxied fds: `{fd → proxy_handle}`
+- Interception at `connect()` level, before descriptor table vtable dispatch
+- Proxy endpoint config loaded lazily from `/etc/warpgrid/proxy.conf` via FS shim (`__warpgrid_fs_read_virtual`)
+- Config format: one `host:port` per line, `#` comments, empty lines ignored (max 16 endpoints)
+- Fd recycling handled by clearing stale entries at start of `__warpgrid_proxy_connect()`, regardless of proxy match
+- Public API for US-210/211: `__warpgrid_proxy_fd_is_proxied(fd)`, `__warpgrid_proxy_fd_get_handle(fd)`, `__warpgrid_proxy_fd_remove(fd)`
+- Return protocol matches FS shim: `-2` (not intercepted), `-1` (error), `>= 0` (success)
+
 ---
 
 ## 2026-02-22 - warpgrid-agm.2
@@ -294,5 +312,68 @@ after each iteration and it's included in prompts for context.
   - **Return value protocol (-2/-1/>=0)** cleanly separates "not virtual" (-2, fall through), "virtual but error" (-1, errno set), and "success" (>=0, virtual fd). This avoids ambiguity between "path not found" and "open error".
   - **build-libc.sh --clean wipes source tree** — manual edits to `build/src-patched/` are destroyed. Must commit changes and export as patch before rebuilding. The `ensure_source()` function compares HEAD to UPSTREAM_COMMIT and re-clones on mismatch.
   - **malloc in wasm32-wasip2 works** — virtual fd content is malloc'd + memcpy'd from the stack buffer. The wasi-libc allocator handles this correctly for content up to WARPGRID_FS_MAX_CONTENT (8KiB).
+---
+
+## 2026-02-22 - warpgrid-agm.31
+- Implemented US-209: Patch connect() to route database proxy connections
+- Created `warpgrid_socket_shim.c` with proxy endpoint detection and proxied fd tracking
+- Patched `connect()` to intercept before vtable dispatch and route through shim
+- All 7 TDD tests pass, full test suite (4/4) passes with no regressions
+- Files changed:
+  - NEW: `build/src-patched/libc-bottom-half/sources/warpgrid_socket_shim.c` — weak `__warpgrid_db_proxy_connect()` stub + proxy endpoint config loader + proxied fd tracking table (~260 lines)
+  - MOD: `build/src-patched/libc-bottom-half/sources/connect.c` — intercept `connect()` with `__warpgrid_proxy_connect()` before descriptor table vtable dispatch
+  - MOD: `build/src-patched/libc-bottom-half/CMakeLists.txt` — added `sources/warpgrid_socket_shim.c` to wasip2 build
+  - NEW: `libc-patches/0003-socket-connect-proxy.patch` — exported git format-patch (406 lines, 339 insertions across 3 files)
+  - NEW: `libc-patches/tests/test_socket_connect_proxy.c` — 7 comprehensive tests
+- **Learnings:**
+  - **Socket interception requires a different strategy than filesystem interception.** FS shim uses a separate fd number space (0x70000000+), but socket proxy piggybacks on the existing socket fd because `connect()` takes an already-created fd from `socket()`. A side table maps {fd → proxy_handle} instead.
+  - **Fd recycling creates stale tracking entries.** When WASI recycles an fd number after `close()`, the proxy tracking table may still have the old entry. Fix: clear stale entries for the fd at the START of `__warpgrid_proxy_connect()`, before checking if it's a proxy endpoint. This handles both proxy→proxy and proxy→non-proxy fd recycling.
+  - **Lazy config loading is essential.** Proxy endpoints are loaded from `/etc/warpgrid/proxy.conf` via the FS shim on first `connect()` call. Loading at program start would fail because the FS shim may not be initialized yet.
+  - **The -2/-1/>=0 return protocol is a reusable pattern.** Used identically in both FS shim (`__warpgrid_vfd_open`) and socket shim (`__warpgrid_proxy_connect`): -2 = not intercepted (fall through), -1 = error (errno set), >= 0 = success.
+  - **Proxy config via virtual filesystem is a clean dependency chain.** US-209 (socket) depends on US-206 (FS) for config loading via `__warpgrid_fs_read_virtual()`. The strong extern declaration for the FS shim function forces wasm-ld to pull both shim archive members.
+  - **Patch numbering diverges from PRD.** PRD planned 0006 but actual sequence is 0003 (after 0001-DNS, 0002-FS). Intermediate patches (gethostbyname, getnameinfo, timezone) haven't been implemented yet. Sequential numbering is required for `git am` to work correctly.
+  - **`inet_pton` and `inet_ntop` are available in wasip2.** These functions from `<arpa/inet.h>` work correctly for parsing/formatting IP addresses in the socket shim — no need for manual parsing.
+---
+
+## 2026-02-22 - warpgrid-agm.32
+- Implemented US-210: Patch send/recv/read/write for proxied file descriptors
+- Added weak stubs `__warpgrid_db_proxy_send()` and `__warpgrid_db_proxy_recv()` to socket shim
+- Added helper wrappers `__warpgrid_proxy_send()` and `__warpgrid_proxy_recv()` that resolve proxy handle and delegate
+- Patched wasip2 `sources/send.c` and `sources/recv.c` with proxied fd check before vtable dispatch
+- Patched `unistd/read.c` with proxied fd check after virtual fd check (US-206)
+- Patched `unistd/write.c` with proxied fd check before WASI stream dispatch
+- All 10 TDD tests pass, all existing tests (DNS 4/4, FS 10/10) pass with no regressions
+- Files changed:
+  - MOD: `build/src-patched/libc-bottom-half/sources/warpgrid_socket_shim.c` — added weak stubs + helper wrappers (+85 lines)
+  - MOD: `build/src-patched/libc-bottom-half/sources/send.c` — proxied fd check in send() (+12 lines)
+  - MOD: `build/src-patched/libc-bottom-half/sources/recv.c` — proxied fd check in recv() with MSG_PEEK (+14 lines)
+  - MOD: `build/src-patched/libc-bottom-half/cloudlibc/src/libc/unistd/read.c` — proxied fd check after vfd check (+15 lines)
+  - MOD: `build/src-patched/libc-bottom-half/cloudlibc/src/libc/unistd/write.c` — proxied fd check (+13 lines)
+  - NEW: `libc-patches/0004-socket-send-recv-proxy.patch` — exported patch (246 lines, 138 insertions across 5 files)
+  - NEW: `libc-patches/tests/test_socket_send_recv_proxy.c` — 10 comprehensive tests
+- **Learnings:**
+  - **CRITICAL: wasip2 has TWO sets of send/recv implementations.** `cloudlibc/src/libc/sys/socket/send.c` uses `__wasi_sock_send()` (wasip1 path). `sources/send.c` uses descriptor table vtable (wasip2 path). The cmake build for `wasm32-wasip2` compiles the `sources/` versions. Patching the cloudlibc versions has NO EFFECT on wasip2 builds!
+  - **wasip2 send() delegates to sendto(), recv() delegates to recvfrom().** The proxy check must go in `send()` BEFORE the `sendto()` call, not inside `sendto()`, to avoid double-checking on non-proxied paths.
+  - **recv() needs `#include <sys/socket.h>` for MSG_PEEK.** The wasip2 `sources/recv.c` doesn't include it by default (the recvfrom vtable handles flags internally). Adding the include is needed to use the `MSG_PEEK` constant.
+  - **socket() hangs in Wasmtime 20 for wasip2 targets.** WASI sockets require specific host capabilities that may block during initialization. Tests that need socket proxy verification should use fake fd numbers (1000+) and call `__warpgrid_proxy_connect()` directly to populate the tracking table, bypassing `socket()` entirely.
+  - **Test data with null bytes requires explicit length.** `strlen()` stops at `\0`, so Postgres wire protocol test data (e.g., `T\x00\x00\x00\x06\x00\x01`) must use `setup_recv_data_binary(data, len)` instead of `setup_recv_data(str)`.
+  - **Incremental cmake rebuild detects only changed source files.** Modifying 5 .c files in the source tree and running `make` in `build/cmake-patched/` correctly rebuilds only those files and re-links. No full rebuild needed.
+  - **read() needs TWO interception checks.** Order: (1) virtual fd check (0x70000000+ range, O(1)), (2) proxied fd check (linear scan of 64-entry table, O(n)), (3) fall through to WASI. Virtual fd check is faster so it goes first.
+---
+
+## 2026-02-23 - warpgrid-agm.9
+- Implemented US-109: Signal queue and host functions
+- Created `SignalQueue` data layer with bounded queue, interest registration, and signal filtering
+- Created `SignalsHost` WIT Host trait implementation bridging guest calls to signal queue
+- 36 new tests (225 total in crate), all quality gates pass
+- Files changed:
+  - MOD: `crates/warpgrid-host/src/signals.rs` — full implementation (~130 lines): `SignalQueue` struct with bounded VecDeque, interest bitfield, deliver/poll methods, 24 tests
+  - NEW: `crates/warpgrid-host/src/signals/host.rs` — `SignalsHost` struct + `Host` trait impl + `deliver_signal()` host-side API + 12 tests
+- **Learnings:**
+  - **Interest tracking with a `[bool; 3]` bitfield is simpler than HashSet.** Since `SignalType` is a 3-variant enum, a fixed-size array indexed by a discriminant function avoids needing `Hash` trait on the generated WIT type. The `signal_index()` function maps each variant to 0/1/2.
+  - **No async bridge needed for signals (unlike DNS and DB proxy).** The signal queue is purely in-memory with no I/O, so the Host trait methods are naturally synchronous. No `block_in_place` / `block_on` pattern needed.
+  - **`deliver_signal()` is per-instance, not per-engine.** Each `SignalsHost` wraps its own `SignalQueue`. The `instance_id` routing mentioned in the acceptance criteria will be handled at the `WarpGridEngine` level (US-121) which maps instance IDs to their respective `SignalsHost`.
+  - **Queue bounding uses VecDeque::pop_front for FIFO eviction.** When the queue is full, `pop_front()` drops the oldest signal before `push_back()` adds the new one. This ensures the most recent signals are preserved.
+  - **Submodule pattern continues: `signals.rs` + `signals/host.rs`.** Same structure as filesystem and dns — data layer in parent module, WIT Host trait in child module.
 ---
 

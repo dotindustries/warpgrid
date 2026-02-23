@@ -1,0 +1,119 @@
+From 528f466f92a3317094661a036f28167ca5d6f6be Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
+Date: Sun, 22 Feb 2026 19:28:35 +0100
+Subject: [PATCH] warpgrid: patch close() for proxied fd cleanup (US-211)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add database-proxy.close() interception for proxied file descriptors:
+
+- Add __warpgrid_db_proxy_close() weak stub for host runtime override
+- Add __warpgrid_proxy_close() wrapper: resolves handle, calls host
+  close, removes tracking entry (cleanup always runs even on error)
+- Patch close() in __wasilibc_fd_renumber.c to clean up proxy state
+  before the normal WASI close path (fall-through design — proxy
+  cleanup + WASI fd reclamation both execute)
+
+Close ordering: proxy check → virtual fd check → WASI close.
+Proxied fds don't short-circuit because the underlying WASI socket
+fd (from socket()) still needs to be reclaimed by descriptor_table_remove().
+---
+ .../sources/__wasilibc_fd_renumber.c          | 12 +++++
+ .../sources/warpgrid_socket_shim.c            | 45 ++++++++++++++++++-
+ 2 files changed, 56 insertions(+), 1 deletion(-)
+
+diff --git a/libc-bottom-half/sources/__wasilibc_fd_renumber.c b/libc-bottom-half/sources/__wasilibc_fd_renumber.c
+index 715c82d..7098f07 100644
+--- a/libc-bottom-half/sources/__wasilibc_fd_renumber.c
++++ b/libc-bottom-half/sources/__wasilibc_fd_renumber.c
+@@ -32,7 +32,19 @@ extern int __warpgrid_vfd_is_virtual(int fd);
+ extern int __warpgrid_vfd_close(int fd);
+ /* WARPGRID PATCH END */
+ 
++/* WARPGRID PATCH START — Proxied fd close interception (US-211) */
++extern int __warpgrid_proxy_fd_is_proxied(int fd);
++extern int __warpgrid_proxy_close(int fd);
++/* WARPGRID PATCH END */
++
+ int close(int fd) {
++  /* WARPGRID PATCH START — Clean up proxy state before WASI close (US-211) */
++  if (__warpgrid_proxy_fd_is_proxied(fd)) {
++    __warpgrid_proxy_close(fd);
++    /* Fall through to close the underlying WASI socket fd */
++  }
++  /* WARPGRID PATCH END */
++
+   /* WARPGRID PATCH START */
+   if (__warpgrid_vfd_is_virtual(fd))
+     return __warpgrid_vfd_close(fd);
+diff --git a/libc-bottom-half/sources/warpgrid_socket_shim.c b/libc-bottom-half/sources/warpgrid_socket_shim.c
+index 9c1fb3e..4264f24 100644
+--- a/libc-bottom-half/sources/warpgrid_socket_shim.c
++++ b/libc-bottom-half/sources/warpgrid_socket_shim.c
+@@ -89,6 +89,23 @@ int __warpgrid_db_proxy_recv(int handle, void *buf, int max_len, int peek) {
+     return -1; /* No host runtime — error */
+ }
+ 
++/*
++ * The WarpGrid runtime overrides this with a strong definition that calls
++ * the warpgrid:shim/database-proxy.close WIT import.
++ *
++ * Parameters:
++ *   handle  - Connection handle from database-proxy.connect()
++ *
++ * Returns:
++ *     0  Close succeeded.
++ *   < 0  Error.
++ */
++__attribute__((__weak__))
++int __warpgrid_db_proxy_close(int handle) {
++    (void)handle;
++    return 0; /* No host runtime — silently succeed */
++}
++
+ /* ── Filesystem shim callback (strong extern) ─────────────────────────── */
+ 
+ /*
+@@ -392,7 +409,6 @@ int __warpgrid_proxy_recv(int fd, void *buf, int max_len, int peek) {
+ 
+ /*
+  * Remove a proxied fd from the tracking table.
+- * Called by close() interception (US-211).
+  * Returns the handle that was removed, or -1 if not found.
+  */
+ int __warpgrid_proxy_fd_remove(int fd) {
+@@ -407,3 +423,30 @@ int __warpgrid_proxy_fd_remove(int fd) {
+     }
+     return -1;
+ }
++
++/*
++ * Close a proxied fd: notify host runtime and remove from tracking.
++ * Called by close() interception (US-211).
++ *
++ * Returns:
++ *    0  Proxied fd closed successfully.
++ *   -1  Host runtime close failed (errno set), but tracking cleaned up.
++ *   -2  NOT a proxied fd — caller should fall through to normal close.
++ */
++int __warpgrid_proxy_close(int fd) {
++    int handle = __warpgrid_proxy_fd_get_handle(fd);
++    if (handle < 0)
++        return -2; /* Not proxied — fall through */
++
++    /* Notify host runtime to tear down the proxy connection */
++    int rc = __warpgrid_db_proxy_close(handle);
++
++    /* Always clean up tracking, even if host close failed */
++    __warpgrid_proxy_fd_remove(fd);
++
++    if (rc < 0) {
++        errno = EIO;
++        return -1;
++    }
++    return 0;
++}
+-- 
+2.52.0
+

@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package warpgrid.cluster;
+
+// ClusterService is the gRPC interface between nodes.
+// The control plane exposes this service; agents connect to it.
+service ClusterService {
+  // Join the cluster. Returns the node's assigned ID and cluster state.
+  rpc Join(JoinRequest) returns (JoinResponse);
+
+  // Leave the cluster gracefully.
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+
+  // Periodic heartbeat from agent to control plane.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Get current cluster membership.
+  rpc GetMembers(GetMembersRequest) returns (GetMembersResponse);
+}
+
+// ── Join ─────────────────────────────────────────────────────
+
+message JoinRequest {
+  // The node's advertised address (ip:port).
+  string address = 1;
+  // The node's advertised port for the agent gRPC service.
+  uint32 port = 2;
+  // Labels for scheduling affinity (e.g., "region=us-east-1").
+  map<string, string> labels = 3;
+  // Total memory capacity in bytes.
+  uint64 capacity_memory_bytes = 4;
+  // Total CPU weight capacity.
+  uint32 capacity_cpu_weight = 5;
+}
+
+message JoinResponse {
+  // Assigned node ID.
+  string node_id = 1;
+  // Current cluster members.
+  repeated NodeMember members = 2;
+  // Heartbeat interval in seconds.
+  uint32 heartbeat_interval_secs = 3;
+}
+
+// ── Leave ────────────────────────────────────────────────────
+
+message LeaveRequest {
+  string node_id = 1;
+}
+
+message LeaveResponse {
+  bool success = 1;
+}
+
+// ── Heartbeat ────────────────────────────────────────────────
+
+message HeartbeatRequest {
+  string node_id = 1;
+  // Current resource usage.
+  uint64 used_memory_bytes = 2;
+  uint32 used_cpu_weight = 3;
+  // Number of active instances on this node.
+  uint32 active_instances = 4;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+  // Optional: commands from control plane (e.g., drain, scale).
+  repeated NodeCommand commands = 2;
+}
+
+// ── Members ──────────────────────────────────────────────────
+
+message GetMembersRequest {}
+
+message GetMembersResponse {
+  repeated NodeMember members = 1;
+}
+
+// ── Shared types ─────────────────────────────────────────────
+
+message NodeMember {
+  string node_id = 1;
+  string address = 2;
+  uint32 port = 3;
+  NodeStatus status = 4;
+  map<string, string> labels = 5;
+  uint64 capacity_memory_bytes = 6;
+  uint32 capacity_cpu_weight = 7;
+  uint64 used_memory_bytes = 8;
+  uint32 used_cpu_weight = 9;
+  uint64 last_heartbeat_epoch = 10;
+}
+
+enum NodeStatus {
+  NODE_STATUS_UNKNOWN = 0;
+  NODE_STATUS_JOINING = 1;
+  NODE_STATUS_READY = 2;
+  NODE_STATUS_DRAINING = 3;
+  NODE_STATUS_LEFT = 4;
+}
+
+message NodeCommand {
+  string command_type = 1; // "drain", "scale", "deploy"
+  string payload = 2;      // JSON-encoded command payload
+}

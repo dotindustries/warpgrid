@@ -118,6 +118,8 @@ static struct sockaddr_in make_addr(const char *ip, unsigned short port) {
 static void test_connect_to_proxy_invokes_shim(void) {
     TEST("connect() to proxy address invokes shim");
 
+    extern int __warpgrid_proxy_fd_remove(int fd);
+
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     ASSERT(fd >= 0, "socket() failed");
 
@@ -132,6 +134,8 @@ static void test_connect_to_proxy_invokes_shim(void) {
            "wrong host passed to shim");
     ASSERT(last_proxy_port == 54321, "wrong port passed to shim");
 
+    /* Clean up proxy tracking (close() patch is US-211) */
+    __warpgrid_proxy_fd_remove(fd);
     close(fd);
     PASS();
 }
@@ -141,6 +145,8 @@ static void test_connect_to_proxy_invokes_shim(void) {
  */
 static void test_connect_to_second_proxy(void) {
     TEST("connect() to second configured proxy endpoint");
+
+    extern int __warpgrid_proxy_fd_remove(int fd);
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     ASSERT(fd >= 0, "socket() failed");
@@ -155,6 +161,8 @@ static void test_connect_to_second_proxy(void) {
     ASSERT(strcmp(last_proxy_host, "10.0.0.99") == 0, "wrong host");
     ASSERT(last_proxy_port == 5432, "wrong port");
 
+    /* Clean up proxy tracking (close() patch is US-211) */
+    __warpgrid_proxy_fd_remove(fd);
     close(fd);
     PASS();
 }
@@ -277,6 +285,10 @@ static void test_multiple_proxy_connections(void) {
     ASSERT(h1 != h2, "handles should differ for independent connections");
     ASSERT(h1 > 0 && h2 > 0, "handles should be positive");
 
+    /* Clean up proxy tracking (close() patch is US-211) */
+    extern int __warpgrid_proxy_fd_remove(int fd);
+    __warpgrid_proxy_fd_remove(fd1);
+    __warpgrid_proxy_fd_remove(fd2);
     close(fd1);
     close(fd2);
     PASS();

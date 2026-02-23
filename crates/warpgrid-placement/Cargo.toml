@@ -1,0 +1,13 @@
+[package]
+name = "warpgrid-placement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid distributed scheduler — bin-packing, affinity, preemption"
+
+[dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true

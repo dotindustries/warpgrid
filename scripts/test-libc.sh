@@ -96,13 +96,14 @@ compile_test() {
     local src="${1}"
     local sysroot="${2}"
     local output="${3}"
+    shift 3
 
     "${WASI_SDK_PATH}/bin/clang" \
         --target="${TARGET_TRIPLE}" \
         --sysroot="${sysroot}" \
         -O1 \
         -o "${output}" \
-        "${src}" 2>&1
+        "${src}" "$@" 2>&1
 }
 
 # Run a .wasm file in wasmtime and capture output
@@ -148,9 +149,30 @@ run_single_test() {
         fi
     fi
 
+    # Check if this test requires libpq (has LIBPQ_REQUIRED marker)
+    local libpq_dir="${BUILD_DIR}/libpq-wasm"
+    if grep -q 'LIBPQ_REQUIRED' "${src}" 2>/dev/null; then
+        if [[ ! -f "${libpq_dir}/lib/libpq.a" ]]; then
+            printf "  %-30s  SKIP (libpq not built — run scripts/build-libpq.sh)\n" "${test_name}"
+            SKIPPED=$((SKIPPED + 1))
+            return
+        fi
+    fi
+
     # Compile
     local compile_output
-    if ! compile_output=$(compile_test "${src}" "${sysroot}" "${wasm_file}" 2>&1); then
+    local extra_flags=()
+    if grep -q 'LIBPQ_REQUIRED' "${src}" 2>/dev/null; then
+        extra_flags+=(
+            "-D_WASI_EMULATED_SIGNAL"
+            "-I${libpq_dir}/include"
+            "-L${libpq_dir}/lib" "-lpq"
+            "-lwasi-emulated-signal"
+            "-Wl,--wrap=select"
+            "-Wl,--wrap=poll"
+        )
+    fi
+    if ! compile_output=$(compile_test "${src}" "${sysroot}" "${wasm_file}" ${extra_flags[@]+"${extra_flags[@]}"} 2>&1); then
         printf "  %-30s  FAIL (compile error)\n" "${test_name}"
         if [[ -n "${compile_output}" ]]; then
             echo "    ${compile_output}" | head -5 | sed 's/^/    /'

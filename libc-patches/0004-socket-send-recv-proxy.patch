@@ -1,0 +1,246 @@
+From 9f95449a03322cbc96c344e3b3c1317a1a045a47 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
+Date: Sun, 22 Feb 2026 19:18:55 +0100
+Subject: [PATCH] socket: route send/recv/read/write through WarpGrid database
+ proxy shim
+
+Intercept data transfer on proxied file descriptors (those connected via
+the socket proxy shim from 0003) and route through the WarpGrid database
+proxy send/recv host functions.
+
+Changes:
+- warpgrid_socket_shim.c: Add weak stubs __warpgrid_db_proxy_send() and
+  __warpgrid_db_proxy_recv(), plus helper wrappers __warpgrid_proxy_send()
+  and __warpgrid_proxy_recv() that look up the proxy handle and delegate.
+- sources/send.c: Check __warpgrid_proxy_fd_is_proxied() before vtable
+  dispatch; route proxied fds through __warpgrid_proxy_send().
+- sources/recv.c: Check __warpgrid_proxy_fd_is_proxied() before vtable
+  dispatch; route proxied fds through __warpgrid_proxy_recv() with
+  MSG_PEEK support via peek parameter.
+- unistd/read.c: Add proxied fd check after existing virtual fd check;
+  route proxied fds through __warpgrid_proxy_recv(fd, buf, len, 0).
+- unistd/write.c: Add proxied fd check before WASI stream dispatch;
+  route proxied fds through __warpgrid_proxy_send().
+
+This enables database drivers (libpq, pgx) that use read()/write() instead
+of send()/recv() to work transparently over the WarpGrid database proxy.
+---
+ .../cloudlibc/src/libc/unistd/read.c          | 15 +++-
+ .../cloudlibc/src/libc/unistd/write.c         | 13 +++
+ libc-bottom-half/sources/recv.c               | 14 +++
+ libc-bottom-half/sources/send.c               | 12 +++
+ .../sources/warpgrid_socket_shim.c            | 85 +++++++++++++++++++
+ 5 files changed, 138 insertions(+), 1 deletion(-)
+
+diff --git a/libc-bottom-half/cloudlibc/src/libc/unistd/read.c b/libc-bottom-half/cloudlibc/src/libc/unistd/read.c
+index 59cb3ef..f3126da 100644
+--- a/libc-bottom-half/cloudlibc/src/libc/unistd/read.c
++++ b/libc-bottom-half/cloudlibc/src/libc/unistd/read.c
+@@ -18,11 +18,24 @@ extern int __warpgrid_vfd_is_virtual(int fd);
+ extern ssize_t __warpgrid_vfd_read(int fd, void *buf, size_t count);
+ /* WARPGRID PATCH END */
+ 
++/* WARPGRID PATCH START — Proxied fd recv interception (US-210) */
++extern int __warpgrid_proxy_recv(int fd, void *buf, int max_len, int peek);
++extern int __warpgrid_proxy_fd_is_proxied(int fd);
++/* WARPGRID PATCH END */
++
+ ssize_t read(int fildes, void *buf, size_t nbyte) {
+-  /* WARPGRID PATCH START */
++  /* WARPGRID PATCH START — Virtual fd check (US-206) */
+   if (__warpgrid_vfd_is_virtual(fildes))
+     return __warpgrid_vfd_read(fildes, buf, nbyte);
+   /* WARPGRID PATCH END */
++
++  /* WARPGRID PATCH START — Proxied fd check (US-210) */
++  if (__warpgrid_proxy_fd_is_proxied(fildes)) {
++    int rc = __warpgrid_proxy_recv(fildes, buf, (int)nbyte, 0);
++    if (rc >= 0) return (ssize_t)rc;
++    return -1; /* errno set by __warpgrid_proxy_recv */
++  }
++  /* WARPGRID PATCH END */
+ #if defined(__wasip1__)
+   __wasi_iovec_t iov = {.buf = buf, .buf_len = nbyte};
+   size_t bytes_read;
+diff --git a/libc-bottom-half/cloudlibc/src/libc/unistd/write.c b/libc-bottom-half/cloudlibc/src/libc/unistd/write.c
+index 0f2f927..3246d7c 100644
+--- a/libc-bottom-half/cloudlibc/src/libc/unistd/write.c
++++ b/libc-bottom-half/cloudlibc/src/libc/unistd/write.c
+@@ -13,7 +13,20 @@
+ #include <time.h>
+ #endif
+ 
++/* WARPGRID PATCH START — Proxied fd send interception (US-210) */
++extern int __warpgrid_proxy_send(int fd, const void *data, int len);
++extern int __warpgrid_proxy_fd_is_proxied(int fd);
++/* WARPGRID PATCH END */
++
+ ssize_t write(int fildes, const void *buf, size_t nbyte) {
++  /* WARPGRID PATCH START — Proxied fd check (US-210) */
++  if (__warpgrid_proxy_fd_is_proxied(fildes)) {
++    int rc = __warpgrid_proxy_send(fildes, buf, (int)nbyte);
++    if (rc >= 0) return (ssize_t)rc;
++    if (rc == -1) return -1; /* errno set by __warpgrid_proxy_send */
++    /* rc == -2 should not happen since we checked is_proxied */
++  }
++  /* WARPGRID PATCH END */
+ #if defined(__wasip1__)
+   __wasi_ciovec_t iov = {.buf = buf, .buf_len = nbyte};
+   size_t bytes_written;
+diff --git a/libc-bottom-half/sources/recv.c b/libc-bottom-half/sources/recv.c
+index 16f58cf..b4a2d62 100644
+--- a/libc-bottom-half/sources/recv.c
++++ b/libc-bottom-half/sources/recv.c
+@@ -1,8 +1,22 @@
+ #include <errno.h>
+ #include <stdint.h>
++#include <sys/socket.h>
+ #include <wasi/descriptor_table.h>
+ 
++/* WARPGRID PATCH START — Proxied fd recv interception (US-210) */
++extern int __warpgrid_proxy_recv(int fd, void *buf, int max_len, int peek);
++extern int __warpgrid_proxy_fd_is_proxied(int fd);
++/* WARPGRID PATCH END */
++
+ ssize_t recv(int socket, void *restrict buffer, size_t length, int flags) {
++  /* WARPGRID PATCH START — Route proxied fds through database proxy */
++  if (__warpgrid_proxy_fd_is_proxied(socket)) {
++    int peek = (flags & MSG_PEEK) ? 1 : 0;
++    int rc = __warpgrid_proxy_recv(socket, buffer, (int)length, peek);
++    if (rc >= 0) return (ssize_t)rc;  /* Proxied recv succeeded */
++    return -1;                        /* Proxy error (errno set) */
++  }
++  /* WARPGRID PATCH END */
+   return recvfrom(socket, buffer, length, flags, NULL, NULL);
+ }
+ 
+diff --git a/libc-bottom-half/sources/send.c b/libc-bottom-half/sources/send.c
+index 834ef67..0fb52bb 100644
+--- a/libc-bottom-half/sources/send.c
++++ b/libc-bottom-half/sources/send.c
+@@ -2,7 +2,19 @@
+ #include <stdint.h>
+ #include <wasi/descriptor_table.h>
+ 
++/* WARPGRID PATCH START — Proxied fd send interception (US-210) */
++extern int __warpgrid_proxy_send(int fd, const void *data, int len);
++extern int __warpgrid_proxy_fd_is_proxied(int fd);
++/* WARPGRID PATCH END */
++
+ ssize_t send(int socket, const void *buffer, size_t length, int flags) {
++  /* WARPGRID PATCH START — Route proxied fds through database proxy */
++  if (__warpgrid_proxy_fd_is_proxied(socket)) {
++    int rc = __warpgrid_proxy_send(socket, buffer, (int)length);
++    if (rc >= 0) return (ssize_t)rc;  /* Proxied send succeeded */
++    return -1;                        /* Proxy error (errno set) */
++  }
++  /* WARPGRID PATCH END */
+   return sendto(socket, buffer, length, flags, NULL, 0);
+ }
+ 
+diff --git a/libc-bottom-half/sources/warpgrid_socket_shim.c b/libc-bottom-half/sources/warpgrid_socket_shim.c
+index 1b51405..9c1fb3e 100644
+--- a/libc-bottom-half/sources/warpgrid_socket_shim.c
++++ b/libc-bottom-half/sources/warpgrid_socket_shim.c
+@@ -49,6 +49,46 @@ int __warpgrid_db_proxy_connect(const char *host, int port) {
+     return 0; /* Not proxied — fall through */
+ }
+ 
++/*
++ * The WarpGrid runtime overrides this with a strong definition that calls
++ * the warpgrid:shim/database-proxy.send WIT import.
++ *
++ * Parameters:
++ *   handle  - Connection handle from database-proxy.connect()
++ *   data    - Pointer to bytes to send
++ *   len     - Number of bytes to send
++ *
++ * Returns:
++ *   > 0  Number of bytes sent.
++ *   < 0  Error.
++ */
++__attribute__((__weak__))
++int __warpgrid_db_proxy_send(int handle, const void *data, int len) {
++    (void)handle; (void)data; (void)len;
++    return -1; /* No host runtime — error */
++}
++
++/*
++ * The WarpGrid runtime overrides this with a strong definition that calls
++ * the warpgrid:shim/database-proxy.recv WIT import.
++ *
++ * Parameters:
++ *   handle   - Connection handle from database-proxy.connect()
++ *   buf      - Buffer to receive bytes into
++ *   max_len  - Maximum bytes to receive
++ *   peek     - If 1, return data without consuming (MSG_PEEK semantics)
++ *
++ * Returns:
++ *   > 0  Number of bytes received.
++ *     0  No data available / connection closed.
++ *   < 0  Error.
++ */
++__attribute__((__weak__))
++int __warpgrid_db_proxy_recv(int handle, void *buf, int max_len, int peek) {
++    (void)handle; (void)buf; (void)max_len; (void)peek;
++    return -1; /* No host runtime — error */
++}
++
+ /* ── Filesystem shim callback (strong extern) ─────────────────────────── */
+ 
+ /*
+@@ -305,6 +345,51 @@ int __warpgrid_proxy_fd_get_handle(int fd) {
+     return -1;
+ }
+ 
++/*
++ * Send data through the proxy for a proxied fd.
++ *
++ * Returns:
++ *   > 0  Bytes sent (proxied successfully).
++ *   -2   NOT a proxied fd — caller should fall through.
++ *   -1   Proxy send error (errno set).
++ */
++int __warpgrid_proxy_send(int fd, const void *data, int len) {
++    int handle = __warpgrid_proxy_fd_get_handle(fd);
++    if (handle < 0)
++        return -2; /* Not proxied — fall through */
++
++    int sent = __warpgrid_db_proxy_send(handle, data, len);
++    if (sent < 0) {
++        errno = EIO;
++        return -1;
++    }
++    return sent;
++}
++
++/*
++ * Receive data through the proxy for a proxied fd.
++ *
++ * Parameters:
++ *   peek  - If 1, return data without consuming (MSG_PEEK).
++ *
++ * Returns:
++ *   >= 0  Bytes received (proxied successfully), 0 = EOF/no data.
++ *   -2    NOT a proxied fd — caller should fall through.
++ *   -1    Proxy recv error (errno set).
++ */
++int __warpgrid_proxy_recv(int fd, void *buf, int max_len, int peek) {
++    int handle = __warpgrid_proxy_fd_get_handle(fd);
++    if (handle < 0)
++        return -2; /* Not proxied — fall through */
++
++    int received = __warpgrid_db_proxy_recv(handle, buf, max_len, peek);
++    if (received < 0) {
++        errno = EIO;
++        return -1;
++    }
++    return received;
++}
++
+ /*
+  * Remove a proxied fd from the tracking table.
+  * Called by close() interception (US-211).
+-- 
+2.52.0
+

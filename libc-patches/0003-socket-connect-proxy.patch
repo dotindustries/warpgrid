@@ -1,0 +1,406 @@
+From c3f96c8e5f7306e1e2f04f710d5a356fdc144569 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?J=C3=A1nos=20Veres?= <janos@dot.industries>
+Date: Sun, 22 Feb 2026 18:58:14 +0100
+Subject: [PATCH] socket: route connect() through WarpGrid database proxy shim
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Intercept connect() calls to configured proxy endpoints and route
+them through the WarpGrid database-proxy.connect() host function,
+returning a proxied file descriptor that will be used by subsequent
+send/recv/read/write operations (US-210) to pass wire protocol
+bytes through the WarpGrid database proxy.
+
+Proxy endpoint detection reads /etc/warpgrid/proxy.conf through
+the virtual filesystem shim (US-206). The __warpgrid_db_proxy_connect()
+callback is defined as a weak symbol so the host can provide a strong
+override via the WIT import warpgrid:shim/database-proxy.connect.
+
+Interception points:
+  - connect.c:connect() — checks proxy endpoint, calls shim
+
+Infrastructure for US-210/US-211:
+  - __warpgrid_proxy_fd_is_proxied(fd) — checks tracking table
+  - __warpgrid_proxy_fd_get_handle(fd) — gets proxy connection handle
+  - __warpgrid_proxy_fd_remove(fd) — removes tracking (for close)
+
+Part of US-209: Patch connect() to route database proxy connections.
+---
+ libc-bottom-half/CMakeLists.txt               |   1 +
+ libc-bottom-half/sources/connect.c            |  14 +
+ .../sources/warpgrid_socket_shim.c            | 324 ++++++++++++++++++
+ 3 files changed, 339 insertions(+)
+ create mode 100644 libc-bottom-half/sources/warpgrid_socket_shim.c
+
+diff --git a/libc-bottom-half/CMakeLists.txt b/libc-bottom-half/CMakeLists.txt
+index 468831f..99e16e2 100644
+--- a/libc-bottom-half/CMakeLists.txt
++++ b/libc-bottom-half/CMakeLists.txt
+@@ -153,6 +153,7 @@ if(WASI STREQUAL "p2")
+     sources/netdb.c
+     sources/warpgrid_dns_shim.c
+     sources/warpgrid_fs_shim.c
++    sources/warpgrid_socket_shim.c
+     sources/wasip2.c
+     sources/wasip2_file.c
+     sources/wasip2_file_utils.c
+diff --git a/libc-bottom-half/sources/connect.c b/libc-bottom-half/sources/connect.c
+index 4dcad58..b5dea79 100644
+--- a/libc-bottom-half/sources/connect.c
++++ b/libc-bottom-half/sources/connect.c
+@@ -2,7 +2,21 @@
+ #include <netinet/in.h>
+ #include <wasi/descriptor_table.h>
+ 
++/* WARPGRID PATCH START — Database proxy connection routing */
++extern int __warpgrid_proxy_connect(int fd, const struct sockaddr *addr,
++                                     socklen_t addrlen);
++/* WARPGRID PATCH END */
++
+ int connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
++  /* WARPGRID PATCH START */
++  {
++    int rc = __warpgrid_proxy_connect(fd, addr, addrlen);
++    if (rc >= 0) return rc;   /* Proxied connection established */
++    if (rc == -1) return -1;  /* Proxy error (errno set) */
++    /* rc == -2: not a proxy endpoint, fall through to real connect */
++  }
++  /* WARPGRID PATCH END */
++
+   descriptor_table_entry_t *entry = descriptor_table_get_ref(fd);
+   if (!entry)
+     return -1;
+diff --git a/libc-bottom-half/sources/warpgrid_socket_shim.c b/libc-bottom-half/sources/warpgrid_socket_shim.c
+new file mode 100644
+index 0000000..1b51405
+--- /dev/null
++++ b/libc-bottom-half/sources/warpgrid_socket_shim.c
+@@ -0,0 +1,324 @@
++/*
++ * warpgrid_socket_shim.c — Database proxy connection routing for WarpGrid.
++ *
++ * Provides:
++ *   1. Weak default __warpgrid_db_proxy_connect() that returns 0 (not proxied).
++ *      The WarpGrid host runtime provides a strong override via WIT import
++ *      warpgrid:shim/database-proxy.connect(host, port).
++ *
++ *   2. Proxy endpoint detection: reads /etc/warpgrid/proxy.conf through the
++ *      virtual filesystem shim (US-206) to determine which IP:port pairs
++ *      should be routed through the database proxy.
++ *
++ *   3. Proxied fd tracking table: maps socket fds that were connect()'d to
++ *      proxy endpoints to their proxy connection handles, so that subsequent
++ *      send/recv/read/write/close calls (US-210, US-211) can route through
++ *      the proxy.
++ *
++ * Interception point:
++ *   connect.c:connect() calls __warpgrid_proxy_connect() before the
++ *   descriptor table vtable dispatch.
++ *
++ * SPDX-License-Identifier: BSD-2-Clause
++ */
++
++#include <errno.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++
++/* ── Host callback (weak default) ─────────────────────────────────────── */
++
++/*
++ * The WarpGrid runtime overrides this with a strong definition that calls
++ * the warpgrid:shim/database-proxy.connect WIT import.
++ *
++ * Parameters:
++ *   host  - IPv4 address string (e.g., "127.0.0.1")
++ *   port  - Port number in host byte order
++ *
++ * Returns:
++ *   > 0  Connection handle (proxied successfully).
++ *     0  Not proxied — fall through to real WASI socket connect.
++ *   < 0  Proxy error (caller should set errno and return -1).
++ */
++__attribute__((__weak__))
++int __warpgrid_db_proxy_connect(const char *host, int port) {
++    (void)host; (void)port;
++    return 0; /* Not proxied — fall through */
++}
++
++/* ── Filesystem shim callback (strong extern) ─────────────────────────── */
++
++/*
++ * Read virtual file content from the WarpGrid FS shim (US-206).
++ * Strong extern declaration forces wasm-ld to pull the weak definition
++ * from warpgrid_fs_shim.c's archive member.
++ */
++extern int __warpgrid_fs_read_virtual(const char *path,
++                                       unsigned char *out, int out_len);
++
++/* ── Proxy endpoint configuration ─────────────────────────────────────── */
++
++#define WARPGRID_MAX_PROXY_ENDPOINTS 16
++#define WARPGRID_PROXY_CONF_PATH     "/etc/warpgrid/proxy.conf"
++#define WARPGRID_PROXY_CONF_MAXLEN   2048
++
++typedef struct {
++    uint32_t addr;   /* IPv4 in network byte order */
++    uint16_t port;   /* in host byte order         */
++    int      valid;
++} warpgrid_proxy_endpoint_t;
++
++static warpgrid_proxy_endpoint_t proxy_endpoints[WARPGRID_MAX_PROXY_ENDPOINTS];
++static int proxy_config_loaded = 0;
++
++/*
++ * Parse a single "host:port" line into an endpoint entry.
++ * Returns 1 on success, 0 on parse failure.
++ */
++static int parse_endpoint(const char *line, int line_len,
++                          warpgrid_proxy_endpoint_t *ep) {
++    /* Skip leading whitespace */
++    while (line_len > 0 && (*line == ' ' || *line == '\t')) {
++        line++;
++        line_len--;
++    }
++
++    /* Skip comments and empty lines */
++    if (line_len == 0 || *line == '#' || *line == '\n')
++        return 0;
++
++    /* Find the colon separating host and port */
++    const char *colon = NULL;
++    for (int i = 0; i < line_len; i++) {
++        if (line[i] == ':') {
++            colon = &line[i];
++            break;
++        }
++    }
++    if (!colon)
++        return 0;
++
++    /* Extract host string (null-terminated copy) */
++    int host_len = (int)(colon - line);
++    if (host_len <= 0 || host_len >= 46) /* max IPv4/IPv6 string */
++        return 0;
++
++    char host_buf[46];
++    memcpy(host_buf, line, host_len);
++    host_buf[host_len] = '\0';
++
++    /* Parse IPv4 address */
++    struct in_addr addr;
++    if (inet_pton(AF_INET, host_buf, &addr) != 1)
++        return 0;
++
++    /* Parse port number */
++    const char *port_str = colon + 1;
++    int port_len = line_len - host_len - 1;
++    if (port_len <= 0 || port_len > 5)
++        return 0;
++
++    int port = 0;
++    for (int i = 0; i < port_len; i++) {
++        char c = port_str[i];
++        if (c == '\n' || c == '\r' || c == ' ' || c == '\t')
++            break;
++        if (c < '0' || c > '9')
++            return 0;
++        port = port * 10 + (c - '0');
++    }
++    if (port <= 0 || port > 65535)
++        return 0;
++
++    ep->addr  = addr.s_addr;
++    ep->port  = (uint16_t)port;
++    ep->valid = 1;
++    return 1;
++}
++
++/*
++ * Load proxy endpoint configuration from /etc/warpgrid/proxy.conf.
++ * Called lazily on first connect() interception attempt.
++ *
++ * Config format: one "host:port" per line, # comments, empty lines ignored.
++ */
++static void load_proxy_config(void) {
++    if (proxy_config_loaded)
++        return;
++    proxy_config_loaded = 1;
++
++    /* Clear endpoints */
++    memset(proxy_endpoints, 0, sizeof(proxy_endpoints));
++
++    /* Read config through virtual filesystem shim */
++    unsigned char conf_buf[WARPGRID_PROXY_CONF_MAXLEN];
++    int conf_len = __warpgrid_fs_read_virtual(WARPGRID_PROXY_CONF_PATH,
++                                               conf_buf, sizeof(conf_buf));
++    if (conf_len <= 0)
++        return; /* No config — no proxy endpoints */
++
++    /* Parse line by line */
++    int ep_idx = 0;
++    const char *ptr = (const char *)conf_buf;
++    const char *end = ptr + conf_len;
++
++    while (ptr < end && ep_idx < WARPGRID_MAX_PROXY_ENDPOINTS) {
++        /* Find end of line */
++        const char *eol = ptr;
++        while (eol < end && *eol != '\n')
++            eol++;
++
++        int line_len = (int)(eol - ptr);
++        if (line_len > 0) {
++            if (parse_endpoint(ptr, line_len, &proxy_endpoints[ep_idx]))
++                ep_idx++;
++        }
++
++        ptr = eol + 1; /* skip past newline */
++    }
++}
++
++/*
++ * Check if a sockaddr matches a configured proxy endpoint.
++ * Returns 1 if match, 0 otherwise.
++ */
++static int is_proxy_endpoint(const struct sockaddr *addr, socklen_t addrlen) {
++    load_proxy_config();
++
++    if (addr->sa_family != AF_INET)
++        return 0; /* Only IPv4 proxy endpoints for now */
++
++    if (addrlen < sizeof(struct sockaddr_in))
++        return 0;
++
++    const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
++    uint32_t target_addr = sin->sin_addr.s_addr;
++    uint16_t target_port = ntohs(sin->sin_port);
++
++    for (int i = 0; i < WARPGRID_MAX_PROXY_ENDPOINTS; i++) {
++        if (!proxy_endpoints[i].valid)
++            continue;
++        if (proxy_endpoints[i].addr == target_addr &&
++            proxy_endpoints[i].port == target_port)
++            return 1;
++    }
++
++    return 0;
++}
++
++/* ── Proxied fd tracking table ────────────────────────────────────────── */
++
++#define WARPGRID_MAX_PROXY_FDS 64
++
++typedef struct {
++    int fd;       /* original socket fd */
++    int handle;   /* proxy connection handle from shim */
++    int in_use;
++} warpgrid_proxy_fd_t;
++
++static warpgrid_proxy_fd_t proxy_fd_table[WARPGRID_MAX_PROXY_FDS];
++
++/* ── Public API called from patched connect() ─────────────────────────── */
++
++/*
++ * Try to route a connect() through the WarpGrid database proxy.
++ *
++ * Returns:
++ *    0  Proxied connection established (fd tracked in proxy table).
++ *   -1  Proxy error (errno set).
++ *   -2  NOT a proxy endpoint — caller should fall through to real connect().
++ */
++int __warpgrid_proxy_connect(int fd, const struct sockaddr *addr,
++                              socklen_t addrlen) {
++    /*
++     * Remove any stale entry for this fd first. This handles fd recycling:
++     * when WASI recycles an fd number after close(), any leftover proxy
++     * tracking from the previous socket must be cleared — whether the new
++     * connect targets a proxy endpoint or not.
++     * (Full close() cleanup comes in US-211.)
++     */
++    for (int i = 0; i < WARPGRID_MAX_PROXY_FDS; i++) {
++        if (proxy_fd_table[i].in_use && proxy_fd_table[i].fd == fd) {
++            proxy_fd_table[i].in_use = 0;
++            break;
++        }
++    }
++
++    if (!is_proxy_endpoint(addr, addrlen))
++        return -2; /* Not a proxy endpoint, fall through */
++
++    /* Extract host:port for the shim call */
++    const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
++    char host_str[INET_ADDRSTRLEN];
++    inet_ntop(AF_INET, &sin->sin_addr, host_str, sizeof(host_str));
++    int port = ntohs(sin->sin_port);
++
++    /* Call the database proxy connect shim */
++    int handle = __warpgrid_db_proxy_connect(host_str, port);
++
++    if (handle <= 0) {
++        if (handle < 0) {
++            errno = ECONNREFUSED;
++            return -1; /* Proxy error */
++        }
++        return -2; /* Shim returned 0: not proxied, fall through */
++    }
++
++    /* Track the proxied fd */
++    for (int i = 0; i < WARPGRID_MAX_PROXY_FDS; i++) {
++        if (!proxy_fd_table[i].in_use) {
++            proxy_fd_table[i].fd     = fd;
++            proxy_fd_table[i].handle = handle;
++            proxy_fd_table[i].in_use = 1;
++            return 0; /* Success */
++        }
++    }
++
++    /* Table full */
++    errno = EMFILE;
++    return -1;
++}
++
++/*
++ * Return 1 if `fd` is tracked as a proxied database connection.
++ */
++int __warpgrid_proxy_fd_is_proxied(int fd) {
++    for (int i = 0; i < WARPGRID_MAX_PROXY_FDS; i++) {
++        if (proxy_fd_table[i].in_use && proxy_fd_table[i].fd == fd)
++            return 1;
++    }
++    return 0;
++}
++
++/*
++ * Get the proxy connection handle for a proxied fd.
++ * Returns the handle (> 0) or -1 if fd is not proxied.
++ */
++int __warpgrid_proxy_fd_get_handle(int fd) {
++    for (int i = 0; i < WARPGRID_MAX_PROXY_FDS; i++) {
++        if (proxy_fd_table[i].in_use && proxy_fd_table[i].fd == fd)
++            return proxy_fd_table[i].handle;
++    }
++    return -1;
++}
++
++/*
++ * Remove a proxied fd from the tracking table.
++ * Called by close() interception (US-211).
++ * Returns the handle that was removed, or -1 if not found.
++ */
++int __warpgrid_proxy_fd_remove(int fd) {
++    for (int i = 0; i < WARPGRID_MAX_PROXY_FDS; i++) {
++        if (proxy_fd_table[i].in_use && proxy_fd_table[i].fd == fd) {
++            int handle = proxy_fd_table[i].handle;
++            proxy_fd_table[i].fd     = 0;
++            proxy_fd_table[i].handle = 0;
++            proxy_fd_table[i].in_use = 0;
++            return handle;
++        }
++    }
++    return -1;
++}
+-- 
+2.52.0
+
