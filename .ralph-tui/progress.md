@@ -37,6 +37,18 @@ after each iteration and it's included in prompts for context.
 - `DnsHost` bridges sync WIT `Host` trait to async resolver via `tokio::task::block_in_place` + `handle.block_on()`
 - Host tests require `#[tokio::test(flavor = "multi_thread")]` because `block_in_place` needs multi-thread runtime
 
+### DnsCache & CachedDnsResolver Architecture
+- `DnsCache` is a standalone struct with TTL expiration, LRU eviction, and round-robin selection
+- `CachedDnsResolver` wraps `DnsResolver` + `Mutex<DnsCache>` (decorator pattern)
+- Cache uses `std::sync::Mutex` (not tokio) — lock held only for HashMap ops, no await inside critical section
+- Per-entry `AtomicUsize` for round-robin counter — lock-free address rotation via `fetch_add(1, Relaxed) % len`
+- Per-entry `AtomicU64` for LRU tracking — stores nanos-since-cache-epoch, updated on every access
+- LRU eviction: linear scan for min timestamp, O(n) but only runs when cache is full (bounded by max_entries)
+- Expired entries removed lazily on access (no background reaper thread)
+- Cache statistics (hits, misses, evictions) emitted as `tracing::info` metrics
+- `DnsCacheConfig` bridged from `config::DnsConfig::to_cache_config()`
+- Failed resolutions (errors) are NOT cached — only successful results
+
 ### ConnectionPoolManager Architecture
 - `ConnectionPoolManager` uses `tokio::sync::Mutex` for interior mutability (async-compatible)
 - Pools keyed by `PoolKey { host, port, database, user }` — each tuple gets an independent bounded pool
@@ -529,5 +541,97 @@ after each iteration and it's included in prompts for context.
   - **Guest WIT deps must be copied from host.** The guest needs the same WIT interface definitions as the host for binding generation. Place them in `wit/deps/shim/filesystem.wit` so `wit-bindgen` can resolve the import.
   - **`wit_bindgen::generate!` needs `generate_all` for imported interfaces.** Without it, you get `missing one of: generate_all option, with mapping` — the macro needs explicit instruction to generate bindings for all imported interfaces.
   - **wasm-tools component new converts core modules to components.** The two-step pipeline is: `cargo build --target wasm32-unknown-unknown` produces a core Wasm module, then `wasm-tools component new` wraps it in the component model with proper type section embedding.
+---
+
+## 2026-02-24 - warpgrid-agm.7
+- **What was implemented:** DNS caching with TTL expiration, LRU eviction, and round-robin address selection (US-107)
+- **Files changed:**
+  - NEW: `crates/warpgrid-host/src/dns/cache.rs` — `DnsCache` and `DnsCacheConfig` with 26 unit tests
+  - MODIFIED: `crates/warpgrid-host/src/dns.rs` — Added `CachedDnsResolver` wrapper, cache module registration, 9 integration tests
+  - MODIFIED: `crates/warpgrid-host/src/dns/host.rs` — Updated `DnsHost` to use `CachedDnsResolver` instead of `DnsResolver`, added cache-hit test
+  - MODIFIED: `crates/warpgrid-host/src/config.rs` — Added `DnsConfig::to_cache_config()`, `dns_cache_config` field to `ShimConfig`
+  - MODIFIED: `crates/warpgrid-host/src/engine.rs` — Updated `build_host_state` to create `CachedDnsResolver` from config
+- **Learnings:**
+  - **Decorator pattern for caching**: `CachedDnsResolver` wraps `DnsResolver` rather than modifying it — keeps the resolver stateless and independently testable
+  - **Mutex strategy matters**: `std::sync::Mutex` (not `tokio::sync::Mutex`) is correct here because the lock is held only for HashMap operations (no await points inside critical section)
+  - **Atomic round-robin per-entry**: `AtomicUsize::fetch_add(1, Relaxed)` with modulo gives lock-free address rotation. The atomic is stored in the cache entry, not the cache itself
+  - **LRU via atomic timestamps**: `AtomicU64` stores nanoseconds-since-epoch for access tracking; eviction does a linear scan which is O(n) but only runs when cache is full (bounded by max_entries)
+  - **`DnsConfig` already existed in `ShimConfig`**: The config system already had `ttl_seconds` and `cache_size` fields — just needed a `to_cache_config()` conversion method to bridge to `DnsCacheConfig`
+---
+
+## 2026-02-24 - warpgrid-agm.13
+- Implemented US-113: Database proxy unit tests with mock Postgres server
+- Files changed: `crates/warpgrid-host/tests/integration_db_proxy.rs` (new file, 10 tests)
+- **What was implemented:**
+  - `MockPostgresServer` test helper that speaks Postgres v3.0 startup handshake, then echoes bytes
+  - `MockPostgresServer::start_close_after_handshake()` variant for health check testing
+  - 10 integration tests covering all acceptance criteria:
+    1. Mock server responds to Postgres startup handshake (AuthOk + ReadyForQuery)
+    2. Connect/close/reconnect reuses pooled TCP connection (verified via stats)
+    3. Pool exhaustion returns timeout error with wait_count increment
+    4. Idle connections reaped after configured timeout
+    5. Health check removes connections that fail ping (server-closed TCP)
+    6. Send/recv pass Postgres wire protocol bytes through unmodified
+    7. Binary data passthrough preserves exact bytes
+    8. Send/recv on invalid handle returns error
+    9. Multiple send/recv cycles on same connection
+    10. Full lifecycle: checkout → handshake → send → recv → release → invalid
+- **Learnings:**
+  - Integration tests bridge pool manager + TcpConnectionFactory + real TCP in a single test
+  - `MockPostgresServer::start_close_after_handshake()` is useful for health check tests — server closes after handshake, `TcpBackend::ping()` detects via `peek() → Ok(0)` (EOF)
+  - Pool reuse verified through `stats().total` staying at 1 across checkout-release-checkout cycle (no connect counter needed on factory)
+  - Pre-existing clippy warnings in `warp-core` (manual_strip) are unrelated to `warpgrid-host` changes
+  - Postgres v3.0 startup: Int32(length) + Int32(196608) + key=val pairs + NUL terminator
+  - Postgres handshake response: AuthOk = `R\0\0\0\x08\0\0\0\0` (9 bytes) + ReadyForQuery = `Z\0\0\0\x05I` (6 bytes)
+---
+
+### US-115: MySQL Wire Protocol Passthrough (warpgrid-agm.15)
+- **Status:** COMPLETED
+- **Files created:**
+  - `crates/warpgrid-host/src/db_proxy/mysql.rs` — MysqlBackend (COM_PING health check) + MysqlConnectionFactory
+  - `crates/warpgrid-host/tests/integration_mysql.rs` — 11 integration tests with MockMysqlServer
+- **Files modified:**
+  - `crates/warpgrid-host/src/db_proxy.rs` — Protocol enum, PoolKey.protocol, PoolConfig.drain_timeout, ConnectionPoolManager.drain()
+  - `crates/warpgrid-host/tests/integration_db_proxy.rs` — Added drain_timeout to default_pool_config()
+- **Architecture decisions:**
+  - Protocol discriminator lives at pool level (PoolKey), NOT in WIT interface — guest determines protocol implicitly
+  - `PoolKey::new()` defaults to Protocol::Postgres for backward compatibility; `PoolKey::with_protocol()` for explicit
+  - MysqlBackend wraps any ConnectionBackend — only overrides `ping()` with COM_PING, all else is pure passthrough
+  - MySQL server sends greeting first (unlike Postgres where client initiates) — this is transparent to the pool since it's just byte passthrough
+  - Connection draining uses AtomicBool (lock-free) + polling loop + force-close after timeout
+- **MySQL protocol details:**
+  - COM_PING packet: `[0x01, 0x00, 0x00, 0x00, 0x0e]` (3-byte LE length + seq 0 + command 0x0e)
+  - MySQL packet format: `[payload_len: 3 bytes LE] [seq_id: 1 byte] [payload]`
+  - OK marker: first byte of payload = 0x00; ERR marker = 0xFF
+  - Server greeting starts with protocol version 0x0a
+- **Testing approach:**
+  - MockMysqlServer speaks minimal MySQL wire protocol: greeting → handshake → auth OK → command loop
+  - COM_PING handled with OK response; all other packets echoed back unmodified
+  - MockMysqlServer::start_close_after_auth() variant for health check failure testing
+  - Robust recv loops in echo tests to handle TCP partial reads (classic stream protocol issue)
+- **Learnings:**
+  - TCP partial reads bite integration tests: two separate `write_all` calls may arrive as separate `recv` results even with `flush()` — combine into single buffer or loop reads
+  - Clippy `int_plus_one` lint: `data.len() >= N + 1` should be `data.len() > N` for clarity
+  - `PoolConfig` uses `..Default::default()` spread in config.rs, so new fields with defaults are auto-compatible
+  - Pre-existing clippy warnings in `warp-core` (manual_strip) are unrelated — use `--no-deps` flag to isolate
+  - 330 total tests: 304 unit + 10 Postgres integration + 5 FS integration + 11 MySQL integration
+---
+
+## 2026-02-24 - warpgrid-agm.16
+- **US-116: Implement Redis RESP protocol passthrough**
+- Created `crates/warpgrid-host/src/db_proxy/redis.rs` with `RedisBackend` and `RedisConnectionFactory`
+- Created `crates/warpgrid-host/tests/integration_redis.rs` with 11 integration tests
+- Registered `redis` module in `crates/warpgrid-host/src/db_proxy.rs`
+- Files changed:
+  - `crates/warpgrid-host/src/db_proxy.rs` (added `pub mod redis;`)
+  - `crates/warpgrid-host/src/db_proxy/redis.rs` (new — RedisBackend, RedisConnectionFactory, 15 unit tests)
+  - `crates/warpgrid-host/tests/integration_redis.rs` (new — 11 integration tests with MockRedisServer)
+- **All quality gates pass:** cargo check, 345 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis integration), clippy clean
+- **Learnings:**
+  - Redis PING health check uses inline format (`PING\r\n` → `+PONG\r\n`) which is simpler than RESP array format and universally supported
+  - The decorator pattern (MysqlBackend/RedisBackend wrapping inner ConnectionBackend) is very clean — protocol-specific behavior is isolated to `ping()` only, all other ops are pure delegation
+  - Connection draining is protocol-agnostic — `ConnectionPoolManager::drain()` works identically for Postgres, MySQL, and Redis with zero per-protocol code
+  - Redis typically uses empty strings for `database` and `user` in PoolKey (Redis doesn't have the same DB/user concept as SQL databases)
+  - MockRedisServer is simpler than MockMysqlServer — Redis inline commands are easy to detect and respond to without packet framing
 ---
 

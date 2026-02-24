@@ -1,42 +1,60 @@
-<!-- Summary Cards -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <div class="text-sm text-slate-400 mb-1">Deployments</div>
-    <div class="text-2xl font-bold font-mono">{{ summary.deployment_count }}</div>
+<!-- Summary Cards — animated on load, polled by HTMX -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-4 sm:p-5 card-accent card-accent-green">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium uppercase tracking-wider text-slate-500">Deployments</span>
+      <svg class="w-4 h-4 text-grid-accent/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+    </div>
+    <div class="text-3xl font-bold font-mono text-slate-100 tracking-tight">{{ summary.deployment_count }}</div>
     {% if !summary.namespace_counts.is_empty() %}
-    <div class="mt-1 flex flex-wrap gap-1">
+    <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
       {% for (ns, count) in summary.namespace_counts %}
-      <span class="text-xs text-slate-500 font-mono">{{ ns }}:{{ count }}</span>
+      <span class="text-xs text-slate-500 font-mono">{{ ns }}<span class="text-slate-600">:</span><span class="text-slate-400">{{ count }}</span></span>
       {% endfor %}
     </div>
     {% endif %}
   </div>
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <div class="text-sm text-slate-400 mb-1">Instances</div>
-    <div class="text-2xl font-bold font-mono">{{ summary.instances.total }}</div>
-    <div class="mt-1 flex gap-2 text-xs font-mono">
-      <span class="text-emerald-400">{{ summary.instances.running }} running</span>
+
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-4 sm:p-5 card-accent {% if summary.instances.unhealthy > 0 %}card-accent-red{% else %}card-accent-green{% endif %}">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium uppercase tracking-wider text-slate-500">Instances</span>
+      <svg class="w-4 h-4 text-grid-accent/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
+    </div>
+    <div class="text-3xl font-bold font-mono text-slate-100 tracking-tight">{{ summary.instances.total }}</div>
+    <div class="mt-2 flex gap-3 text-xs font-mono">
+      <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-grid-accent glow-green"></span><span class="text-slate-400">{{ summary.instances.running }}</span></span>
       {% if summary.instances.unhealthy > 0 %}
-      <span class="text-rose-400">{{ summary.instances.unhealthy }} unhealthy</span>
+      <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-grid-danger glow-red"></span><span class="text-grid-danger">{{ summary.instances.unhealthy }}</span></span>
       {% endif %}
       {% if summary.instances.stopped > 0 %}
-      <span class="text-slate-500">{{ summary.instances.stopped }} stopped</span>
+      <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span><span class="text-slate-500">{{ summary.instances.stopped }}</span></span>
       {% endif %}
     </div>
   </div>
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <div class="text-sm text-slate-400 mb-1">Nodes</div>
-    {% if summary.node_count == 0 %}
-    <div class="text-lg font-bold">
-      <span class="px-2 py-0.5 bg-slate-700 rounded text-sm font-mono text-slate-400">Standalone</span>
+
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-4 sm:p-5 card-accent card-accent-blue">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium uppercase tracking-wider text-slate-500">Nodes</span>
+      <svg class="w-4 h-4 text-grid-info/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
     </div>
+    {% if summary.node_count == 0 %}
+    <div class="text-lg font-display font-semibold text-slate-400">Standalone</div>
+    <div class="mt-2 text-xs font-mono text-slate-500">Single-node mode</div>
     {% else %}
-    <div class="text-2xl font-bold font-mono">{{ summary.node_count }}</div>
-    <div class="mt-1 text-xs font-mono text-emerald-400">{{ summary.nodes_ready }} ready</div>
+    <div class="text-3xl font-bold font-mono text-slate-100 tracking-tight">{{ summary.node_count }}</div>
+    <div class="mt-2 text-xs font-mono flex items-center gap-1.5">
+      <span class="w-1.5 h-1.5 rounded-full bg-grid-accent glow-green"></span>
+      <span class="text-slate-400">{{ summary.nodes_ready }} ready</span>
+    </div>
     {% endif %}
   </div>
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <div class="text-sm text-slate-400 mb-1">Active Rollouts</div>
-    <div class="text-2xl font-bold font-mono {% if summary.active_rollouts > 0 %}text-sky-400{% endif %}">{{ summary.active_rollouts }}</div>
+
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-4 sm:p-5 card-accent {% if summary.active_rollouts > 0 %}card-accent-blue{% else %}card-accent-green{% endif %}">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium uppercase tracking-wider text-slate-500">Rollouts</span>
+      <svg class="w-4 h-4 {% if summary.active_rollouts > 0 %}text-grid-info/40{% else %}text-grid-accent/40{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+    </div>
+    <div class="text-3xl font-bold font-mono tracking-tight {% if summary.active_rollouts > 0 %}text-grid-info{% else %}text-slate-100{% endif %}">{{ summary.active_rollouts }}</div>
+    <div class="mt-2 text-xs font-mono text-slate-500">{% if summary.active_rollouts > 0 %}in progress{% else %}all clear{% endif %}</div>
   </div>
 </div>

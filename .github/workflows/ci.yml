@@ -102,3 +102,34 @@ jobs:
 
       - name: Verify TinyGo
         run: scripts/build-tinygo.sh --verify
+
+  componentize-js:
+    name: Build & Verify ComponentizeJS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+
+      - name: Cache ComponentizeJS npm install
+        uses: actions/cache@v4
+        with:
+          path: build/componentize-js/node_modules
+          key: componentize-js-npm-${{ hashFiles('scripts/build-componentize-js.sh') }}
+
+      - name: Cache ComponentizeJS source
+        uses: actions/cache@v4
+        with:
+          path: vendor/componentize-js
+          key: componentize-js-source-${{ hashFiles('scripts/build-componentize-js.sh') }}
+
+      - name: Build ComponentizeJS
+        run: scripts/build-componentize-js.sh --npm
+
+      - name: Verify ComponentizeJS
+        run: scripts/build-componentize-js.sh --verify

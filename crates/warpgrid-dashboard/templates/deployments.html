@@ -3,18 +3,24 @@
 {% block title %}Deployments — WarpGrid{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl font-bold">Deployments</h1>
-  <span class="text-sm text-slate-400 font-mono">{{ deployments.len() }} total</span>
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-display font-bold text-slate-100 tracking-tight">Deployments</h1>
+    <p class="text-sm text-slate-500 mt-1 font-display">{{ deployments.len() }} total across your cluster</p>
+  </div>
 </div>
 
 {% if deployments.is_empty() %}
-<div class="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center text-slate-500">
-  <p class="text-lg mb-2">No deployments</p>
-  <p class="text-sm">Create a deployment via <code class="font-mono text-slate-400">POST /api/v1/deployments</code></p>
+<div class="bg-grid-850 border border-grid-700/30 border-dashed rounded-xl p-16 text-center">
+  <svg class="w-16 h-16 mx-auto text-grid-700 mb-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+  <p class="text-lg text-slate-300 font-display font-semibold mb-2">No deployments</p>
+  <p class="text-sm text-slate-500 mb-6">Deploy your first Wasm module to get started.</p>
+  <div class="inline-block bg-grid-800 rounded-lg px-5 py-3 font-mono text-sm text-slate-400 border border-grid-700/40">
+    <span class="text-grid-accent">POST</span> /api/v1/deployments
+  </div>
 </div>
 {% else %}
-<div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+<div class="bg-grid-850 border border-grid-700/30 rounded-xl overflow-hidden">
   <div id="deployments-table" hx-get="/dashboard/_deployments_table" hx-trigger="every 10s" hx-swap="innerHTML">
     {% include "_partials/deployment_rows.html" %}
   </div>

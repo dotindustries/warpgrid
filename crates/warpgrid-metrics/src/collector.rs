@@ -3,7 +3,7 @@
 //! Uses a lock-free design with atomics for counters and a mutex-protected
 //! histogram for latency tracking.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-use warpgrid_state::{MetricsSnapshot, StateStore};
+use warpgrid_state::{InstanceStatus, MetricsSnapshot, StateStore};
 
 /// Per-deployment metrics bucket.
 struct DeploymentMetrics {
@@ -116,6 +116,39 @@ impl MetricsCollector {
         }
     }
 
+    /// Scan the state store for deployments and register any not already tracked.
+    pub async fn auto_discover(&self) -> anyhow::Result<()> {
+        let deployments = self.state.list_deployments()?;
+        let metrics = self.metrics.read().await;
+        let known: HashSet<String> = metrics.keys().cloned().collect();
+        drop(metrics);
+
+        for d in deployments {
+            if !known.contains(&d.id) {
+                self.register(&d.id).await;
+            }
+        }
+        Ok(())
+    }
+
+    /// Refresh per-deployment memory and instance counts from actual instance data.
+    pub async fn refresh_resource_usage(&self) -> anyhow::Result<()> {
+        let metrics = self.metrics.read().await;
+        for (deployment_id, m) in metrics.iter() {
+            let instances = self.state.list_instances_for_deployment(deployment_id)?;
+            let running = instances
+                .iter()
+                .filter(|i| i.status == InstanceStatus::Running)
+                .count();
+            let total_mem: u64 = instances.iter().map(|i| i.memory_bytes).sum();
+            m.active_instances
+                .store(running as u64, Ordering::Relaxed);
+            m.total_memory_bytes
+                .store(total_mem, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
     /// Take a snapshot of all deployments and persist to state store.
     pub async fn snapshot(&self) -> anyhow::Result<Vec<MetricsSnapshot>> {
         let metrics = self.metrics.read().await;
@@ -178,6 +211,12 @@ impl MetricsCollector {
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(self.interval) => {
+                    if let Err(e) = self.auto_discover().await {
+                        tracing::warn!(error = %e, "metrics auto-discover failed");
+                    }
+                    if let Err(e) = self.refresh_resource_usage().await {
+                        tracing::warn!(error = %e, "metrics resource refresh failed");
+                    }
                     if let Err(e) = self.snapshot().await {
                         tracing::error!(error = %e, "metrics snapshot failed");
                     }
@@ -238,9 +277,53 @@ fn epoch_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use warpgrid_state::{
+        DeploymentSpec, HealthStatus, InstanceConstraints, InstanceState, ResourceLimits,
+        ShimsEnabled, TriggerConfig,
+    };
 
     fn test_state() -> StateStore {
         StateStore::open_in_memory().unwrap()
+    }
+
+    fn make_deployment(id: &str) -> DeploymentSpec {
+        DeploymentSpec {
+            id: id.to_string(),
+            namespace: "default".to_string(),
+            name: id.to_string(),
+            source: "file://test.wasm".to_string(),
+            trigger: TriggerConfig::Http { port: None },
+            instances: InstanceConstraints { min: 1, max: 3 },
+            resources: ResourceLimits {
+                memory_bytes: 64 * 1024 * 1024,
+                cpu_weight: 100,
+            },
+            scaling: None,
+            health: None,
+            shims: ShimsEnabled::default(),
+            env: HashMap::new(),
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    fn make_instance(
+        id: &str,
+        deployment_id: &str,
+        status: InstanceStatus,
+        memory_bytes: u64,
+    ) -> InstanceState {
+        InstanceState {
+            id: id.to_string(),
+            deployment_id: deployment_id.to_string(),
+            node_id: "standalone".to_string(),
+            status,
+            health: HealthStatus::Unknown,
+            restart_count: 0,
+            memory_bytes,
+            started_at: 0,
+            updated_at: 0,
+        }
     }
 
     #[tokio::test]
@@ -354,5 +437,72 @@ mod tests {
 
         let snapshots = collector.snapshot().await.unwrap();
         assert_eq!(snapshots.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn auto_discover_finds_new_deployments() {
+        let state = test_state();
+        let collector = MetricsCollector::new(state.clone(), Duration::from_secs(60));
+
+        // No deployments yet — auto_discover is a no-op.
+        collector.auto_discover().await.unwrap();
+        assert!(collector.registered_deployments().await.is_empty());
+
+        // Add a deployment to the state store (simulating the API handler).
+        state.put_deployment(&make_deployment("deploy-1")).unwrap();
+
+        // auto_discover should pick it up.
+        collector.auto_discover().await.unwrap();
+        assert_eq!(collector.registered_deployments().await, vec!["deploy-1"]);
+
+        // Calling again should not duplicate.
+        collector.auto_discover().await.unwrap();
+        assert_eq!(collector.registered_deployments().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn auto_discover_skips_already_registered() {
+        let state = test_state();
+        let collector = MetricsCollector::new(state.clone(), Duration::from_secs(60));
+
+        // Manually register and record a request.
+        collector.register("deploy-1").await;
+        collector.record_request("deploy-1", 5000, false).await;
+
+        // Add the same deployment to state store.
+        state.put_deployment(&make_deployment("deploy-1")).unwrap();
+
+        // auto_discover should not reset the existing registration.
+        collector.auto_discover().await.unwrap();
+        assert_eq!(collector.current_request_count("deploy-1").await, 1);
+    }
+
+    #[tokio::test]
+    async fn refresh_resource_usage_updates_from_instances() {
+        let state = test_state();
+        let collector = MetricsCollector::new(state.clone(), Duration::from_secs(60));
+        collector.register("deploy-1").await;
+
+        // Add running and stopped instances.
+        state
+            .put_instance(&make_instance("i-1", "deploy-1", InstanceStatus::Running, 32_000_000))
+            .unwrap();
+        state
+            .put_instance(&make_instance("i-2", "deploy-1", InstanceStatus::Running, 48_000_000))
+            .unwrap();
+        state
+            .put_instance(&make_instance("i-3", "deploy-1", InstanceStatus::Stopped, 16_000_000))
+            .unwrap();
+
+        collector.refresh_resource_usage().await.unwrap();
+
+        // Take a snapshot to read the values.
+        let snapshots = collector.snapshot().await.unwrap();
+        assert_eq!(snapshots.len(), 1);
+        let snap = &snapshots[0];
+        // Only running instances count.
+        assert_eq!(snap.active_instances, 2);
+        // Memory sums all instances (running + stopped).
+        assert_eq!(snap.total_memory_bytes, 32_000_000 + 48_000_000 + 16_000_000);
     }
 }

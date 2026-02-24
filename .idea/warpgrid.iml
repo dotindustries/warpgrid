@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/warp-analyzer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warp-cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warp-compat/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warp-core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warp-pack/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warp-runtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpd/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpd/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-api/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-autoscale/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-cluster/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-dashboard/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-health/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-host/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-host/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-metrics/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-placement/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-proxy/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-raft/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-rollout/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-scheduler/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-state/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/warpgrid-trigger/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

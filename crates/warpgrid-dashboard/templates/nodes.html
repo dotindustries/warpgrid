@@ -3,12 +3,14 @@
 {% block title %}Nodes — WarpGrid{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl font-bold">Nodes</h1>
-  <span class="text-sm text-slate-400 font-mono">{{ nodes.len() }} node(s)</span>
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-display font-bold text-slate-100 tracking-tight">Nodes</h1>
+    <p class="text-sm text-slate-500 mt-1 font-display">{{ nodes.len() }} registered in your cluster</p>
+  </div>
 </div>
 
-<div id="node-cards" hx-get="/dashboard/_node_cards" hx-trigger="every 10s" hx-swap="innerHTML">
+<div id="node-cards" class="opacity-0 animate-slide-up" hx-get="/dashboard/_node_cards" hx-trigger="every 10s" hx-swap="innerHTML">
   {% include "_partials/node_cards.html" %}
 </div>
 {% endblock %}

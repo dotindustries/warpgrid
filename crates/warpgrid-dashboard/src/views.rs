@@ -78,11 +78,11 @@ impl ResourceBar {
 
     pub fn bar_color(&self) -> &'static str {
         if self.percent > 90.0 {
-            "bg-rose-400"
+            "bg-grid-danger"
         } else if self.percent > 70.0 {
-            "bg-amber-400"
+            "bg-grid-warn"
         } else {
-            "bg-emerald-400"
+            "bg-grid-accent"
         }
     }
 }
@@ -762,13 +762,13 @@ mod tests {
     fn resource_bar_percent_calculation() {
         let bar = ResourceBar::memory(512 * 1024 * 1024, 1024 * 1024 * 1024);
         assert!((bar.percent - 50.0).abs() < 0.1);
-        assert_eq!(bar.bar_color(), "bg-emerald-400");
+        assert_eq!(bar.bar_color(), "bg-grid-accent");
 
         let bar = ResourceBar::memory(800 * 1024 * 1024, 1024 * 1024 * 1024);
-        assert_eq!(bar.bar_color(), "bg-amber-400");
+        assert_eq!(bar.bar_color(), "bg-grid-warn");
 
         let bar = ResourceBar::memory(950 * 1024 * 1024, 1024 * 1024 * 1024);
-        assert_eq!(bar.bar_color(), "bg-rose-400");
+        assert_eq!(bar.bar_color(), "bg-grid-danger");
     }
 
     #[test]

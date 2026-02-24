@@ -3,98 +3,116 @@
 {% block title %}Overview — WarpGrid{% endblock %}
 
 {% block content %}
-<div id="overview-stats" hx-get="/dashboard/_overview_stats" hx-trigger="every 5s" hx-swap="innerHTML">
+<div class="mb-8">
+  <h1 class="text-2xl font-display font-bold text-slate-100 tracking-tight">Cluster Overview</h1>
+  <p class="text-sm text-slate-500 mt-1 font-display">Real-time health and resource utilization</p>
+</div>
+
+<div id="overview-stats" class="opacity-0 animate-slide-up" hx-get="/dashboard/_overview_stats" hx-trigger="every 5s" hx-swap="innerHTML">
   {% include "_partials/stats.html" %}
 </div>
 
 <!-- Resource Utilization -->
 {% if summary.node_count > 0 %}
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <h3 class="text-sm font-medium text-slate-400 mb-3">Cluster Memory</h3>
-    <div class="flex items-center justify-between mb-1">
-      <span class="font-mono text-sm">{{ summary.cluster_memory.used_display }}</span>
-      <span class="text-slate-400 text-sm font-mono">{{ summary.cluster_memory.total_display }}</span>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-5 opacity-0 animate-slide-up stagger-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xs font-medium uppercase tracking-wider text-slate-500">Cluster Memory</h3>
+      <span class="font-mono text-xs text-slate-400">{{ summary.cluster_memory.percent_display }}%</span>
     </div>
-    <div class="w-full bg-slate-700 rounded-full h-3">
-      <div class="{{ summary.cluster_memory.bar_color() }} h-3 rounded-full transition-all" style="width: {{ summary.cluster_memory.percent_display }}%"></div>
+    <div class="flex items-baseline gap-2 mb-3">
+      <span class="font-mono text-lg font-semibold text-slate-200">{{ summary.cluster_memory.used_display }}</span>
+      <span class="text-slate-500 text-sm font-mono">/ {{ summary.cluster_memory.total_display }}</span>
     </div>
-    <span class="text-xs text-slate-500 mt-1 block font-mono">{{ summary.cluster_memory.percent_display }}%</span>
+    <div class="w-full bg-grid-800 rounded-full h-2 overflow-hidden">
+      <div class="{{ summary.cluster_memory.bar_color() }} h-2 rounded-full progress-bar" style="width: {{ summary.cluster_memory.percent_display }}%"></div>
+    </div>
   </div>
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <h3 class="text-sm font-medium text-slate-400 mb-3">Cluster CPU Weight</h3>
-    <div class="flex items-center justify-between mb-1">
-      <span class="font-mono text-sm">{{ summary.cluster_cpu.used_display }}</span>
-      <span class="text-slate-400 text-sm font-mono">{{ summary.cluster_cpu.total_display }}</span>
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-5 opacity-0 animate-slide-up stagger-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xs font-medium uppercase tracking-wider text-slate-500">Cluster CPU Weight</h3>
+      <span class="font-mono text-xs text-slate-400">{{ summary.cluster_cpu.percent_display }}%</span>
     </div>
-    <div class="w-full bg-slate-700 rounded-full h-3">
-      <div class="{{ summary.cluster_cpu.bar_color() }} h-3 rounded-full transition-all" style="width: {{ summary.cluster_cpu.percent_display }}%"></div>
+    <div class="flex items-baseline gap-2 mb-3">
+      <span class="font-mono text-lg font-semibold text-slate-200">{{ summary.cluster_cpu.used_display }}</span>
+      <span class="text-slate-500 text-sm font-mono">/ {{ summary.cluster_cpu.total_display }}</span>
     </div>
-    <span class="text-xs text-slate-500 mt-1 block font-mono">{{ summary.cluster_cpu.percent_display }}%</span>
+    <div class="w-full bg-grid-800 rounded-full h-2 overflow-hidden">
+      <div class="{{ summary.cluster_cpu.bar_color() }} h-2 rounded-full progress-bar" style="width: {{ summary.cluster_cpu.percent_display }}%"></div>
+    </div>
   </div>
 </div>
 {% endif %}
 
 <!-- Alerts -->
 {% if !alerts.is_empty() %}
-<div class="mt-6 space-y-2">
-  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Active Alerts</h2>
+<div class="mt-8 space-y-2">
+  <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">Active Alerts</h2>
   {% for alert in alerts %}
-  <div class="border rounded-lg p-3 {{ alert.severity_color }}">
-    <div class="flex items-center gap-2">
-      <span class="text-xs font-bold uppercase">{{ alert.severity }}</span>
-      <span class="font-mono text-sm">{{ alert.deployment }}</span>
-      <span class="text-slate-400 text-sm">{{ alert.message }}</span>
+  <div class="border rounded-xl px-4 py-3 {{ alert.severity_color }} flex items-center gap-3 opacity-0 animate-fade-in" style="animation-delay: {{ loop.index0 * 50 }}ms">
+    <div class="flex-shrink-0">
+      {% if alert.severity == "Error" %}
+      <svg class="w-4 h-4 text-grid-danger" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg>
+      {% else %}
+      <svg class="w-4 h-4 text-grid-warn" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+      {% endif %}
     </div>
+    <span class="text-xs font-bold uppercase tracking-wider {% if alert.severity == "Error" %}text-grid-danger{% else %}text-grid-warn{% endif %}">{{ alert.severity }}</span>
+    <span class="font-mono text-sm text-slate-200">{{ alert.deployment }}</span>
+    <span class="text-slate-400 text-sm">{{ alert.message }}</span>
   </div>
   {% endfor %}
 </div>
 {% endif %}
 
 <!-- Recent Deployments -->
-<div class="mt-6">
-  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Recent Deployments</h2>
+<div class="mt-8">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500">Recent Deployments</h2>
+    <a href="/dashboard/deployments" class="text-xs font-medium text-grid-accent hover:text-grid-accent/80 transition-colors">View all &rarr;</a>
+  </div>
   {% if deployments.is_empty() %}
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center text-slate-500">
-    No deployments yet. Create one via the API.
+  <div class="bg-grid-850 border border-grid-700/30 border-dashed rounded-xl p-12 text-center">
+    <svg class="w-12 h-12 mx-auto text-grid-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+    <p class="text-slate-400 font-display font-medium mb-1">No deployments yet</p>
+    <p class="text-sm text-slate-600 font-mono">POST /api/v1/deployments</p>
   </div>
   {% else %}
-  <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl overflow-hidden">
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-slate-700 text-slate-400 text-left">
-          <th class="px-4 py-2.5 font-medium">Name</th>
-          <th class="px-4 py-2.5 font-medium">Namespace</th>
-          <th class="px-4 py-2.5 font-medium">Trigger</th>
-          <th class="px-4 py-2.5 font-medium">Instances</th>
-          <th class="px-4 py-2.5 font-medium">Health</th>
-          <th class="px-4 py-2.5 font-medium">Updated</th>
+        <tr class="border-b border-grid-700/30 text-left">
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Name</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Namespace</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Trigger</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Instances</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Health</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Updated</th>
         </tr>
       </thead>
       <tbody>
         {% for d in deployments %}
-        <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
-          <td class="px-4 py-2.5">
-            <a href="/dashboard/deployments/{{ d.id }}" class="text-emerald-400 hover:underline font-mono">{{ d.name }}</a>
+        <tr class="border-b border-grid-800/60 row-hover transition-colors">
+          <td class="px-4 py-3">
+            <a href="/dashboard/deployments/{{ d.id }}" class="text-grid-accent hover:text-grid-accent/80 font-mono text-sm transition-colors">{{ d.name }}</a>
           </td>
-          <td class="px-4 py-2.5">
-            <span class="px-2 py-0.5 bg-slate-700 rounded text-xs font-mono">{{ d.namespace }}</span>
+          <td class="px-4 py-3">
+            <span class="px-2 py-0.5 bg-grid-800/80 rounded-md text-xs font-mono text-slate-400">{{ d.namespace }}</span>
           </td>
-          <td class="px-4 py-2.5 font-mono text-slate-300">
-            <span class="text-xs px-1.5 py-0.5 bg-slate-700 rounded mr-1">{{ d.trigger_icon }}</span>
-            {{ d.trigger_display }}
+          <td class="px-4 py-3 font-mono text-slate-300 text-sm">
+            <span class="text-xs px-1.5 py-0.5 bg-grid-800/80 rounded-md mr-1.5 text-slate-500">{{ d.trigger_icon }}</span>{{ d.trigger_display }}
           </td>
-          <td class="px-4 py-2.5 font-mono">
-            <span class="text-emerald-400">{{ d.instances_running }}</span><span class="text-slate-500">/{{ d.instances_max }}</span>
+          <td class="px-4 py-3 font-mono">
+            <span class="text-grid-accent">{{ d.instances_running }}</span><span class="text-slate-600">/{{ d.instances_max }}</span>
           </td>
-          <td class="px-4 py-2.5">
+          <td class="px-4 py-3">
             <div class="flex gap-1">
               {% for dot in d.health_dots %}
               <span class="w-2 h-2 rounded-full {{ dot.color }}" title="{{ dot.title }}"></span>
               {% endfor %}
             </div>
           </td>
-          <td class="px-4 py-2.5 text-slate-400 text-xs font-mono">{{ d.updated_display }}</td>
+          <td class="px-4 py-3 text-slate-500 text-xs font-mono">{{ d.updated_display }}</td>
         </tr>
         {% endfor %}
       </tbody>

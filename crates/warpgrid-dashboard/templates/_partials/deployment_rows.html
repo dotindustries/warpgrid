@@ -1,63 +1,62 @@
 <table class="w-full text-sm">
   <thead>
-    <tr class="border-b border-slate-700 text-slate-400 text-left">
-      <th class="px-4 py-2.5 font-medium">Name</th>
-      <th class="px-4 py-2.5 font-medium">Namespace</th>
-      <th class="px-4 py-2.5 font-medium">Trigger</th>
-      <th class="px-4 py-2.5 font-medium">Instances</th>
-      <th class="px-4 py-2.5 font-medium">Health</th>
-      <th class="px-4 py-2.5 font-medium">RPS</th>
-      <th class="px-4 py-2.5 font-medium">Error %</th>
-      <th class="px-4 py-2.5 font-medium">Shims</th>
-      <th class="px-4 py-2.5 font-medium">Memory</th>
+    <tr class="border-b border-grid-700/30 text-left">
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Name</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Namespace</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Trigger</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Instances</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Health</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 hidden lg:table-cell">RPS</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 hidden lg:table-cell">Error %</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 hidden md:table-cell">Shims</th>
+      <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Memory</th>
     </tr>
   </thead>
   <tbody>
     {% for d in deployments %}
-    <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
-      <td class="px-4 py-2.5">
-        <a href="/dashboard/deployments/{{ d.id }}" class="text-emerald-400 hover:underline font-mono">{{ d.name }}</a>
+    <tr class="border-b border-grid-800/60 row-hover transition-colors">
+      <td class="px-4 py-3">
+        <a href="/dashboard/deployments/{{ d.id }}" class="text-grid-accent hover:text-grid-accent/80 font-mono text-sm transition-colors">{{ d.name }}</a>
       </td>
-      <td class="px-4 py-2.5">
-        <span class="px-2 py-0.5 bg-slate-700 rounded text-xs font-mono">{{ d.namespace }}</span>
+      <td class="px-4 py-3">
+        <span class="px-2 py-0.5 bg-grid-800/80 rounded-md text-xs font-mono text-slate-400">{{ d.namespace }}</span>
       </td>
-      <td class="px-4 py-2.5 font-mono text-sm text-slate-300">
-        <span class="text-xs px-1.5 py-0.5 bg-slate-700 rounded mr-1">{{ d.trigger_icon }}</span>
-        {{ d.trigger_display }}
+      <td class="px-4 py-3 font-mono text-sm text-slate-300">
+        <span class="text-xs px-1.5 py-0.5 bg-grid-800/80 rounded-md mr-1.5 text-slate-500">{{ d.trigger_icon }}</span>{{ d.trigger_display }}
       </td>
-      <td class="px-4 py-2.5 font-mono">
+      <td class="px-4 py-3 font-mono">
         <div class="flex items-center gap-2">
-          <span class="text-emerald-400">{{ d.instances_running }}</span><span class="text-slate-500">/{{ d.instances_max }}</span>
-          <div class="w-12 bg-slate-700 rounded-full h-1.5">
-            <div class="bg-emerald-400 h-1.5 rounded-full" style="width: {{ d.instance_percent_display }}%"></div>
+          <span class="text-grid-accent">{{ d.instances_running }}</span><span class="text-slate-600">/{{ d.instances_max }}</span>
+          <div class="w-12 bg-grid-800 rounded-full h-1.5 overflow-hidden">
+            <div class="bg-grid-accent h-1.5 rounded-full progress-bar" style="width: {{ d.instance_percent_display }}%"></div>
           </div>
         </div>
       </td>
-      <td class="px-4 py-2.5">
+      <td class="px-4 py-3">
         <div class="flex gap-1">
           {% for dot in d.health_dots %}
           <span class="w-2 h-2 rounded-full {{ dot.color }}" title="{{ dot.title }}"></span>
           {% endfor %}
         </div>
       </td>
-      <td class="px-4 py-2.5 font-mono text-sm">
+      <td class="px-4 py-3 font-mono text-sm hidden lg:table-cell">
         {% match d.latest_rps_display %}
-          {% when Some with (rps) %}{{ rps }}{% when None %}<span class="text-slate-500">—</span>{% endmatch %}
+          {% when Some with (rps) %}<span class="text-slate-300">{{ rps }}</span>{% when None %}<span class="text-slate-600">&mdash;</span>{% endmatch %}
       </td>
-      <td class="px-4 py-2.5 font-mono text-sm {{ d.error_rate_color }}">
+      <td class="px-4 py-3 font-mono text-sm hidden lg:table-cell {{ d.error_rate_color }}">
         {% match d.error_rate_display %}
-          {% when Some with (rate) %}{{ rate }}%{% when None %}<span class="text-slate-500">—</span>{% endmatch %}
+          {% when Some with (rate) %}{{ rate }}%{% when None %}<span class="text-slate-600">&mdash;</span>{% endmatch %}
       </td>
-      <td class="px-4 py-2.5">
+      <td class="px-4 py-3 hidden md:table-cell">
         <div class="flex gap-1">
-          {% if d.shims.timezone %}<span class="text-xs px-1 bg-slate-700 rounded text-slate-400" title="Timezone">TZ</span>{% endif %}
-          {% if d.shims.dev_urandom %}<span class="text-xs px-1 bg-slate-700 rounded text-slate-400" title="Random">RNG</span>{% endif %}
-          {% if d.shims.dns %}<span class="text-xs px-1 bg-slate-700 rounded text-slate-400" title="DNS">DNS</span>{% endif %}
-          {% if d.shims.signals %}<span class="text-xs px-1 bg-slate-700 rounded text-slate-400" title="Signals">SIG</span>{% endif %}
-          {% if d.shims.database_proxy %}<span class="text-xs px-1 bg-slate-700 rounded text-slate-400" title="Database">DB</span>{% endif %}
+          {% if d.shims.timezone %}<span class="text-xs px-1.5 py-0.5 bg-grid-accent/10 rounded text-grid-accent/60 font-mono" title="Timezone">TZ</span>{% endif %}
+          {% if d.shims.dev_urandom %}<span class="text-xs px-1.5 py-0.5 bg-grid-accent/10 rounded text-grid-accent/60 font-mono" title="Random">RNG</span>{% endif %}
+          {% if d.shims.dns %}<span class="text-xs px-1.5 py-0.5 bg-grid-accent/10 rounded text-grid-accent/60 font-mono" title="DNS">DNS</span>{% endif %}
+          {% if d.shims.signals %}<span class="text-xs px-1.5 py-0.5 bg-grid-accent/10 rounded text-grid-accent/60 font-mono" title="Signals">SIG</span>{% endif %}
+          {% if d.shims.database_proxy %}<span class="text-xs px-1.5 py-0.5 bg-grid-accent/10 rounded text-grid-accent/60 font-mono" title="Database">DB</span>{% endif %}
         </div>
       </td>
-      <td class="px-4 py-2.5 font-mono text-sm text-slate-300">{{ d.memory_display }}</td>
+      <td class="px-4 py-3 font-mono text-sm text-slate-400">{{ d.memory_display }}</td>
     </tr>
     {% endfor %}
   </tbody>

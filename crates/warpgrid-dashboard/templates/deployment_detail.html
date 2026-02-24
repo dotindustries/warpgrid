@@ -2,133 +2,134 @@
 
 {% block title %}{{ deployment.name }} — WarpGrid{% endblock %}
 
+{% block breadcrumb %}
+<nav class="flex items-center gap-2 text-sm mb-6 font-mono">
+  <a href="/dashboard/deployments" class="text-slate-500 hover:text-slate-300 transition-colors">deployments</a>
+  <span class="text-slate-700">/</span>
+  <span class="text-slate-300">{{ deployment.name }}</span>
+</nav>
+{% endblock %}
+
 {% block content %}
 <!-- Header -->
-<div class="flex items-start justify-between mb-6">
+<div class="flex items-start justify-between mb-8">
   <div>
-    <div class="flex items-center gap-3 mb-1">
-      <h1 class="text-xl font-bold font-mono">{{ deployment.name }}</h1>
-      <span class="px-2 py-0.5 bg-slate-700 rounded text-xs font-mono">{{ deployment.namespace }}</span>
+    <div class="flex items-center gap-3 mb-2">
+      <h1 class="text-2xl font-display font-bold font-mono text-slate-100 tracking-tight">{{ deployment.name }}</h1>
+      <span class="px-2.5 py-0.5 bg-grid-800/80 rounded-md text-xs font-mono text-slate-400 border border-grid-700/30">{{ deployment.namespace }}</span>
     </div>
-    <p class="text-sm text-slate-400 font-mono">{{ deployment.source }}</p>
-    <p class="text-xs text-slate-500 mt-1">Created {{ deployment.created_display }} &middot; Updated {{ deployment.updated_display }}</p>
+    <p class="text-sm text-slate-500 font-mono">{{ deployment.source }}</p>
+    <p class="text-xs text-slate-600 mt-1 font-mono">Created {{ deployment.created_display }} &middot; Updated {{ deployment.updated_display }}</p>
   </div>
-  <a href="/dashboard/deployments" class="text-sm text-slate-400 hover:text-slate-200">&larr; Back</a>
 </div>
 
-<!-- Config Panel -->
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4 space-y-3">
-    <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Configuration</h3>
-    <div class="space-y-2 text-sm">
+<!-- Config + Actions Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8">
+  <!-- Configuration (3 cols) -->
+  <div class="lg:col-span-3 bg-grid-850 border border-grid-700/30 rounded-xl p-5 space-y-4">
+    <h3 class="text-xs font-medium uppercase tracking-wider text-slate-500">Configuration</h3>
+    <div class="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
       <div class="flex justify-between">
-        <span class="text-slate-400">Trigger</span>
-        <span class="font-mono">{{ deployment.trigger_display }}</span>
+        <span class="text-slate-500">Trigger</span>
+        <span class="font-mono text-slate-200">{{ deployment.trigger_display }}</span>
       </div>
       <div class="flex justify-between">
-        <span class="text-slate-400">Instances</span>
-        <span class="font-mono">{{ deployment.instances_min }} – {{ deployment.instances_max }}</span>
+        <span class="text-slate-500">Instances</span>
+        <span class="font-mono text-slate-200">{{ deployment.instances_min }}&ndash;{{ deployment.instances_max }}</span>
       </div>
       <div class="flex justify-between">
-        <span class="text-slate-400">Memory Limit</span>
-        <span class="font-mono">{{ deployment.memory_display }}</span>
+        <span class="text-slate-500">Memory Limit</span>
+        <span class="font-mono text-slate-200">{{ deployment.memory_display }}</span>
       </div>
       <div class="flex justify-between">
-        <span class="text-slate-400">CPU Weight</span>
-        <span class="font-mono">{{ deployment.cpu_weight }}</span>
+        <span class="text-slate-500">CPU Weight</span>
+        <span class="font-mono text-slate-200">{{ deployment.cpu_weight }}</span>
       </div>
     </div>
+
     {% if let Some(scaling) = deployment.scaling %}
-    <div class="border-t border-slate-700 pt-3 space-y-2 text-sm">
-      <h4 class="text-slate-400 font-medium">Autoscaling</h4>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Metric</span>
-        <span class="font-mono">{{ scaling.metric }}</span>
-      </div>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Target</span>
-        <span class="font-mono">{{ scaling.target_value }}</span>
-      </div>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Scale Up</span>
-        <span class="font-mono">{{ scaling.scale_up_window }}</span>
-      </div>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Scale Down</span>
-        <span class="font-mono">{{ scaling.scale_down_window }}</span>
+    <div class="border-t border-grid-700/30 pt-4 space-y-3">
+      <h4 class="text-xs font-medium uppercase tracking-wider text-slate-500 flex items-center gap-2">
+        <svg class="w-3.5 h-3.5 text-grid-info" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        Autoscaling
+      </h4>
+      <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-slate-500">Metric</span><span class="font-mono text-slate-300">{{ scaling.metric }}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Target</span><span class="font-mono text-slate-300">{{ scaling.target_value }}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Scale Up</span><span class="font-mono text-slate-300">{{ scaling.scale_up_window }}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Scale Down</span><span class="font-mono text-slate-300">{{ scaling.scale_down_window }}</span></div>
       </div>
     </div>
     {% endif %}
+
     {% if let Some(hc) = deployment.health_config %}
-    <div class="border-t border-slate-700 pt-3 space-y-2 text-sm">
-      <h4 class="text-slate-400 font-medium">Health Check</h4>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Endpoint</span>
-        <span class="font-mono">{{ hc.endpoint }}</span>
-      </div>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Interval</span>
-        <span class="font-mono">{{ hc.interval }}</span>
-      </div>
-      <div class="flex justify-between">
-        <span class="text-slate-400">Threshold</span>
-        <span class="font-mono">{{ hc.unhealthy_threshold }} failures</span>
+    <div class="border-t border-grid-700/30 pt-4 space-y-3">
+      <h4 class="text-xs font-medium uppercase tracking-wider text-slate-500 flex items-center gap-2">
+        <svg class="w-3.5 h-3.5 text-grid-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+        Health Check
+      </h4>
+      <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-slate-500">Endpoint</span><span class="font-mono text-slate-300">{{ hc.endpoint }}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Interval</span><span class="font-mono text-slate-300">{{ hc.interval }}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Threshold</span><span class="font-mono text-slate-300">{{ hc.unhealthy_threshold }} failures</span></div>
       </div>
     </div>
     {% endif %}
+
+    <!-- Shims -->
+    <div class="border-t border-grid-700/30 pt-4">
+      <h4 class="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">WASI Shims</h4>
+      <div class="flex flex-wrap gap-2">
+        <span class="px-2.5 py-1 rounded-md text-xs font-mono border transition-colors {% if deployment.shims.timezone %}bg-grid-accent/10 text-grid-accent border-grid-accent/20{% else %}bg-grid-800/40 text-slate-600 border-grid-700/20{% endif %}">TZ</span>
+        <span class="px-2.5 py-1 rounded-md text-xs font-mono border transition-colors {% if deployment.shims.dev_urandom %}bg-grid-accent/10 text-grid-accent border-grid-accent/20{% else %}bg-grid-800/40 text-slate-600 border-grid-700/20{% endif %}">RNG</span>
+        <span class="px-2.5 py-1 rounded-md text-xs font-mono border transition-colors {% if deployment.shims.dns %}bg-grid-accent/10 text-grid-accent border-grid-accent/20{% else %}bg-grid-800/40 text-slate-600 border-grid-700/20{% endif %}">DNS</span>
+        <span class="px-2.5 py-1 rounded-md text-xs font-mono border transition-colors {% if deployment.shims.signals %}bg-grid-accent/10 text-grid-accent border-grid-accent/20{% else %}bg-grid-800/40 text-slate-600 border-grid-700/20{% endif %}">SIG</span>
+        <span class="px-2.5 py-1 rounded-md text-xs font-mono border transition-colors {% if deployment.shims.database_proxy %}bg-grid-accent/10 text-grid-accent border-grid-accent/20{% else %}bg-grid-800/40 text-slate-600 border-grid-700/20{% endif %}">DB</span>
+      </div>
+    </div>
   </div>
 
-  <div class="space-y-4">
-    <!-- Shims -->
-    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-      <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Shims</h3>
-      <div class="flex flex-wrap gap-2">
-        <span class="px-2 py-1 rounded text-xs font-mono {% if deployment.shims.timezone %}bg-emerald-500/20 text-emerald-400{% else %}bg-slate-700 text-slate-500{% endif %}">TZ</span>
-        <span class="px-2 py-1 rounded text-xs font-mono {% if deployment.shims.dev_urandom %}bg-emerald-500/20 text-emerald-400{% else %}bg-slate-700 text-slate-500{% endif %}">RNG</span>
-        <span class="px-2 py-1 rounded text-xs font-mono {% if deployment.shims.dns %}bg-emerald-500/20 text-emerald-400{% else %}bg-slate-700 text-slate-500{% endif %}">DNS</span>
-        <span class="px-2 py-1 rounded text-xs font-mono {% if deployment.shims.signals %}bg-emerald-500/20 text-emerald-400{% else %}bg-slate-700 text-slate-500{% endif %}">SIG</span>
-        <span class="px-2 py-1 rounded text-xs font-mono {% if deployment.shims.database_proxy %}bg-emerald-500/20 text-emerald-400{% else %}bg-slate-700 text-slate-500{% endif %}">DB</span>
-      </div>
-    </div>
-
-    <!-- Quick Actions -->
-    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-      <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Actions</h3>
+  <!-- Actions + Env (2 cols) -->
+  <div class="lg:col-span-2 space-y-4">
+    <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-5">
+      <h3 class="text-xs font-medium uppercase tracking-wider text-slate-500 mb-4">Actions</h3>
       <div class="space-y-3">
         <form hx-post="/dashboard/deployments/{{ deployment.id }}/scale" hx-target="#action-result" hx-swap="innerHTML" class="flex gap-2">
-          <input type="number" name="target" placeholder="Target instances" min="0" max="{{ deployment.instances_max }}"
-            class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400">
-          <button type="submit" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded text-sm font-medium hover:bg-emerald-500/30">Scale</button>
+          <input type="number" name="target" placeholder="Instances" min="0" max="{{ deployment.instances_max }}"
+            class="flex-1 bg-grid-800 border border-grid-700/40 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-grid-accent/50 focus:ring-1 focus:ring-grid-accent/20 transition-colors">
+          <button type="submit" class="px-4 py-2 bg-grid-accent/10 text-grid-accent border border-grid-accent/20 rounded-lg text-sm font-medium hover:bg-grid-accent/20 transition-colors">Scale</button>
         </form>
         <form hx-post="/dashboard/deployments/{{ deployment.id }}/rollout" hx-target="#action-result" hx-swap="innerHTML" class="flex gap-2">
-          <select name="strategy" class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm font-mono text-slate-100 focus:outline-none focus:border-emerald-400">
+          <select name="strategy" class="bg-grid-800 border border-grid-700/40 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 focus:outline-none focus:border-grid-accent/50 transition-colors">
             <option value="rolling">Rolling</option>
             <option value="canary">Canary</option>
             <option value="blue_green">Blue-Green</option>
           </select>
-          <input type="text" name="new_version" placeholder="New version"
-            class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400">
-          <button type="submit" class="px-3 py-1.5 bg-sky-500/20 text-sky-400 rounded text-sm font-medium hover:bg-sky-500/30">Rollout</button>
+          <input type="text" name="new_version" placeholder="Version"
+            class="flex-1 bg-grid-800 border border-grid-700/40 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-grid-info/50 focus:ring-1 focus:ring-grid-info/20 transition-colors">
+          <button type="submit" class="px-4 py-2 bg-grid-info/10 text-grid-info border border-grid-info/20 rounded-lg text-sm font-medium hover:bg-grid-info/20 transition-colors">Rollout</button>
         </form>
-        <button hx-delete="/dashboard/deployments/{{ deployment.id }}" hx-confirm="Delete deployment {{ deployment.name }}?" hx-target="body"
-          class="w-full px-3 py-1.5 bg-rose-500/10 text-rose-400 rounded text-sm font-medium hover:bg-rose-500/20 border border-rose-500/20">
-          Delete Deployment
-        </button>
+        <div class="pt-2 border-t border-grid-700/20">
+          <button hx-delete="/dashboard/deployments/{{ deployment.id }}" hx-confirm="Delete deployment {{ deployment.name }}?" hx-target="body"
+            class="w-full px-3 py-2 bg-grid-danger/5 text-grid-danger/80 rounded-lg text-sm font-medium hover:bg-grid-danger/10 border border-grid-danger/10 hover:border-grid-danger/20 transition-colors">
+            Delete Deployment
+          </button>
+        </div>
       </div>
-      <div id="action-result" class="mt-2 text-sm"></div>
+      <div id="action-result" class="mt-3 text-sm"></div>
     </div>
 
-    <!-- Env vars -->
     {% if !deployment.env_vars.is_empty() %}
-    <details class="bg-slate-800 border border-slate-700 rounded-lg">
-      <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-slate-400 uppercase tracking-wider hover:bg-slate-700/50 rounded-lg">
-        Environment Variables ({{ deployment.env_vars.len() }})
+    <details class="bg-grid-850 border border-grid-700/30 rounded-xl group">
+      <summary class="px-5 py-3.5 cursor-pointer text-xs font-medium uppercase tracking-wider text-slate-500 hover:text-slate-400 rounded-xl transition-colors flex items-center justify-between">
+        <span>Environment Variables ({{ deployment.env_vars.len() }})</span>
+        <svg class="w-4 h-4 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </summary>
-      <div class="px-4 pb-3 space-y-1">
+      <div class="px-5 pb-4 space-y-1.5">
         {% for (key, _value) in deployment.env_vars %}
         <div class="flex justify-between text-sm font-mono">
           <span class="text-slate-300">{{ key }}</span>
-          <span class="text-slate-500">********</span>
+          <span class="text-slate-600">********</span>
         </div>
         {% endfor %}
       </div>
@@ -138,8 +139,8 @@
 </div>
 
 <!-- Instances -->
-<div class="mb-6">
-  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Instances ({{ instances.len() }})</h2>
+<div class="mb-8">
+  <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500 mb-4">Instances ({{ instances.len() }})</h2>
   <div id="instance-table" hx-get="/dashboard/_deployment_instances/{{ deployment.id }}" hx-trigger="every 5s" hx-swap="innerHTML">
     {% include "_partials/instance_table.html" %}
   </div>
@@ -147,45 +148,45 @@
 
 <!-- Metrics -->
 {% if !metrics.is_empty() %}
-<div class="mb-6">
-  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Metrics (last {{ metrics.len() }})</h2>
-  <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden overflow-x-auto">
+<div class="mb-8">
+  <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500 mb-4">Metrics (last {{ metrics.len() }})</h2>
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl overflow-hidden overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-slate-700 text-slate-400 text-left">
-          <th class="px-4 py-2 font-medium">Time</th>
-          <th class="px-4 py-2 font-medium">RPS</th>
-          <th class="px-4 py-2 font-medium">P50</th>
-          <th class="px-4 py-2 font-medium">P99</th>
-          <th class="px-4 py-2 font-medium">Error %</th>
-          <th class="px-4 py-2 font-medium">Memory</th>
-          <th class="px-4 py-2 font-medium">Instances</th>
+        <tr class="border-b border-grid-700/30 text-left">
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Time</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">RPS</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">P50</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">P99</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Error %</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Memory</th>
+          <th class="px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">Instances</th>
         </tr>
       </thead>
       <tbody>
         {% for m in metrics %}
-        <tr class="border-b border-slate-700/50">
-          <td class="px-4 py-2 font-mono text-xs text-slate-400">{{ m.epoch_display }}</td>
-          <td class="px-4 py-2 font-mono">
+        <tr class="border-b border-grid-800/60 row-hover transition-colors">
+          <td class="px-4 py-2.5 font-mono text-xs text-slate-500">{{ m.epoch_display }}</td>
+          <td class="px-4 py-2.5 font-mono">
             <div class="flex items-center gap-2">
-              <span>{{ m.rps_display }}</span>
-              <div class="w-16 bg-slate-700 rounded-full h-1.5">
-                <div class="bg-sky-400 h-1.5 rounded-full" style="width: {{ m.rps_bar_width_display }}%"></div>
+              <span class="text-slate-200">{{ m.rps_display }}</span>
+              <div class="w-16 bg-grid-800 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-grid-info h-1.5 rounded-full progress-bar" style="width: {{ m.rps_bar_width_display }}%"></div>
               </div>
             </div>
           </td>
-          <td class="px-4 py-2 font-mono text-slate-300">{{ m.latency_p50_display }}ms</td>
-          <td class="px-4 py-2 font-mono text-slate-300">
+          <td class="px-4 py-2.5 font-mono text-slate-400">{{ m.latency_p50_display }}ms</td>
+          <td class="px-4 py-2.5 font-mono text-slate-300">
             <div class="flex items-center gap-2">
               <span>{{ m.latency_p99_display }}ms</span>
-              <div class="w-16 bg-slate-700 rounded-full h-1.5">
-                <div class="bg-amber-400 h-1.5 rounded-full" style="width: {{ m.latency_bar_width_display }}%"></div>
+              <div class="w-16 bg-grid-800 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-grid-warn h-1.5 rounded-full progress-bar" style="width: {{ m.latency_bar_width_display }}%"></div>
               </div>
             </div>
           </td>
-          <td class="px-4 py-2 font-mono {{ m.error_rate_color }}">{{ m.error_rate_pct_display }}%</td>
-          <td class="px-4 py-2 font-mono text-slate-300">{{ m.memory_display }}</td>
-          <td class="px-4 py-2 font-mono">{{ m.active_instances }}</td>
+          <td class="px-4 py-2.5 font-mono {{ m.error_rate_color }}">{{ m.error_rate_pct_display }}%</td>
+          <td class="px-4 py-2.5 font-mono text-slate-400">{{ m.memory_display }}</td>
+          <td class="px-4 py-2.5 font-mono text-slate-400">{{ m.active_instances }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -196,32 +197,32 @@
 
 <!-- Active Rollout -->
 {% if let Some(rollout) = rollout %}
-<div class="mb-6">
-  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Active Rollout</h2>
-  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <div class="flex items-center justify-between mb-3">
-      <div class="flex items-center gap-2">
-        <span class="px-2 py-0.5 rounded text-xs font-mono {{ rollout.strategy_badge_color }}">{{ rollout.strategy_display }}</span>
-        <span class="{{ rollout.phase_color }} font-mono text-sm">{{ rollout.phase_display }}</span>
+<div class="mb-8">
+  <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500 mb-4">Active Rollout</h2>
+  <div class="bg-grid-850 border border-grid-700/30 rounded-xl p-5">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <span class="px-2.5 py-0.5 rounded-md text-xs font-mono {{ rollout.strategy_badge_color }}">{{ rollout.strategy_display }}</span>
+        <span class="{{ rollout.phase_color }} font-mono text-sm font-medium">{{ rollout.phase_display }}</span>
       </div>
       <div class="flex gap-2">
         {% if rollout.can_pause %}
         <button hx-post="/dashboard/rollouts/{{ rollout.deployment_id }}/pause" hx-target="#action-result" hx-swap="innerHTML"
-          class="px-2 py-1 bg-amber-500/20 text-amber-400 rounded text-xs font-medium hover:bg-amber-500/30">Pause</button>
+          class="px-3 py-1.5 bg-grid-warn/10 text-grid-warn border border-grid-warn/20 rounded-lg text-xs font-medium hover:bg-grid-warn/20 transition-colors">Pause</button>
         {% endif %}
         {% if rollout.can_resume %}
         <button hx-post="/dashboard/rollouts/{{ rollout.deployment_id }}/resume" hx-target="#action-result" hx-swap="innerHTML"
-          class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium hover:bg-emerald-500/30">Resume</button>
+          class="px-3 py-1.5 bg-grid-accent/10 text-grid-accent border border-grid-accent/20 rounded-lg text-xs font-medium hover:bg-grid-accent/20 transition-colors">Resume</button>
         {% endif %}
       </div>
     </div>
-    <div class="flex items-center gap-3 text-sm mb-2">
-      <span class="font-mono text-slate-400">{{ rollout.old_version }}</span>
-      <span class="text-slate-500">&rarr;</span>
-      <span class="font-mono text-slate-200">{{ rollout.new_version }}</span>
+    <div class="flex items-center gap-3 text-sm mb-3">
+      <span class="font-mono text-slate-500">{{ rollout.old_version }}</span>
+      <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+      <span class="font-mono text-slate-200 font-medium">{{ rollout.new_version }}</span>
     </div>
-    <div class="w-full bg-slate-700 rounded-full h-2 mb-1">
-      <div class="bg-emerald-400 h-2 rounded-full transition-all" style="width: {{ rollout.progress_percent_display }}%"></div>
+    <div class="w-full bg-grid-800 rounded-full h-2 overflow-hidden mb-1.5">
+      <div class="bg-grid-accent h-2 rounded-full progress-bar" style="width: {{ rollout.progress_percent_display }}%"></div>
     </div>
     <span class="text-xs text-slate-500 font-mono">{{ rollout.progress_text }}</span>
   </div>

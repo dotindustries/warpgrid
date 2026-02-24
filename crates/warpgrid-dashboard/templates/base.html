@@ -4,66 +4,195 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}WarpGrid{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.8"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
-            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace']
+            display: ['Outfit', 'system-ui', 'sans-serif'],
+            mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+            body: ['Outfit', 'system-ui', 'sans-serif']
+          },
+          colors: {
+            grid: {
+              950: '#040608',
+              900: '#0a0f14',
+              850: '#0f161d',
+              800: '#141e28',
+              700: '#1e2d3d',
+              600: '#2a3f52',
+              500: '#3a5570',
+              accent: '#00e5a0',
+              glow: 'rgba(0, 229, 160, 0.15)',
+              warn: '#ffbe0b',
+              danger: '#ff5c6c',
+              info: '#38bdf8',
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.4s ease-out forwards',
+            'slide-up': 'slideUp 0.4s ease-out forwards',
+            'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
+            'scan': 'scan 4s linear infinite',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(8px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+            pulseGlow: { '0%, 100%': { boxShadow: '0 0 4px rgba(0, 229, 160, 0.2)' }, '50%': { boxShadow: '0 0 12px rgba(0, 229, 160, 0.4)' } },
+            scan: { '0%': { backgroundPosition: '0 0' }, '100%': { backgroundPosition: '0 100%' } },
           }
         }
       }
     }
   </script>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; }
-    .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; }
-    [data-loading] { opacity: 0.6; transition: opacity 0.2s; }
+    body {
+      font-family: 'Outfit', system-ui, sans-serif;
+      background: #040608;
+    }
+    .font-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    .font-display { font-family: 'Outfit', system-ui, sans-serif; }
+
+    /* Subtle noise grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 128px 128px;
+    }
+
+    /* HTMX loading states */
+    .htmx-request { position: relative; }
+    .htmx-request::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(4, 6, 8, 0.4);
+      border-radius: inherit;
+      animation: pulseLoad 1s ease-in-out infinite;
+    }
+    @keyframes pulseLoad {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.6; }
+    }
+    .htmx-settling { transition: opacity 0.3s ease-in-out; }
+
+    /* Stagger animation delays */
+    .stagger-1 { animation-delay: 0.05s; }
+    .stagger-2 { animation-delay: 0.1s; }
+    .stagger-3 { animation-delay: 0.15s; }
+    .stagger-4 { animation-delay: 0.2s; }
+    .stagger-5 { animation-delay: 0.25s; }
+
+    /* Glow effect for status indicators */
+    .glow-green { box-shadow: 0 0 6px rgba(0, 229, 160, 0.5); }
+    .glow-amber { box-shadow: 0 0 6px rgba(255, 190, 11, 0.5); }
+    .glow-red { box-shadow: 0 0 6px rgba(255, 92, 108, 0.5); }
+    .glow-blue { box-shadow: 0 0 6px rgba(56, 189, 248, 0.5); }
+
+    /* Progress bar animation */
+    .progress-bar { transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    /* Card accent stripe */
+    .card-accent {
+      position: relative;
+    }
+    .card-accent::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
+      border-radius: 0 2px 2px 0;
+    }
+    .card-accent-green::before { background: #00e5a0; }
+    .card-accent-amber::before { background: #ffbe0b; }
+    .card-accent-red::before { background: #ff5c6c; }
+    .card-accent-blue::before { background: #38bdf8; }
+
+    /* Table row hover glow */
+    .row-hover:hover {
+      background: linear-gradient(90deg, rgba(0, 229, 160, 0.04) 0%, transparent 100%);
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e2d3d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2a3f52; }
+
+    /* Mobile nav */
+    .mobile-nav-open { transform: translateY(0); opacity: 1; }
+    .mobile-nav-closed { transform: translateY(-8px); opacity: 0; pointer-events: none; }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col" hx-boost="true">
+<body class="bg-grid-950 text-slate-200 min-h-screen flex flex-col antialiased" hx-boost="true">
   <!-- Nav -->
-  <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <nav class="border-b border-grid-800/60 bg-grid-900/90 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-14">
-        <div class="flex items-center gap-6">
-          <a href="/dashboard/" class="flex items-center gap-2 text-emerald-400 font-bold text-lg tracking-tight">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-            </svg>
-            WarpGrid
+        <div class="flex items-center gap-8">
+          <a href="/dashboard" class="flex items-center gap-2.5 group">
+            <div class="w-7 h-7 rounded-md bg-grid-accent/10 border border-grid-accent/20 flex items-center justify-center group-hover:bg-grid-accent/20 transition-colors">
+              <svg class="w-4 h-4 text-grid-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+              </svg>
+            </div>
+            <span class="font-display font-bold text-lg tracking-tight text-slate-100 hidden sm:inline">WarpGrid</span>
           </a>
-          <div class="hidden sm:flex items-center gap-1">
+          <div class="hidden sm:flex items-center gap-0.5">
             {% block nav_items %}
-            <a href="/dashboard/" class="px-3 py-1.5 rounded text-sm {% if active_page == "overview" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Overview</a>
-            <a href="/dashboard/deployments" class="px-3 py-1.5 rounded text-sm {% if active_page == "deployments" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Deployments</a>
-            <a href="/dashboard/nodes" class="px-3 py-1.5 rounded text-sm {% if active_page == "nodes" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Nodes</a>
-            <a href="/dashboard/rollouts" class="px-3 py-1.5 rounded text-sm {% if active_page == "rollouts" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Rollouts</a>
+            <a href="/dashboard" class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {% if active_page == "overview" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400 hover:text-slate-200 hover:bg-grid-800/50{% endif %}">Overview</a>
+            <a href="/dashboard/deployments" class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {% if active_page == "deployments" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400 hover:text-slate-200 hover:bg-grid-800/50{% endif %}">Deployments</a>
+            <a href="/dashboard/nodes" class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {% if active_page == "nodes" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400 hover:text-slate-200 hover:bg-grid-800/50{% endif %}">Nodes</a>
+            <a href="/dashboard/rollouts" class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {% if active_page == "rollouts" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400 hover:text-slate-200 hover:bg-grid-800/50{% endif %}">Rollouts</a>
             {% endblock %}
           </div>
         </div>
         <div class="flex items-center gap-3">
-          <span class="text-xs font-mono px-2 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700">
+          <div class="flex items-center gap-2 text-xs font-mono px-2.5 py-1 rounded-md bg-grid-800/60 text-slate-400 border border-grid-700/40">
+            <span class="w-1.5 h-1.5 rounded-full bg-grid-accent glow-green"></span>
             {{ cluster_mode }}
-          </span>
+          </div>
+          <!-- Mobile menu button -->
+          <button id="mobile-nav-btn" class="sm:hidden p-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-grid-800/50" onclick="document.getElementById('mobile-nav').classList.toggle('mobile-nav-open');document.getElementById('mobile-nav').classList.toggle('mobile-nav-closed');">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
         </div>
+      </div>
+      <!-- Mobile nav dropdown -->
+      <div id="mobile-nav" class="sm:hidden mobile-nav-closed transition-all duration-200 pb-3 space-y-1">
+        <a href="/dashboard" class="block px-3 py-2 rounded-md text-sm font-medium {% if active_page == "overview" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400{% endif %}">Overview</a>
+        <a href="/dashboard/deployments" class="block px-3 py-2 rounded-md text-sm font-medium {% if active_page == "deployments" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400{% endif %}">Deployments</a>
+        <a href="/dashboard/nodes" class="block px-3 py-2 rounded-md text-sm font-medium {% if active_page == "nodes" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400{% endif %}">Nodes</a>
+        <a href="/dashboard/rollouts" class="block px-3 py-2 rounded-md text-sm font-medium {% if active_page == "rollouts" %}bg-grid-accent/10 text-grid-accent{% else %}text-slate-400{% endif %}">Rollouts</a>
       </div>
     </div>
   </nav>
 
   <!-- Content -->
-  <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+  <main class="flex-1 max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+    {% block breadcrumb %}{% endblock %}
     {% block content %}{% endblock %}
   </main>
 
   <!-- Footer -->
-  <footer class="border-t border-slate-800 bg-slate-900/50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between text-xs text-slate-500">
-      <span class="font-mono">WarpGrid v0.1.0</span>
-      <span>Wasm-native cluster orchestrator</span>
+  <footer class="border-t border-grid-800/40 bg-grid-900/30">
+    <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between text-xs text-slate-500">
+      <span class="font-mono tracking-wider">WARPGRID v0.1.0</span>
+      <span class="font-display text-slate-600">Wasm-native cluster orchestrator</span>
     </div>
   </footer>
 </body>

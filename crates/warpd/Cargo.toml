@@ -23,6 +23,7 @@ warpgrid-cluster = { path = "../warpgrid-cluster" }
 warpgrid-raft = { path = "../warpgrid-raft" }
 warpgrid-proxy = { path = "../warpgrid-proxy" }
 warpgrid-rollout = { path = "../warpgrid-rollout" }
+libc = "0.2"
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

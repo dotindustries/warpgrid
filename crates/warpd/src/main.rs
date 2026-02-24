@@ -17,14 +17,16 @@
 mod agent_mode;
 mod control_plane;
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
 use tokio::sync::watch;
 use tracing::info;
+use warpgrid_state::InstanceStatus;
 
 #[derive(Parser)]
 #[command(name = "warpd", about = "WarpGrid daemon")]
@@ -192,6 +194,26 @@ async fn run_standalone(
     let state = warpgrid_state::StateStore::open(&db_path)?;
     info!(path = ?db_path, "state store opened");
 
+    // Register this host as a standalone node with detected system capabilities.
+    let (detected_mem, detected_cpus) = detect_system_resources();
+    let standalone_node = warpgrid_state::NodeInfo {
+        id: "standalone".to_string(),
+        address: "127.0.0.1".to_string(),
+        port,
+        capacity_memory_bytes: detected_mem,
+        capacity_cpu_weight: detected_cpus * 100, // 100 weight per core
+        used_memory_bytes: 0,
+        used_cpu_weight: 0,
+        labels: HashMap::from([("mode".to_string(), "standalone".to_string())]),
+        last_heartbeat: epoch_secs(),
+    };
+    state.put_node(&standalone_node)?;
+    info!(
+        memory_bytes = detected_mem,
+        cpu_cores = detected_cpus,
+        "standalone node registered with detected system resources"
+    );
+
     // Wasm runtime.
     let runtime = Arc::new(warp_runtime::Runtime::new()?);
     info!("wasm runtime initialized");
@@ -224,6 +246,7 @@ async fn run_standalone(
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let metrics_shutdown = shutdown_rx.clone();
     let autoscale_shutdown = shutdown_rx.clone();
+    let heartbeat_shutdown = shutdown_rx.clone();
 
     // ── Start background tasks ─────────────────────────────────
 
@@ -237,6 +260,22 @@ async fn run_standalone(
         autoscaler
             .run(Duration::from_secs(autoscale_interval), autoscale_shutdown)
             .await;
+    });
+
+    // Standalone node heartbeat loop.
+    let heartbeat_state = state.clone();
+    let heartbeat_handle = tokio::spawn(async move {
+        let mut shutdown = heartbeat_shutdown;
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                    if let Err(e) = update_standalone_node(&heartbeat_state) {
+                        tracing::warn!(error = %e, "standalone heartbeat failed");
+                    }
+                }
+                _ = shutdown.changed() => break,
+            }
+        }
     });
 
     // ── Start API server ───────────────────────────────────────
@@ -263,7 +302,64 @@ async fn run_standalone(
     // Wait for background tasks.
     let _ = metrics_handle.await;
     let _ = autoscale_handle.await;
+    let _ = heartbeat_handle.await;
 
     info!("WarpGrid daemon stopped");
     Ok(())
+}
+
+/// Update the standalone node's heartbeat and resource usage from instance data.
+fn update_standalone_node(state: &warpgrid_state::StateStore) -> anyhow::Result<()> {
+    let mut node = state
+        .get_node("standalone")?
+        .ok_or_else(|| anyhow::anyhow!("standalone node not found"))?;
+
+    let deployments = state.list_deployments()?;
+    let mut used_mem: u64 = 0;
+    let mut used_cpu: u32 = 0;
+    for d in &deployments {
+        let instances = state.list_instances_for_deployment(&d.id)?;
+        for inst in &instances {
+            if inst.status == InstanceStatus::Running {
+                used_mem += inst.memory_bytes;
+                used_cpu += d.resources.cpu_weight;
+            }
+        }
+    }
+
+    node.last_heartbeat = epoch_secs();
+    node.used_memory_bytes = used_mem;
+    node.used_cpu_weight = used_cpu;
+    state.put_node(&node)?;
+    Ok(())
+}
+
+fn epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Detect total physical memory (bytes) and CPU core count from the OS.
+/// Falls back to 8 GiB / 4 cores if detection fails.
+fn detect_system_resources() -> (u64, u32) {
+    let memory = detect_total_memory().unwrap_or(8 * 1024 * 1024 * 1024);
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(4);
+    (memory, cpus)
+}
+
+/// Read total physical memory via POSIX sysconf.
+fn detect_total_memory() -> Option<u64> {
+    unsafe {
+        let pages = libc::sysconf(libc::_SC_PHYS_PAGES);
+        let page_size = libc::sysconf(libc::_SC_PAGE_SIZE);
+        if pages > 0 && page_size > 0 {
+            Some(pages as u64 * page_size as u64)
+        } else {
+            None
+        }
+    }
 }
