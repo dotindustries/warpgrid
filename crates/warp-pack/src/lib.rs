@@ -1,13 +1,18 @@
 //! warp pack — compile and package Wasm components.
 //!
-//! Phase 1: wraps cargo-component, TinyGo, and ComponentizeJS.
-//! This is a stub — actual compilation integration comes with
-//! Milestone 1.4 of the Wedge phase.
+//! Supports multiple language targets:
+//! - `rust` — cargo-component (stub)
+//! - `go` — TinyGo (stub)
+//! - `typescript` / `js` — ComponentizeJS via jco
+//! - `bun` — Bun → jco pipeline (stub)
 
 use anyhow::{Result, bail};
 use std::path::Path;
 use warp_core::WarpConfig;
 
+mod js;
+
+#[derive(Debug)]
 pub struct PackResult {
     pub output_path: String,
     pub size_bytes: u64,
@@ -23,24 +28,20 @@ pub fn pack(project_path: &Path) -> Result<PackResult> {
     match lang {
         "rust" => pack_rust(project_path, &config),
         "go" => pack_go(project_path, &config),
-        "typescript" => pack_typescript(project_path, &config),
-        _ => bail!("Unsupported language: {lang}"),
+        "typescript" | "js" => js::pack_js(project_path, &config),
+        "bun" => pack_bun(project_path, &config),
+        _ => bail!("Unsupported language: {lang}. Supported: rust, go, typescript, js, bun"),
     }
 }
 
 fn pack_rust(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
-    // TODO: Invoke cargo-component
-    // cargo component build --release --target wasm32-wasip2
     bail!("Rust packaging not yet implemented. Requires cargo-component.")
 }
 
 fn pack_go(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
-    // TODO: Invoke TinyGo or Go 1.24+
-    // tinygo build -target=wasip2 -o output.wasm
     bail!("Go packaging not yet implemented. Requires TinyGo.")
 }
 
-fn pack_typescript(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
-    // TODO: Invoke ComponentizeJS
-    bail!("TypeScript packaging not yet implemented. Requires ComponentizeJS.")
+fn pack_bun(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
+    bail!("Bun packaging not yet implemented. Requires @warpgrid/bun-sdk.")
 }

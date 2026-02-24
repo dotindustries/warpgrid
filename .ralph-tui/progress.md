@@ -696,3 +696,31 @@ after each iteration and it's included in prompts for context.
   - Extended query protocol (Parse/Bind/Execute/Sync) needed for parameterized queries — simple query protocol (`Q` message) only supports inline SQL
 ---
 
+## 2026-02-24 - warpgrid-agm.57
+- **What was implemented:** US-410 — Integrate ComponentizeJS extensions into `warp pack --lang js`
+- Implemented full `pack_js()` pipeline in warp-pack crate: detect entry → validate WIT → find jco → generate prelude → combine handler → invoke jco componentize → validate output
+- Added `--lang js` as first-class peer of `--lang typescript` (both route to same pipeline)
+- Added `--lang bun` routing (stub, for future Domain 6 work)
+- Created WarpGrid shim prelude that auto-injects `globalThis.warpgrid.database`, `globalThis.warpgrid.dns`, `globalThis.warpgrid.fs`, and `globalThis.process.env` into handler source before componentization
+- Created `js-warpgrid-handler` test fixture with handler using all three WarpGrid globals + process.env
+- Shell test validates full pipeline: handler with warpgrid shim imports → 12.3MB Wasm component → WIT validation pass
+- **Files changed:**
+  - MOD: `crates/warp-pack/src/lib.rs` — Added `mod js`, `--lang js` and `--lang bun` routing, `#[derive(Debug)]` on PackResult
+  - NEW: `crates/warp-pack/src/js.rs` — Full JS/TS packaging implementation (~400 lines): `pack_js()`, `find_jco()`, `find_sdk_root()`, `generate_prelude()`, `detect_shim_usage()`, `resolve_wit_dir()`, `detect_world_name()` + 20 unit tests + 1 ignored e2e test
+  - MOD: `crates/warp-pack/Cargo.toml` — Added `tempfile` dev-dependency
+  - NEW: `tests/fixtures/js-warpgrid-handler/` — Test fixture with handler using warpgrid.database, warpgrid.dns, process.env
+  - NEW: `tests/fixtures/js-warpgrid-handler/warp.toml` — Project config with `lang = "js"`
+  - NEW: `tests/fixtures/js-warpgrid-handler/src/handler.js` — Handler exercising all WarpGrid shim globals
+  - NEW: `tests/fixtures/js-warpgrid-handler/wit/handler.wit` — WIT world importing database-proxy, dns, filesystem shims
+  - NEW: `tests/fixtures/js-warpgrid-handler/wit/deps/shim/` — Copied WIT definitions for database-proxy, dns, filesystem
+  - NEW: `tests/fixtures/js-warpgrid-handler/test-pack.sh` — Shell test validating compilation pipeline
+- **Quality gates:** cargo check passes, 20/20 tests pass (1 ignored), clippy clean (no warnings)
+- **Learnings:**
+  - **Prelude injection is simpler than ComponentizeJS patching.** Instead of modifying ComponentizeJS internals (StarlingMonkey engine), we prepend a JS prelude to the handler before componentization. The prelude uses `await import("warpgrid:shim/...")` with try/catch — if a shim isn't in the WIT world, the import fails silently and the global stays undefined.
+  - **Project validation should precede toolchain validation in CLI tools.** `pack_js()` checks entry point and WIT directory existence BEFORE looking for jco. This gives users project-structure errors first rather than "install jco" when their handler.js is missing.
+  - **`is_none_or()` replaces `map_or(true, ...)` in Rust 2024.** Clippy's `unnecessary_map_or` lint flags `option.map_or(true, |x| ...)` and suggests `option.is_none_or(|x| ...)` which is more idiomatic.
+  - **Let-chains required for collapsible ifs.** Clippy enforces `if condition && let Some(x) = expr { ... }` over nested `if condition { if let Some(x) = expr { ... } }` in edition 2024.
+  - **`find_sdk_root()` walks up from project path to find `build/componentize-js/`.** This allows `warp pack` to work from subdirectories (e.g., `test-apps/t4/`) within the SDK monorepo. Falls back to project path itself for standalone projects.
+  - **ComponentizeJS WIT imports use ES module syntax.** `import { connect } from "warpgrid:shim/database-proxy@0.1.0"` works for WIT imports in componentized JS handlers. The package:interface@version syntax maps directly to ES import specifiers.
+---
+
