@@ -8,3 +8,5 @@
 .env.local
 *.log
 /vendor/tinygo
+/vendor/componentize-js
+tests/fixtures/fs-shim-guest/target/

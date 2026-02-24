@@ -127,6 +127,19 @@ after each iteration and it's included in prompts for context.
 - Public API for US-210/211: `__warpgrid_proxy_fd_is_proxied(fd)`, `__warpgrid_proxy_fd_get_handle(fd)`, `__warpgrid_proxy_fd_remove(fd)`
 - Return protocol matches FS shim: `-2` (not intercepted), `-1` (error), `>= 0` (success)
 
+### ComponentizeJS Build Pipeline (Domain 4)
+- ComponentizeJS 0.19.3 cloned into `vendor/componentize-js/` for future patching (US-403+)
+- Build toolchain: `@bytecodealliance/jco` 1.16.1 + `@bytecodealliance/componentize-js` 0.18.4
+- npm install into `build/componentize-js/` — jco at `build/componentize-js/node_modules/.bin/jco`
+- Componentize command: `jco componentize handler.js --wit wit/ --world-name handler --enable http --enable fetch-event -o handler.wasm`
+- WIT world for HTTP: exports `wasi:http/incoming-handler@0.2.3`, imports `wasi:http/types@0.2.3`
+- WIT deps required: cli, clocks, filesystem, http, io, random, sockets (full WASI 0.2.3 set)
+- JS handler pattern: `addEventListener("fetch", (event) => event.respondWith(new Response("ok")))` — web-standard fetch event
+- Component size: ~12MB (SpiderMonkey engine embedding)
+- `--disable stdio,clocks,random` reduces imports for minimal HTTP-only components
+- `jco serve` for verification (Node.js based, supports WASI 0.2.3); `wasmtime serve` requires Wasmtime 41+
+- Idempotency via stamp file: `build/componentize-js/.build-stamp` records `tag:jco_version:mode`
+
 ---
 
 ## 2026-02-22 - warpgrid-agm.2
@@ -469,5 +482,52 @@ after each iteration and it's included in prompts for context.
   - TINYGOROOT differs by mode: `build/tinygo/` for downloads (has lib/, pkg/, targets/), `vendor/tinygo/` for source builds
   - wasm-tools and wasm-opt (binaryen) are external dependencies required for wasip2 component model compilation — must be installed separately
   - TinyGo wasip2 compilation produces a WASI component model binary that needs `wasmtime run --wasm component-model=y` on older Wasmtime versions
+---
+
+## 2026-02-23 - warpgrid-agm.48
+- Implemented US-401: Fork ComponentizeJS and establish reproducible build pipeline
+- Cloned ComponentizeJS at tag 0.19.3 into `vendor/componentize-js/`
+- Created `scripts/build-componentize-js.sh` with `--npm` (default) and `--source` modes plus `--verify`
+- Created minimal HTTP handler test fixture using web-standard fetch event pattern
+- Full end-to-end verification: componentize → WIT validation → jco serve → HTTP round-trip
+- Added ComponentizeJS CI job to `.github/workflows/ci.yml`
+- Files changed:
+  - NEW: `vendor/componentize-js/` — git clone of ComponentizeJS at 0.19.3 (ab6483f)
+  - NEW: `scripts/build-componentize-js.sh` — build script (~340 lines): npm install, source build, verify with HTTP round-trip
+  - NEW: `tests/fixtures/js-http-handler/handler.js` — minimal fetch event HTTP handler returning "ok"
+  - NEW: `tests/fixtures/js-http-handler/wit/handler.wit` — WIT world exporting wasi:http/incoming-handler@0.2.3
+  - NEW: `tests/fixtures/js-http-handler/wit/deps/` — WASI WIT definitions (cli, clocks, filesystem, http, io, random, sockets)
+  - MOD: `.github/workflows/ci.yml` — added `componentize-js` CI job with Node 22, caching
+  - MOD: `.gitignore` — added `/vendor/componentize-js`
+- **Learnings:**
+  - **ComponentizeJS is an npm library, not a standalone binary.** Unlike TinyGo (compiled from Go+LLVM), ComponentizeJS embeds SpiderMonkey (Mozilla's JS engine) compiled to Wasm. The "build from source" step is `npm install` for the npm path, or Rust+wasi-sdk for source compilation. The npm path is ~10s vs ~minutes for source.
+  - **jco componentize requires `--wit` — no implicit WIT.** Even with `--enable http`, you must provide a WIT directory with the world definition and all WASI deps. The WIT deps tree for wasi:http includes io, clocks, cli, filesystem, random, sockets, and http packages.
+  - **Fetch event pattern is the simplest HTTP handler approach.** `addEventListener("fetch", (event) => event.respondWith(new Response("ok")))` with `--enable http --enable fetch-event` is much simpler than the raw wasi:http types (OutgoingResponse, ResponseOutparam, etc.). ComponentizeJS bridges the web-standard API to WASI HTTP automatically.
+  - **ComponentizeJS produces ~12MB Wasm components.** The SpiderMonkey engine embedding is the bulk of the size. This is expected and consistent with the project's documentation.
+  - **WASI version mismatch with older Wasmtime.** ComponentizeJS 0.19.3 uses WASI 0.2.3 WIT definitions. Wasmtime 20 (local) only supports 0.2.0. `wasmtime serve` fails with "resource implementation is missing" for terminal-input. Fix: use `jco serve` (Node.js based, supports 0.2.3 natively) for verification, or use Wasmtime 41+ (CI).
+  - **`--disable stdio,clocks,random` minimizes component imports.** This removes terminal/filesystem/random imports that `wasmtime serve`'s HTTP proxy world doesn't provide. Useful for targeting older Wasmtime versions, but `jco serve` is the more reliable verification path.
+  - **jco serve takes ~5s to start.** It transpiles the Wasm component back to Node.js code before serving. The startup cost is a one-time transpilation step. Verification must wait for the "Server listening" stderr message before sending requests.
+  - **Process cleanup in shell scripts needs file-scope globals.** The trap handler can't access function-local variables. Server PIDs and tmpdir paths must be in file-scope variables for proper cleanup on SIGTERM/SIGINT.
+---
+
+## 2026-02-24 - warpgrid-agm.5
+- Implemented US-105: Filesystem shim integration tests with real Wasm components
+- Created guest fixture crate (`tests/fixtures/fs-shim-guest/`) compiled to `wasm32-unknown-unknown`
+- Created host-side integration test (`crates/warpgrid-host/tests/integration_fs.rs`) with 5 async tests
+- All 5 integration tests pass, all 249 tests (244 unit + 5 integration) pass, no clippy warnings
+- Files changed:
+  - NEW: `tests/fixtures/fs-shim-guest/Cargo.toml` — standalone guest crate with `wit-bindgen 0.42`, `dlmalloc` allocator
+  - NEW: `tests/fixtures/fs-shim-guest/src/lib.rs` — `#![no_std]` guest component implementing 5 test exports
+  - NEW: `tests/fixtures/fs-shim-guest/wit/test.wit` — test world importing filesystem shim, exporting 5 test functions
+  - NEW: `tests/fixtures/fs-shim-guest/wit/deps/shim/filesystem.wit` — copy of host's WIT interface for guest bindings
+  - NEW: `crates/warpgrid-host/tests/integration_fs.rs` — host-side integration test with OnceLock-based component build
+- **Learnings:**
+  - **`#![no_std]` Wasm guests need a standalone allocator.** Using `wit_bindgen_rt::cabi_realloc` as the global allocator creates infinite recursion because `cabi_realloc` internally calls `alloc::alloc::alloc` which routes back to `cabi_realloc`. Fix: use `dlmalloc` crate with `global` feature — it provides a standalone heap allocator for Wasm.
+  - **`OnceLock<Vec<u8>>` replaces `Once` + `static mut` for Rust edition 2024.** Edition 2024 denies `static_mut_refs` (creating shared references to mutable statics is UB). `OnceLock::get_or_init()` provides safe one-time initialization with interior mutability.
+  - **Guest fixture crate needs `[workspace]` in Cargo.toml** to prevent Cargo from treating it as part of the workspace (auto-detected via `../../Cargo.toml`). An empty `[workspace]` table marks it as its own workspace root.
+  - **`get_typed_func` requires `&mut Store` (not `&Store`).** Even though it seems like a read operation, Wasmtime needs mutable access to the store for internal type-checking bookkeeping.
+  - **Guest WIT deps must be copied from host.** The guest needs the same WIT interface definitions as the host for binding generation. Place them in `wit/deps/shim/filesystem.wit` so `wit-bindgen` can resolve the import.
+  - **`wit_bindgen::generate!` needs `generate_all` for imported interfaces.** Without it, you get `missing one of: generate_all option, with mapping` — the macro needs explicit instruction to generate bindings for all imported interfaces.
+  - **wasm-tools component new converts core modules to components.** The two-step pipeline is: `cargo build --target wasm32-unknown-unknown` produces a core Wasm module, then `wasm-tools component new` wraps it in the component model with proper type section embedding.
 ---
 

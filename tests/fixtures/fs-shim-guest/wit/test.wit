@@ -1,0 +1,24 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for filesystem shim integration tests.
+///
+/// Guest component imports the filesystem shim and exports test functions
+/// that exercise each virtual path.
+world fs-shim-test {
+    import warpgrid:shim/filesystem@0.1.0;
+
+    /// Read /etc/resolv.conf and return its content as a string.
+    export test-resolv-conf: func() -> result<string, string>;
+
+    /// Read 32 bytes from /dev/urandom and return them.
+    export test-dev-urandom: func() -> result<list<u8>, string>;
+
+    /// Read from /dev/null and return whether the result is empty.
+    export test-dev-null: func() -> result<bool, string>;
+
+    /// Read /etc/hosts and return its content as a string.
+    export test-etc-hosts: func() -> result<string, string>;
+
+    /// Attempt to open a non-virtual path and return the error message.
+    export test-nonvirtual: func() -> result<string, string>;
+}
