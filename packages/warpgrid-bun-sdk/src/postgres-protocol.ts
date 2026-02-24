@@ -412,12 +412,8 @@ export function parseCommandComplete(payload: Uint8Array): number {
 // ── Utility ───────────────────────────────────────────────────────────
 
 async function md5hex(data: Uint8Array): Promise<string> {
-  // Use Web Crypto API (available in both Bun and Wasm runtimes)
-  const buf = new ArrayBuffer(data.byteLength);
-  new Uint8Array(buf).set(data);
-  const hashBuffer = await crypto.subtle.digest("MD5", buf);
-  const hashArray = new Uint8Array(hashBuffer);
-  return Array.from(hashArray)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  // WebCrypto does not support MD5. Use Node.js-compatible createHash
+  // which is available in both Bun and Node.js runtimes.
+  const { createHash } = await import("node:crypto");
+  return createHash("md5").update(data).digest("hex");
 }
