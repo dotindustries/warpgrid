@@ -919,9 +919,18 @@ mod tests {
 
 // ── Density Demo ────────────────────────────────────────────────
 
+pub const DENSITY_DEMO_DEPLOYMENT_ID: &str = "demo/wastebin-density";
+
 pub struct DensityDemoView {
     pub instance_count: usize,
     pub pool_size: usize,
+    pub is_deployed: bool,
+    pub status_label: String,
+    pub live_instance_count: usize,
+    pub live_total_memory: String,
+    pub live_rps: String,
+    pub live_latency_p50: String,
+    pub live_error_rate: String,
     pub wasm_memory_display: String,
     pub wasm_memory_per_instance: String,
     pub wasm_startup_display: String,
@@ -955,6 +964,13 @@ pub fn build_density_demo(instance_count: usize, pool_size: usize) -> DensityDem
     DensityDemoView {
         instance_count,
         pool_size,
+        is_deployed: false,
+        status_label: "ESTIMATED".to_string(),
+        live_instance_count: 0,
+        live_total_memory: "—".to_string(),
+        live_rps: "—".to_string(),
+        live_latency_p50: "—".to_string(),
+        live_error_rate: "—".to_string(),
         wasm_memory_display: format!("{wasm_total} MB"),
         wasm_memory_per_instance: format!("~{wasm_mem_per} MB"),
         wasm_startup_display: "5 ms".into(),
@@ -986,4 +1002,50 @@ pub fn build_density_demo(instance_count: usize, pool_size: usize) -> DensityDem
             StackItem { label: "Isolation".into(), detail: "Wasm sandbox + instance_id".into() },
         ],
     }
+}
+
+pub fn build_density_demo_live(store: &warpgrid_state::StateStore) -> DensityDemoView {
+    let deployed = store
+        .get_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+        .ok()
+        .flatten();
+
+    let Some(spec) = deployed else {
+        return build_density_demo(100, 10);
+    };
+
+    let instances = store
+        .list_instances_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+        .unwrap_or_default();
+    let latest_metrics = store
+        .list_metrics_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID, 1)
+        .unwrap_or_default();
+
+    let running_count = instances
+        .iter()
+        .filter(|i| i.status == warpgrid_state::InstanceStatus::Running)
+        .count();
+    let total_memory: u64 = instances.iter().map(|i| i.memory_bytes).sum();
+    let pool_size = spec.env.get("WARPGRID_POOL_SIZE")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(10);
+
+    let (rps, latency_p50, error_rate) = match latest_metrics.first() {
+        Some(m) => (
+            format!("{:.1}", m.rps),
+            format!("{:.1} ms", m.latency_p50_ms),
+            format!("{:.2}%", m.error_rate * 100.0),
+        ),
+        None => ("0.0".into(), "— ms".into(), "0.00%".into()),
+    };
+
+    let mut view = build_density_demo(running_count, pool_size);
+    view.is_deployed = true;
+    view.status_label = "LIVE".to_string();
+    view.live_instance_count = running_count;
+    view.live_total_memory = format_bytes(total_memory);
+    view.live_rps = rps;
+    view.live_latency_p50 = latency_p50;
+    view.live_error_rate = error_rate;
+    view
 }

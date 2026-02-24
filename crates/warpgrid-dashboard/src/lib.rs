@@ -64,7 +64,10 @@ pub fn dashboard_router(state: DashboardState) -> Router {
         )
         .route("/_rollout_cards", get(partials::rollout_cards))
         .route("/_node_cards", get(partials::node_cards))
+        .route("/_density_stats", get(partials::density_stats))
         // Action routes
+        .route("/density-demo/deploy", post(actions::deploy_demo))
+        .route("/density-demo/teardown", post(actions::teardown_demo))
         .route(
             "/deployments/{id}/scale",
             post(actions::scale_deployment),

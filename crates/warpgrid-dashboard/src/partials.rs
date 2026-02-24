@@ -170,6 +170,19 @@ pub async fn node_cards(State(state): State<DashboardState>) -> Html<String> {
     render(NodeCardsPartial { nodes: node_views })
 }
 
+// ── Density Stats ───────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "_partials/density_stats.html")]
+struct DensityStatsPartial {
+    demo: crate::views::DensityDemoView,
+}
+
+pub async fn density_stats(State(state): State<DashboardState>) -> Html<String> {
+    let demo = crate::views::build_density_demo_live(&state.store);
+    render(DensityStatsPartial { demo })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,6 +240,66 @@ mod tests {
     async fn node_cards_partial_renders() {
         let state = test_state();
         let resp = node_cards(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn density_stats_partial_renders() {
+        let state = test_state();
+        let resp = density_stats(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn density_stats_with_deployment() {
+        let state = test_state();
+
+        // Create the demo deployment
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let spec = DeploymentSpec {
+            id: crate::views::DENSITY_DEMO_DEPLOYMENT_ID.to_string(),
+            namespace: "demo".to_string(),
+            name: "wastebin-density".to_string(),
+            source: "file://demos/wastebin/wastebin-demo.wasm".to_string(),
+            trigger: TriggerConfig::Http { port: Some(8080) },
+            instances: InstanceConstraints { min: 5, max: 10 },
+            resources: ResourceLimits {
+                memory_bytes: 16 * 1024 * 1024,
+                cpu_weight: 50,
+            },
+            scaling: None,
+            health: None,
+            shims: ShimsEnabled::default(),
+            env: HashMap::new(),
+            created_at: now,
+            updated_at: now,
+        };
+        state.store.put_deployment(&spec).unwrap();
+
+        // Add some instances
+        for i in 0..5 {
+            state
+                .store
+                .put_instance(&InstanceState {
+                    id: format!("demo-wb-{i:04}"),
+                    deployment_id: crate::views::DENSITY_DEMO_DEPLOYMENT_ID.to_string(),
+                    node_id: "standalone".to_string(),
+                    status: InstanceStatus::Running,
+                    health: HealthStatus::Healthy,
+                    restart_count: 0,
+                    memory_bytes: 3 * 1024 * 1024,
+                    started_at: now,
+                    updated_at: now,
+                })
+                .unwrap();
+        }
+
+        let resp = density_stats(State(state)).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), 200);
     }
