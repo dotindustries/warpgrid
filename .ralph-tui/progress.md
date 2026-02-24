@@ -696,3 +696,29 @@ after each iteration and it's included in prompts for context.
   - Extended query protocol (Parse/Bind/Execute/Sync) needed for parameterized queries — simple query protocol (`Q` message) only supports inline SQL
 ---
 
+## 2026-02-24 - warpgrid-agm.51
+- **What was implemented:** US-404 — `@warpgrid/bun-sdk/pg` with pg.Client-compatible interface
+- **Files changed:**
+  - `packages/warpgrid-bun-sdk/src/errors.ts` — Added `PostgresError` class with `code`, `severity`, `detail` fields for pg.Client compatibility
+  - `packages/warpgrid-bun-sdk/src/pg.ts` — Public `Client` class with mode auto-detection, `PgClientConfig` interface, strategy pattern delegating to WasmPgClient or NativePgClient
+  - `packages/warpgrid-bun-sdk/src/pg-client-wasm.ts` — `WasmPgClient` single-connection client using `DatabaseProxyShim` + wire protocol, explicit connect/end lifecycle
+  - `packages/warpgrid-bun-sdk/src/pg-client-native.ts` — `NativePgClient` wrapping `pg.Client` with lazy dynamic import, surfaces pg errors as `PostgresError`
+  - `packages/warpgrid-bun-sdk/src/postgres-protocol.ts` — Fixed `md5hex` to use `node:crypto` instead of unsupported `crypto.subtle.digest("MD5")`
+  - `packages/warpgrid-bun-sdk/src/index.ts` — Added `Client`, `PgClientConfig`, `PostgresError` re-exports
+  - `packages/warpgrid-bun-sdk/package.json` — Added `./pg` subpath export
+  - `packages/warpgrid-bun-sdk/tests/pg-client.test.ts` — 28 tests: module exports, constructor, connect (trust/cleartext/MD5 auth), query (simple/extended/NULL), end (terminate/idempotent), errors (PostgresError/recv failure/auth failure/send error), mode detection
+- **Quality gates:** `bun run typecheck` passes, `bun test` passes (93 tests, 0 failures)
+- **Bugs found and fixed during code review:**
+  - `recvUntilReady` counter bug: both empty AND data-carrying reads incremented attempts → large multi-chunk responses truncated. Fixed: only count empty reads, throw on exhaustion.
+  - Auth handshake missing second read: after sending credentials, client didn't read server's post-auth AuthOk + ReadyForQuery. Fixed: `handleAuth` returns boolean, second recv on true.
+  - `recvUntilReady` strict mode: strict check broke auth challenge flow (AuthCleartext has no ReadyForQuery). Fixed: added `strict` parameter, startup auth probe uses `strict=false`.
+  - NativePgClient swallowed PostgresError structure: pg errors wrapped into generic WarpGridDatabaseError. Fixed: detect `.code`/`.severity` and throw PostgresError.
+  - Pre-existing `md5hex` bug: WebCrypto doesn't support MD5 algorithm. Fixed: replaced with `node:crypto` createHash.
+- **Learnings:**
+  - Postgres auth challenge flow: server sends AuthCleartext/AuthMD5 WITHOUT ReadyForQuery (waiting for password). Only after credential validation does it send AuthOk + ReadyForQuery. Recv logic needs lenient mode for auth probe.
+  - `crypto.subtle.digest("MD5")` is rejected by all standard WebCrypto implementations — MD5 is intentionally unsupported as insecure. Use `node:crypto` createHash which Bun supports.
+  - Strategy pattern with `ClientBackend` interface enables clean dual-mode: `Client` class delegates to either `WasmPgClient` or `NativePgClient` without conditional logic in methods.
+  - WasmPgClient and WasmPool share recv/parse patterns but are separate abstractions (single connection vs pool) — acceptable duplication for now, could be refactored with shared mixin later.
+  - pg.Client doesn't support reconnect after end() — added `ended` flag to prevent silent re-connection.
+---
+

@@ -5,7 +5,7 @@
  * (development) and WASI/Wasm (deployed) environments.
  */
 
-export { WarpGridError, WarpGridDatabaseError } from "./errors.ts";
+export { WarpGridError, WarpGridDatabaseError, PostgresError } from "./errors.ts";
 export {
   createPool,
   detectMode,
@@ -15,3 +15,4 @@ export {
   type FieldInfo,
   type DatabaseProxyShim,
 } from "./postgres.ts";
+export { Client, type PgClientConfig } from "./pg.ts";
