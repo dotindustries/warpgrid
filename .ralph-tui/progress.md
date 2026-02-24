@@ -635,3 +635,25 @@ after each iteration and it's included in prompts for context.
   - MockRedisServer is simpler than MockMysqlServer — Redis inline commands are easy to detect and respond to without packet framing
 ---
 
+## 2026-02-24 - warpgrid-agm.87
+- **US-705: TypeScript HTTP + Postgres integration test (T4)**
+- Created `test-apps/t4-ts-http-postgres/` with dual test approach:
+  1. Shell-script test using `jco serve` for HTTP round-trip verification (standalone handler with in-memory data)
+  2. Rust integration test with guest fixture for WIT shim verification (5 tests)
+- Created `tests/fixtures/t4-db-proxy-guest/` — Rust `#![no_std]` guest that exercises `warpgrid:shim/database-proxy` WIT imports (connect, send, recv, close) with Postgres wire protocol helpers
+- Files created:
+  - `test-apps/t4-ts-http-postgres/src/handler.js` (full handler with `warpgrid:shim/database-proxy` WIT imports)
+  - `test-apps/t4-ts-http-postgres/src/handler-standalone.js` (standalone with in-memory data)
+  - `test-apps/t4-ts-http-postgres/wit/handler.wit` + `handler-standalone.wit` (WIT worlds)
+  - `test-apps/t4-ts-http-postgres/build.sh` + `test.sh` (build/test scripts)
+  - `tests/fixtures/t4-db-proxy-guest/` (Rust guest fixture)
+  - `crates/warpgrid-host/tests/integration_t4_ts_http_postgres.rs` (5 Rust integration tests)
+- **All 5 Rust integration tests pass:** connect+handshake, full lifecycle, query+close, pool lifecycle, db-proxy-not-raw-tcp. Clippy clean.
+- **Learnings:**
+  - Wasmtime Component Model's `may_enter` flag prevents calling multiple exports on the same instance. Workaround: re-instantiate per call while sharing the same `Store` (so `HostState` with pool manager and handle table persists)
+  - ComponentizeJS components import `wasi:http@0.2.3` which `WarpGridEngine` can't provide (no `wasmtime-wasi-http` in workspace deps). For JS integration testing, use `jco serve` which provides full WASI support
+  - Raw TCP pool reuse doesn't work with Postgres protocol — reused connections are already past the handshake phase. Protocol-aware pooling (like PgBouncer) is needed for real pool reuse
+  - The `test-apps/` directory is a new top-level convention for cross-domain integration tests (distinct from `tests/fixtures/` which are guest components)
+  - ComponentizeJS supports arbitrary WIT imports via `import { fn } from 'package:interface/name'` ES module syntax (e.g., `import { connect } from "warpgrid:shim/database-proxy@0.1.0"`)
+---
+
