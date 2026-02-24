@@ -1,0 +1,9 @@
+[package]
+name = "warpgrid-libpq"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Safe Rust wrapper around libpq compiled to wasm32-wasip2 for WarpGrid"
+
+[dependencies]
+thiserror.workspace = true

@@ -54,6 +54,7 @@ pub fn dashboard_router(state: DashboardState) -> Router {
         .route("/nodes", get(pages::nodes))
         .route("/nodes/{id}", get(pages::node_detail))
         .route("/rollouts", get(pages::rollouts))
+        .route("/density-demo", get(pages::density_demo))
         // HTMX partial routes
         .route("/_overview_stats", get(partials::overview_stats))
         .route("/_deployments_table", get(partials::deployments_table))

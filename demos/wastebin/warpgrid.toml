@@ -1,0 +1,49 @@
+# WarpGrid deployment configuration for wastebin density demo.
+#
+# Showcases: 100 instances sharing 10 PostgreSQL connections
+# through the DB proxy shim with host-terminated TLS.
+
+[deployment]
+name = "wastebin-demo"
+namespace = "demo"
+source = "wastebin-demo.wasm"
+
+[deployment.trigger]
+type = "http"
+port = 8080
+routing = "round-robin"
+
+[deployment.instances]
+min = 100
+max = 100
+
+[deployment.resources]
+memory_bytes = 16_777_216   # 16 MB per instance
+cpu_weight = 50
+timeout_seconds = 5
+
+[deployment.shims]
+filesystem = true
+dns = true
+signals = true
+threading = true
+
+[deployment.shims.database_proxy]
+enabled = true
+pool_size = 10
+idle_timeout_seconds = 300
+target = "postgresql://wastebin:password@db.internal:5432/wastebin"
+
+[deployment.shims.filesystem.mounts]
+"/etc/warpgrid/proxy.conf" = "db.internal:5432"
+"/etc/resolv.conf" = "nameserver 10.0.0.1"
+"/etc/hosts" = "10.0.0.1 db.internal"
+
+[deployment.env]
+WASTEBIN_INSTANCE_ID = "{{instance_id}}"
+WASTEBIN_DATABASE_URL = "host=db.internal port=5432 dbname=wastebin user=wastebin"
+
+[deployment.scaling]
+type = "rps"
+target_rps = 100
+cooldown_seconds = 30

@@ -3614,6 +3614,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "warpgrid-libpq"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "warpgrid-metrics"
 version = "0.1.0"
 dependencies = [

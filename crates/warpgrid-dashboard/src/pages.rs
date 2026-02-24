@@ -524,3 +524,30 @@ mod tests {
         assert_eq!(resp.status(), 200);
     }
 }
+
+// ── Density Demo ──────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "density_demo.html")]
+struct DensityDemoTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    demo: DensityDemoView,
+}
+
+pub async fn density_demo(State(state): State<DashboardState>) -> Html<String> {
+    let nodes = state.store.list_nodes().unwrap_or_default();
+    let cluster_mode = if nodes.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({} nodes)", nodes.len())
+    };
+
+    let demo = build_density_demo(100, 10);
+
+    render(DensityDemoTemplate {
+        active_page: "density-demo",
+        cluster_mode,
+        demo,
+    })
+}

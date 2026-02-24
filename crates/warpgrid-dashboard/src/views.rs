@@ -916,3 +916,74 @@ mod tests {
         assert!((rows[1].rps_bar_width - 100.0).abs() < 0.1);
     }
 }
+
+// ── Density Demo ────────────────────────────────────────────────
+
+pub struct DensityDemoView {
+    pub instance_count: usize,
+    pub pool_size: usize,
+    pub wasm_memory_display: String,
+    pub wasm_memory_per_instance: String,
+    pub wasm_startup_display: String,
+    pub wasm_connections_display: String,
+    pub wasm_binary_display: String,
+    pub wasm_bar_percent: String,
+    pub docker_memory_display: String,
+    pub docker_memory_per_instance: String,
+    pub docker_startup_display: String,
+    pub docker_connections_display: String,
+    pub docker_binary_display: String,
+    pub memory_ratio: String,
+    pub startup_ratio: String,
+    pub connection_ratio: String,
+    pub binary_ratio: String,
+    pub stack_items: Vec<StackItem>,
+}
+
+pub struct StackItem {
+    pub label: String,
+    pub detail: String,
+}
+
+pub fn build_density_demo(instance_count: usize, pool_size: usize) -> DensityDemoView {
+    let wasm_mem_per = 3;
+    let docker_mem_per = 50;
+    let wasm_total = instance_count * wasm_mem_per;
+    let docker_total = instance_count * docker_mem_per;
+    let docker_connections = instance_count * 10;
+
+    DensityDemoView {
+        instance_count,
+        pool_size,
+        wasm_memory_display: format!("{wasm_total} MB"),
+        wasm_memory_per_instance: format!("~{wasm_mem_per} MB"),
+        wasm_startup_display: "5 ms".into(),
+        wasm_connections_display: pool_size.to_string(),
+        wasm_binary_display: "~8 MB".into(),
+        wasm_bar_percent: if docker_total > 0 {
+            format!("{:.0}", (wasm_total as f64 / docker_total as f64) * 100.0)
+        } else {
+            "0".to_string()
+        },
+        docker_memory_display: format!("{:.1} GB", docker_total as f64 / 1024.0),
+        docker_memory_per_instance: format!("~{docker_mem_per} MB"),
+        docker_startup_display: "2.5 s".into(),
+        docker_connections_display: format!("{docker_connections}"),
+        docker_binary_display: "~45 MB".into(),
+        memory_ratio: format!("{:.0}x less", docker_total as f64 / wasm_total as f64),
+        startup_ratio: format!("{:.0}x faster", 2500.0_f64 / 5.0),
+        connection_ratio: format!("{:.0}x fewer", docker_connections as f64 / pool_size as f64),
+        binary_ratio: format!("{:.0}x smaller", 45.0_f64 / 8.0),
+        stack_items: vec![
+            StackItem { label: "Application".into(), detail: "wastebin (pastebin)".into() },
+            StackItem { label: "Database".into(), detail: "PostgreSQL 16 via libpq FFI".into() },
+            StackItem { label: "Runtime".into(), detail: "wasm32-wasip2 (Wasmtime)".into() },
+            StackItem { label: "HTTP".into(), detail: "wasi:http/incoming-handler".into() },
+            StackItem { label: "DB Proxy".into(), detail: "Shared connection pool".into() },
+            StackItem { label: "TLS".into(), detail: "Host-terminated (transparent)".into() },
+            StackItem { label: "DNS".into(), detail: "WarpGrid DNS shim".into() },
+            StackItem { label: "Filesystem".into(), detail: "Virtual (proxy.conf, etc.)".into() },
+            StackItem { label: "Isolation".into(), detail: "Wasm sandbox + instance_id".into() },
+        ],
+    }
+}
