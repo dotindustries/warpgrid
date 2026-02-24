@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Overview — WarpGrid{% endblock %}
+
+{% block content %}
+<div id="overview-stats" hx-get="/dashboard/_overview_stats" hx-trigger="every 5s" hx-swap="innerHTML">
+  {% include "_partials/stats.html" %}
+</div>
+
+<!-- Resource Utilization -->
+{% if summary.node_count > 0 %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <h3 class="text-sm font-medium text-slate-400 mb-3">Cluster Memory</h3>
+    <div class="flex items-center justify-between mb-1">
+      <span class="font-mono text-sm">{{ summary.cluster_memory.used_display }}</span>
+      <span class="text-slate-400 text-sm font-mono">{{ summary.cluster_memory.total_display }}</span>
+    </div>
+    <div class="w-full bg-slate-700 rounded-full h-3">
+      <div class="{{ summary.cluster_memory.bar_color() }} h-3 rounded-full transition-all" style="width: {{ summary.cluster_memory.percent_display }}%"></div>
+    </div>
+    <span class="text-xs text-slate-500 mt-1 block font-mono">{{ summary.cluster_memory.percent_display }}%</span>
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <h3 class="text-sm font-medium text-slate-400 mb-3">Cluster CPU Weight</h3>
+    <div class="flex items-center justify-between mb-1">
+      <span class="font-mono text-sm">{{ summary.cluster_cpu.used_display }}</span>
+      <span class="text-slate-400 text-sm font-mono">{{ summary.cluster_cpu.total_display }}</span>
+    </div>
+    <div class="w-full bg-slate-700 rounded-full h-3">
+      <div class="{{ summary.cluster_cpu.bar_color() }} h-3 rounded-full transition-all" style="width: {{ summary.cluster_cpu.percent_display }}%"></div>
+    </div>
+    <span class="text-xs text-slate-500 mt-1 block font-mono">{{ summary.cluster_cpu.percent_display }}%</span>
+  </div>
+</div>
+{% endif %}
+
+<!-- Alerts -->
+{% if !alerts.is_empty() %}
+<div class="mt-6 space-y-2">
+  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Active Alerts</h2>
+  {% for alert in alerts %}
+  <div class="border rounded-lg p-3 {{ alert.severity_color }}">
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-bold uppercase">{{ alert.severity }}</span>
+      <span class="font-mono text-sm">{{ alert.deployment }}</span>
+      <span class="text-slate-400 text-sm">{{ alert.message }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Recent Deployments -->
+<div class="mt-6">
+  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Recent Deployments</h2>
+  {% if deployments.is_empty() %}
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center text-slate-500">
+    No deployments yet. Create one via the API.
+  </div>
+  {% else %}
+  <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-slate-700 text-slate-400 text-left">
+          <th class="px-4 py-2.5 font-medium">Name</th>
+          <th class="px-4 py-2.5 font-medium">Namespace</th>
+          <th class="px-4 py-2.5 font-medium">Trigger</th>
+          <th class="px-4 py-2.5 font-medium">Instances</th>
+          <th class="px-4 py-2.5 font-medium">Health</th>
+          <th class="px-4 py-2.5 font-medium">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in deployments %}
+        <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+          <td class="px-4 py-2.5">
+            <a href="/dashboard/deployments/{{ d.id }}" class="text-emerald-400 hover:underline font-mono">{{ d.name }}</a>
+          </td>
+          <td class="px-4 py-2.5">
+            <span class="px-2 py-0.5 bg-slate-700 rounded text-xs font-mono">{{ d.namespace }}</span>
+          </td>
+          <td class="px-4 py-2.5 font-mono text-slate-300">
+            <span class="text-xs px-1.5 py-0.5 bg-slate-700 rounded mr-1">{{ d.trigger_icon }}</span>
+            {{ d.trigger_display }}
+          </td>
+          <td class="px-4 py-2.5 font-mono">
+            <span class="text-emerald-400">{{ d.instances_running }}</span><span class="text-slate-500">/{{ d.instances_max }}</span>
+          </td>
+          <td class="px-4 py-2.5">
+            <div class="flex gap-1">
+              {% for dot in d.health_dots %}
+              <span class="w-2 h-2 rounded-full {{ dot.color }}" title="{{ dot.title }}"></span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="px-4 py-2.5 text-slate-400 text-xs font-mono">{{ d.updated_display }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

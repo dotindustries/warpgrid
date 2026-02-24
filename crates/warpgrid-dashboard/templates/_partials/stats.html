@@ -1,0 +1,42 @@
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <div class="text-sm text-slate-400 mb-1">Deployments</div>
+    <div class="text-2xl font-bold font-mono">{{ summary.deployment_count }}</div>
+    {% if !summary.namespace_counts.is_empty() %}
+    <div class="mt-1 flex flex-wrap gap-1">
+      {% for (ns, count) in summary.namespace_counts %}
+      <span class="text-xs text-slate-500 font-mono">{{ ns }}:{{ count }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <div class="text-sm text-slate-400 mb-1">Instances</div>
+    <div class="text-2xl font-bold font-mono">{{ summary.instances.total }}</div>
+    <div class="mt-1 flex gap-2 text-xs font-mono">
+      <span class="text-emerald-400">{{ summary.instances.running }} running</span>
+      {% if summary.instances.unhealthy > 0 %}
+      <span class="text-rose-400">{{ summary.instances.unhealthy }} unhealthy</span>
+      {% endif %}
+      {% if summary.instances.stopped > 0 %}
+      <span class="text-slate-500">{{ summary.instances.stopped }} stopped</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <div class="text-sm text-slate-400 mb-1">Nodes</div>
+    {% if summary.node_count == 0 %}
+    <div class="text-lg font-bold">
+      <span class="px-2 py-0.5 bg-slate-700 rounded text-sm font-mono text-slate-400">Standalone</span>
+    </div>
+    {% else %}
+    <div class="text-2xl font-bold font-mono">{{ summary.node_count }}</div>
+    <div class="mt-1 text-xs font-mono text-emerald-400">{{ summary.nodes_ready }} ready</div>
+    {% endif %}
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <div class="text-sm text-slate-400 mb-1">Active Rollouts</div>
+    <div class="text-2xl font-bold font-mono {% if summary.active_rollouts > 0 %}text-sky-400{% endif %}">{{ summary.active_rollouts }}</div>
+  </div>
+</div>

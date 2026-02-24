@@ -7,7 +7,10 @@ description = "WarpGrid dashboard — SSR web UI for deployment management"
 
 [dependencies]
 warpgrid-state = { path = "../warpgrid-state" }
+warpgrid-rollout = { path = "../warpgrid-rollout" }
+askama = "0.12"
 axum = "0.8"
+chrono = "0.4"
 tokio.workspace = true
 tracing.workspace = true
 serde.workspace = true

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Deployments — WarpGrid{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-xl font-bold">Deployments</h1>
+  <span class="text-sm text-slate-400 font-mono">{{ deployments.len() }} total</span>
+</div>
+
+{% if deployments.is_empty() %}
+<div class="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center text-slate-500">
+  <p class="text-lg mb-2">No deployments</p>
+  <p class="text-sm">Create a deployment via <code class="font-mono text-slate-400">POST /api/v1/deployments</code></p>
+</div>
+{% else %}
+<div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+  <div id="deployments-table" hx-get="/dashboard/_deployments_table" hx-trigger="every 10s" hx-swap="innerHTML">
+    {% include "_partials/deployment_rows.html" %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

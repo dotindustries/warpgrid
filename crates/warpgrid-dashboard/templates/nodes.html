@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Nodes — WarpGrid{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-xl font-bold">Nodes</h1>
+  <span class="text-sm text-slate-400 font-mono">{{ nodes.len() }} node(s)</span>
+</div>
+
+<div id="node-cards" hx-get="/dashboard/_node_cards" hx-trigger="every 10s" hx-swap="innerHTML">
+  {% include "_partials/node_cards.html" %}
+</div>
+{% endblock %}

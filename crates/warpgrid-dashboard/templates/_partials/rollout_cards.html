@@ -1,0 +1,33 @@
+<div class="space-y-3">
+  {% for r in active_rollouts %}
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-3">
+        <a href="/dashboard/deployments/{{ r.deployment_id }}" class="text-emerald-400 hover:underline font-mono font-medium">{{ r.deployment_id }}</a>
+        <span class="px-2 py-0.5 rounded text-xs font-mono {{ r.strategy_badge_color }}">{{ r.strategy_display }}</span>
+        <span class="{{ r.phase_color }} font-mono text-sm">{{ r.phase_display }}</span>
+      </div>
+      <div class="flex gap-2">
+        {% if r.can_pause %}
+        <button hx-post="/dashboard/rollouts/{{ r.deployment_id }}/pause" hx-target="closest div.space-y-3" hx-swap="outerHTML"
+          class="px-2 py-1 bg-amber-500/20 text-amber-400 rounded text-xs font-medium hover:bg-amber-500/30">Pause</button>
+        {% endif %}
+        {% if r.can_resume %}
+        <button hx-post="/dashboard/rollouts/{{ r.deployment_id }}/resume" hx-target="closest div.space-y-3" hx-swap="outerHTML"
+          class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium hover:bg-emerald-500/30">Resume</button>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-sm mb-2">
+      <span class="font-mono text-slate-400">{{ r.old_version }}</span>
+      <span class="text-slate-500">&rarr;</span>
+      <span class="font-mono text-slate-200">{{ r.new_version }}</span>
+      <span class="text-slate-500 font-mono text-xs">{{ r.target_instances }} instances</span>
+    </div>
+    <div class="w-full bg-slate-700 rounded-full h-2 mb-1">
+      <div class="bg-emerald-400 h-2 rounded-full transition-all" style="width: {{ r.progress_percent_display }}%"></div>
+    </div>
+    <span class="text-xs text-slate-500 font-mono">{{ r.progress_text }}</span>
+  </div>
+  {% endfor %}
+</div>

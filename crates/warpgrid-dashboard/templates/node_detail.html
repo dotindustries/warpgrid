@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{{ node.id }} — WarpGrid{% endblock %}
+
+{% block content %}
+<div class="flex items-start justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-bold font-mono">{{ node.id }}</h1>
+    <p class="text-sm text-slate-400 font-mono">{{ node.address }}:{{ node.port }}</p>
+  </div>
+  <a href="/dashboard/nodes" class="text-sm text-slate-400 hover:text-slate-200">&larr; Back</a>
+</div>
+
+<!-- Node Info -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <h3 class="text-sm font-medium text-slate-400 mb-2">Status</h3>
+    <span class="text-lg font-bold {{ node.status_color }}">{{ node.status }}</span>
+    <p class="text-xs {{ node.heartbeat_color }} font-mono mt-1">Last heartbeat {{ node.heartbeat_display }}</p>
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <h3 class="text-sm font-medium text-slate-400 mb-2">Memory</h3>
+    <div class="flex items-center justify-between mb-1">
+      <span class="font-mono text-sm">{{ node.memory_bar.used_display }}</span>
+      <span class="text-slate-400 text-sm font-mono">{{ node.memory_bar.total_display }}</span>
+    </div>
+    <div class="w-full bg-slate-700 rounded-full h-3">
+      <div class="{{ node.memory_bar.bar_color() }} h-3 rounded-full" style="width: {{ node.memory_bar.percent_display }}%"></div>
+    </div>
+    <span class="text-xs text-slate-500 mt-1 block font-mono">{{ node.memory_bar.percent_display }}%</span>
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+    <h3 class="text-sm font-medium text-slate-400 mb-2">CPU Weight</h3>
+    <div class="flex items-center justify-between mb-1">
+      <span class="font-mono text-sm">{{ node.cpu_bar.used_display }}</span>
+      <span class="text-slate-400 text-sm font-mono">{{ node.cpu_bar.total_display }}</span>
+    </div>
+    <div class="w-full bg-slate-700 rounded-full h-3">
+      <div class="{{ node.cpu_bar.bar_color() }} h-3 rounded-full" style="width: {{ node.cpu_bar.percent_display }}%"></div>
+    </div>
+    <span class="text-xs text-slate-500 mt-1 block font-mono">{{ node.cpu_bar.percent_display }}%</span>
+  </div>
+</div>
+
+<!-- Labels -->
+{% if !node.labels.is_empty() %}
+<div class="mb-6">
+  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Labels</h2>
+  <div class="flex flex-wrap gap-2">
+    {% for (key, value) in node.labels %}
+    <span class="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-xs font-mono">
+      <span class="text-slate-400">{{ key }}=</span><span class="text-slate-200">{{ value }}</span>
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Instances on this node -->
+<div class="mb-6">
+  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Instances ({{ instances.len() }})</h2>
+  {% if instances.is_empty() %}
+  <div class="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center text-slate-500">
+    No instances scheduled on this node.
+  </div>
+  {% else %}
+  <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-slate-700 text-slate-400 text-left">
+          <th class="px-4 py-2.5 font-medium">Instance</th>
+          <th class="px-4 py-2.5 font-medium">Deployment</th>
+          <th class="px-4 py-2.5 font-medium">Status</th>
+          <th class="px-4 py-2.5 font-medium">Health</th>
+          <th class="px-4 py-2.5 font-medium">Memory</th>
+          <th class="px-4 py-2.5 font-medium">Uptime</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inst in instances %}
+        <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+          <td class="px-4 py-2.5 font-mono text-sm">{{ inst.id }}</td>
+          <td class="px-4 py-2.5">
+            <a href="/dashboard/deployments/{{ inst.deployment_id }}" class="text-emerald-400 hover:underline font-mono text-sm">{{ inst.deployment_id }}</a>
+          </td>
+          <td class="px-4 py-2.5 font-mono {{ inst.status_color }}">{{ inst.status }}</td>
+          <td class="px-4 py-2.5 font-mono {{ inst.health_color }}">{{ inst.health }}</td>
+          <td class="px-4 py-2.5 font-mono text-slate-300">{{ inst.memory_display }}</td>
+          <td class="px-4 py-2.5 font-mono text-slate-400 text-xs">{{ inst.uptime_display }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

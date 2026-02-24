@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}WarpGrid{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; }
+    [data-loading] { opacity: 0.6; transition: opacity 0.2s; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col" hx-boost="true">
+  <!-- Nav -->
+  <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <div class="flex items-center gap-6">
+          <a href="/dashboard/" class="flex items-center gap-2 text-emerald-400 font-bold text-lg tracking-tight">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+            WarpGrid
+          </a>
+          <div class="hidden sm:flex items-center gap-1">
+            {% block nav_items %}
+            <a href="/dashboard/" class="px-3 py-1.5 rounded text-sm {% if active_page == "overview" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Overview</a>
+            <a href="/dashboard/deployments" class="px-3 py-1.5 rounded text-sm {% if active_page == "deployments" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Deployments</a>
+            <a href="/dashboard/nodes" class="px-3 py-1.5 rounded text-sm {% if active_page == "nodes" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Nodes</a>
+            <a href="/dashboard/rollouts" class="px-3 py-1.5 rounded text-sm {% if active_page == "rollouts" %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}">Rollouts</a>
+            {% endblock %}
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-mono px-2 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700">
+            {{ cluster_mode }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800 bg-slate-900/50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between text-xs text-slate-500">
+      <span class="font-mono">WarpGrid v0.1.0</span>
+      <span>Wasm-native cluster orchestrator</span>
+    </div>
+  </footer>
+</body>
+</html>

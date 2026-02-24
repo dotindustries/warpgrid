@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Rollouts — WarpGrid{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-xl font-bold">Rollouts</h1>
+  <span class="text-sm text-slate-400 font-mono">{{ active_rollouts.len() }} active, {{ completed_rollouts.len() }} completed</span>
+</div>
+
+<!-- Active Rollouts -->
+{% if !active_rollouts.is_empty() %}
+<div class="mb-6">
+  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Active</h2>
+  <div id="rollout-cards" hx-get="/dashboard/_rollout_cards" hx-trigger="every 3s" hx-swap="innerHTML">
+    {% include "_partials/rollout_cards.html" %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Completed / Rolled-back -->
+{% if !completed_rollouts.is_empty() %}
+<div>
+  <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Completed</h2>
+  <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-slate-700 text-slate-400 text-left">
+          <th class="px-4 py-2.5 font-medium">Deployment</th>
+          <th class="px-4 py-2.5 font-medium">Strategy</th>
+          <th class="px-4 py-2.5 font-medium">Status</th>
+          <th class="px-4 py-2.5 font-medium">Version</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in completed_rollouts %}
+        <tr class="border-b border-slate-700/50">
+          <td class="px-4 py-2.5">
+            <a href="/dashboard/deployments/{{ r.deployment_id }}" class="text-emerald-400 hover:underline font-mono">{{ r.deployment_id }}</a>
+          </td>
+          <td class="px-4 py-2.5">
+            <span class="px-2 py-0.5 rounded text-xs font-mono {{ r.strategy_badge_color }}">{{ r.strategy_display }}</span>
+          </td>
+          <td class="px-4 py-2.5 font-mono {{ r.phase_color }}">{{ r.phase_display }}</td>
+          <td class="px-4 py-2.5 font-mono text-slate-400">{{ r.old_version }} &rarr; {{ r.new_version }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+{% if active_rollouts.is_empty() %}
+<div class="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center text-slate-500">
+  <p class="text-lg mb-2">No rollouts</p>
+  <p class="text-sm">Start a rollout from a deployment's detail page.</p>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

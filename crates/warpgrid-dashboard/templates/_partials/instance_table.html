@@ -1,0 +1,36 @@
+{% if instances.is_empty() %}
+<div class="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center text-slate-500">
+  No instances running.
+</div>
+{% else %}
+<div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-slate-700 text-slate-400 text-left">
+        <th class="px-4 py-2.5 font-medium">ID</th>
+        <th class="px-4 py-2.5 font-medium">Node</th>
+        <th class="px-4 py-2.5 font-medium">Status</th>
+        <th class="px-4 py-2.5 font-medium">Health</th>
+        <th class="px-4 py-2.5 font-medium">Restarts</th>
+        <th class="px-4 py-2.5 font-medium">Memory</th>
+        <th class="px-4 py-2.5 font-medium">Uptime</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inst in instances %}
+      <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+        <td class="px-4 py-2.5 font-mono text-sm">{{ inst.id }}</td>
+        <td class="px-4 py-2.5">
+          <a href="/dashboard/nodes/{{ inst.node_id }}" class="text-sky-400 hover:underline font-mono text-sm">{{ inst.node_id }}</a>
+        </td>
+        <td class="px-4 py-2.5 font-mono {{ inst.status_color }}">{{ inst.status }}</td>
+        <td class="px-4 py-2.5 font-mono {{ inst.health_color }}">{{ inst.health }}</td>
+        <td class="px-4 py-2.5 font-mono {% if inst.restart_count > 0 %}text-amber-400{% else %}text-slate-400{% endif %}">{{ inst.restart_count }}</td>
+        <td class="px-4 py-2.5 font-mono text-slate-300">{{ inst.memory_display }}</td>
+        <td class="px-4 py-2.5 font-mono text-slate-400 text-xs">{{ inst.uptime_display }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

@@ -53,13 +53,14 @@ pub fn build_router_with_rollouts(store: StateStore, rollouts: RolloutStore) -> 
         store: store.clone(),
     };
 
+    let dashboard_state = warpgrid_dashboard::DashboardState {
+        store: store.clone(),
+        rollouts: rollouts.clone(),
+    };
+
     let rollout_state = RolloutApiState {
         store: store.clone(),
         rollouts,
-    };
-
-    let dashboard_state = warpgrid_dashboard::DashboardState {
-        store: store.clone(),
     };
 
     let api_routes = Router::new()

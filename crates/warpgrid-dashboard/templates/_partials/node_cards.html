@@ -1,0 +1,52 @@
+{% if nodes.is_empty() %}
+<div class="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center text-slate-500">
+  <p class="text-lg mb-2">No nodes registered</p>
+  <p class="text-sm">Running in standalone mode.</p>
+</div>
+{% else %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for n in nodes %}
+  <a href="/dashboard/nodes/{{ n.id }}" class="block bg-slate-800 border border-slate-700 rounded-lg p-4 hover:border-slate-600 transition-colors">
+    <div class="flex items-center justify-between mb-3">
+      <span class="font-mono font-medium text-sm">{{ n.id }}</span>
+      <span class="text-xs font-bold {{ n.status_color }}">{{ n.status }}</span>
+    </div>
+    <p class="text-xs text-slate-400 font-mono mb-3">{{ n.address }}:{{ n.port }}</p>
+
+    <div class="space-y-2 mb-3">
+      <div>
+        <div class="flex justify-between text-xs text-slate-400 mb-0.5">
+          <span>Memory</span>
+          <span class="font-mono">{{ n.memory_bar.percent_int }}%</span>
+        </div>
+        <div class="w-full bg-slate-700 rounded-full h-2">
+          <div class="{{ n.memory_bar.bar_color() }} h-2 rounded-full" style="width: {{ n.memory_bar.percent_display }}%"></div>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs text-slate-400 mb-0.5">
+          <span>CPU</span>
+          <span class="font-mono">{{ n.cpu_bar.percent_int }}%</span>
+        </div>
+        <div class="w-full bg-slate-700 rounded-full h-2">
+          <div class="{{ n.cpu_bar.bar_color() }} h-2 rounded-full" style="width: {{ n.cpu_bar.percent_display }}%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between text-xs">
+      <span class="text-slate-500 font-mono">{{ n.instance_count }} instances</span>
+      <span class="{{ n.heartbeat_color }} font-mono">{{ n.heartbeat_display }}</span>
+    </div>
+
+    {% if !n.labels.is_empty() %}
+    <div class="mt-2 flex flex-wrap gap-1">
+      {% for (key, value) in n.labels %}
+      <span class="text-xs px-1.5 py-0.5 bg-slate-700 rounded font-mono text-slate-500">{{ key }}={{ value }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

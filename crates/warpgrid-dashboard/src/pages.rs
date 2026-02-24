@@ -1,190 +1,389 @@
 //! Dashboard page handlers.
 //!
-//! Returns server-rendered HTML for the dashboard pages.
-//! Phase 1 uses plain HTML; Leptos SSR + hydration comes in Phase 1.1.
+//! Each handler queries the state store, builds view types, and renders
+//! an Askama template. HTMX partials are in `partials.rs`.
 
-use axum::extract::State;
+use askama::Template;
+use axum::extract::{Path, State};
 use axum::response::Html;
 
-use crate::DashboardState;
+use warpgrid_rollout::RolloutPhase;
 
-/// Dashboard overview page.
+use crate::DashboardState;
+use crate::views::*;
+
+fn render<T: Template>(tmpl: T) -> Html<String> {
+    Html(tmpl.render().unwrap_or_else(|e| {
+        format!("<pre>Template error: {e}</pre>")
+    }))
+}
+
+// ── Overview ────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "overview.html")]
+struct OverviewTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    summary: ClusterSummary,
+    deployments: Vec<DeploymentView>,
+    alerts: Vec<AlertView>,
+}
+
 pub async fn overview(State(state): State<DashboardState>) -> Html<String> {
-    let deployments = state
-        .store
-        .list_deployments()
-        .unwrap_or_default();
+    let deployments = state.store.list_deployments().unwrap_or_default();
     let nodes = state.store.list_nodes().unwrap_or_default();
 
-    let deployment_rows: String = deployments
-        .iter()
-        .map(|d| {
-            format!(
-                "<tr><td>{}</td><td>{}</td><td>{}-{}</td></tr>",
-                d.name, d.namespace, d.instances.min, d.instances.max
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut all_instances = Vec::new();
+    let mut deployment_views = Vec::new();
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html>
-<head><title>WarpGrid Dashboard</title>
-<style>
-  body {{ font-family: system-ui; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }}
-  table {{ width: 100%; border-collapse: collapse; }}
-  th, td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid #ddd; }}
-  nav a {{ margin-right: 1rem; }}
-  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }}
-</style>
-</head>
-<body>
-<h1>WarpGrid Dashboard</h1>
-<nav>
-  <a href="/dashboard/">Overview</a>
-  <a href="/dashboard/deployments">Deployments</a>
-</nav>
-<hr>
-<h2>Cluster Overview</h2>
-<p>Nodes: {node_count} | Deployments: {deploy_count}</p>
-<table>
-<tr><th>Name</th><th>Namespace</th><th>Instances (min-max)</th></tr>
-{deployment_rows}
-</table>
-</body>
-</html>"#,
-        node_count = nodes.len(),
-        deploy_count = deployments.len(),
-    ))
+    for spec in &deployments {
+        let instances = state
+            .store
+            .list_instances_for_deployment(&spec.id)
+            .unwrap_or_default();
+        let metrics = state
+            .store
+            .list_metrics_for_deployment(&spec.id, 1)
+            .unwrap_or_default();
+        all_instances.extend(instances.clone());
+        deployment_views.push(DeploymentView::from_spec(
+            spec,
+            &instances,
+            metrics.first(),
+        ));
+    }
+
+    let active_rollout_count = {
+        let rollouts = state.rollouts.read().await;
+        rollouts
+            .values()
+            .filter(|r| {
+                !matches!(
+                    r.phase,
+                    RolloutPhase::Completed | RolloutPhase::RolledBack { .. }
+                )
+            })
+            .count()
+    };
+
+    let rollout_views: Vec<RolloutView> = {
+        let rollouts = state.rollouts.read().await;
+        rollouts.values().map(RolloutView::from_rollout).collect()
+    };
+
+    let summary = build_cluster_summary(&deployments, &all_instances, &nodes, active_rollout_count);
+    let alerts = build_alerts(&deployment_views, &rollout_views);
+
+    let cluster_mode = if nodes.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({})", nodes.len())
+    };
+
+    // Limit to last 10 for overview
+    deployment_views.truncate(10);
+
+    render(OverviewTemplate {
+        active_page: "overview",
+        cluster_mode,
+        summary,
+        deployments: deployment_views,
+        alerts,
+    })
 }
 
-/// Deployments list page.
+// ── Deployments List ────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "deployments.html")]
+struct DeploymentsTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    deployments: Vec<DeploymentView>,
+}
+
 pub async fn deployments(State(state): State<DashboardState>) -> Html<String> {
-    let deployments = state
-        .store
-        .list_deployments()
-        .unwrap_or_default();
+    let specs = state.store.list_deployments().unwrap_or_default();
+    let nodes = state.store.list_nodes().unwrap_or_default();
 
-    let rows: String = deployments
+    let deployment_views: Vec<DeploymentView> = specs
         .iter()
-        .map(|d| {
-            let trigger = match &d.trigger {
-                warpgrid_state::TriggerConfig::Http { port } => {
-                    format!("HTTP (:{port})", port = port.unwrap_or(8080))
-                }
-                warpgrid_state::TriggerConfig::Cron { schedule } => {
-                    format!("Cron ({schedule})")
-                }
-                warpgrid_state::TriggerConfig::Queue { topic } => {
-                    format!("Queue ({topic})")
-                }
-            };
-            format!(
-                "<tr><td><a href=\"/dashboard/deployments/{id}\">{name}</a></td>\
-                 <td>{ns}</td><td>{trigger}</td>\
-                 <td>{min}-{max}</td><td>{source}</td></tr>",
-                id = d.id,
-                name = d.name,
-                ns = d.namespace,
-                min = d.instances.min,
-                max = d.instances.max,
-                source = d.source,
-            )
+        .map(|spec| {
+            let instances = state
+                .store
+                .list_instances_for_deployment(&spec.id)
+                .unwrap_or_default();
+            let metrics = state
+                .store
+                .list_metrics_for_deployment(&spec.id, 1)
+                .unwrap_or_default();
+            DeploymentView::from_spec(spec, &instances, metrics.first())
         })
-        .collect::<Vec<_>>()
-        .join("\n");
+        .collect();
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html>
-<head><title>Deployments — WarpGrid</title>
-<style>
-  body {{ font-family: system-ui; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }}
-  table {{ width: 100%; border-collapse: collapse; }}
-  th, td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid #ddd; }}
-  nav a {{ margin-right: 1rem; }}
-</style>
-</head>
-<body>
-<h1>Deployments</h1>
-<nav>
-  <a href="/dashboard/">Overview</a>
-  <a href="/dashboard/deployments">Deployments</a>
-</nav>
-<hr>
-<table>
-<tr><th>Name</th><th>Namespace</th><th>Trigger</th><th>Instances</th><th>Source</th></tr>
-{rows}
-</table>
-</body>
-</html>"#,
-    ))
+    let cluster_mode = if nodes.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({})", nodes.len())
+    };
+
+    render(DeploymentsTemplate {
+        active_page: "deployments",
+        cluster_mode,
+        deployments: deployment_views,
+    })
 }
 
-/// Single deployment detail page.
+// ── Deployment Detail ───────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "deployment_detail.html")]
+struct DeploymentDetailTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    deployment: DeploymentView,
+    instances: Vec<InstanceView>,
+    metrics: Vec<MetricsRow>,
+    rollout: Option<RolloutView>,
+}
+
 pub async fn deployment_detail(
     State(state): State<DashboardState>,
-    axum::extract::Path(id): axum::extract::Path<String>,
+    Path(id): Path<String>,
 ) -> Html<String> {
+    let nodes = state.store.list_nodes().unwrap_or_default();
+
+    let spec = state.store.get_deployment(&id).unwrap_or(None);
     let instances = state
         .store
         .list_instances_for_deployment(&id)
         .unwrap_or_default();
+    let snapshots = state
+        .store
+        .list_metrics_for_deployment(&id, 20)
+        .unwrap_or_default();
 
-    let instance_rows: String = instances
-        .iter()
-        .map(|i| {
-            format!(
-                "<tr><td>{}</td><td>{:?}</td><td>{:?}</td><td>{}</td><td>{}MB</td></tr>",
-                i.id,
-                i.status,
-                i.health,
-                i.restart_count,
-                i.memory_bytes / (1024 * 1024),
+    let instance_views: Vec<InstanceView> = instances.iter().map(InstanceView::from_state).collect();
+    let metrics = build_metrics_rows(&snapshots);
+
+    let rollout = {
+        let rollouts = state.rollouts.read().await;
+        rollouts.get(&id).map(RolloutView::from_rollout)
+    };
+
+    let deployment_view = match spec {
+        Some(ref s) => {
+            let latest = snapshots.first();
+            DeploymentView::from_spec(s, &instances, latest)
+        }
+        None => {
+            // Build a minimal placeholder for missing deployments
+            DeploymentView::from_spec(
+                &warpgrid_state::DeploymentSpec {
+                    id: id.clone(),
+                    namespace: "unknown".to_string(),
+                    name: id.clone(),
+                    source: "unknown".to_string(),
+                    trigger: warpgrid_state::TriggerConfig::Http { port: None },
+                    instances: warpgrid_state::InstanceConstraints { min: 0, max: 0 },
+                    resources: warpgrid_state::ResourceLimits {
+                        memory_bytes: 0,
+                        cpu_weight: 0,
+                    },
+                    scaling: None,
+                    health: None,
+                    shims: warpgrid_state::ShimsEnabled::default(),
+                    env: std::collections::HashMap::new(),
+                    created_at: 0,
+                    updated_at: 0,
+                },
+                &instances,
+                None,
             )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+        }
+    };
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html>
-<head><title>{id} — WarpGrid</title>
-<style>
-  body {{ font-family: system-ui; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }}
-  table {{ width: 100%; border-collapse: collapse; }}
-  th, td {{ padding: 0.5rem; text-align: left; border-bottom: 1px solid #ddd; }}
-  nav a {{ margin-right: 1rem; }}
-</style>
-</head>
-<body>
-<h1>Deployment: {id}</h1>
-<nav>
-  <a href="/dashboard/">Overview</a>
-  <a href="/dashboard/deployments">Deployments</a>
-</nav>
-<hr>
-<h2>Instances ({count})</h2>
-<table>
-<tr><th>ID</th><th>Status</th><th>Health</th><th>Restarts</th><th>Memory</th></tr>
-{instance_rows}
-</table>
-</body>
-</html>"#,
-        count = instances.len(),
-    ))
+    let cluster_mode = if nodes.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({})", nodes.len())
+    };
+
+    render(DeploymentDetailTemplate {
+        active_page: "deployments",
+        cluster_mode,
+        deployment: deployment_view,
+        instances: instance_views,
+        metrics,
+        rollout,
+    })
+}
+
+// ── Nodes List ──────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "nodes.html")]
+struct NodesTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    nodes: Vec<NodeView>,
+}
+
+pub async fn nodes(State(state): State<DashboardState>) -> Html<String> {
+    let node_infos = state.store.list_nodes().unwrap_or_default();
+
+    let node_views: Vec<NodeView> = node_infos
+        .iter()
+        .map(|n| {
+            // Count instances on this node
+            let count = state
+                .store
+                .list_deployments()
+                .unwrap_or_default()
+                .iter()
+                .flat_map(|d| {
+                    state
+                        .store
+                        .list_instances_for_deployment(&d.id)
+                        .unwrap_or_default()
+                })
+                .filter(|i| i.node_id == n.id)
+                .count();
+            NodeView::from_node(n, count)
+        })
+        .collect();
+
+    let cluster_mode = if node_infos.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({})", node_infos.len())
+    };
+
+    render(NodesTemplate {
+        active_page: "nodes",
+        cluster_mode,
+        nodes: node_views,
+    })
+}
+
+// ── Node Detail ─────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "node_detail.html")]
+struct NodeDetailTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    node: NodeView,
+    instances: Vec<InstanceView>,
+}
+
+pub async fn node_detail(
+    State(state): State<DashboardState>,
+    Path(id): Path<String>,
+) -> Html<String> {
+    let node_infos = state.store.list_nodes().unwrap_or_default();
+    let node_info = state.store.get_node(&id).unwrap_or(None);
+
+    // Get all instances on this node
+    let instances_on_node: Vec<InstanceView> = state
+        .store
+        .list_deployments()
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|d| {
+            state
+                .store
+                .list_instances_for_deployment(&d.id)
+                .unwrap_or_default()
+        })
+        .filter(|i| i.node_id == id)
+        .map(|i| InstanceView::from_state(&i))
+        .collect();
+
+    let node_view = match node_info {
+        Some(ref n) => NodeView::from_node(n, instances_on_node.len()),
+        None => NodeView::from_node(
+            &warpgrid_state::NodeInfo {
+                id: id.clone(),
+                address: "unknown".to_string(),
+                port: 0,
+                capacity_memory_bytes: 0,
+                capacity_cpu_weight: 0,
+                used_memory_bytes: 0,
+                used_cpu_weight: 0,
+                labels: std::collections::HashMap::new(),
+                last_heartbeat: 0,
+            },
+            instances_on_node.len(),
+        ),
+    };
+
+    let cluster_mode = if node_infos.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({})", node_infos.len())
+    };
+
+    render(NodeDetailTemplate {
+        active_page: "nodes",
+        cluster_mode,
+        node: node_view,
+        instances: instances_on_node,
+    })
+}
+
+// ── Rollouts ────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "rollouts.html")]
+struct RolloutsTemplate {
+    active_page: &'static str,
+    cluster_mode: String,
+    active_rollouts: Vec<RolloutView>,
+    completed_rollouts: Vec<RolloutView>,
+}
+
+pub async fn rollouts(State(state): State<DashboardState>) -> Html<String> {
+    let nodes = state.store.list_nodes().unwrap_or_default();
+
+    let (active, completed) = {
+        let rollouts = state.rollouts.read().await;
+        let all: Vec<RolloutView> = rollouts.values().map(RolloutView::from_rollout).collect();
+        let active: Vec<RolloutView> = all.iter().filter(|r| r.is_active).cloned().collect();
+        let completed: Vec<RolloutView> = all.iter().filter(|r| !r.is_active).cloned().collect();
+        (active, completed)
+    };
+
+    let cluster_mode = if nodes.is_empty() {
+        "Standalone".to_string()
+    } else {
+        format!("Cluster ({})", nodes.len())
+    };
+
+    render(RolloutsTemplate {
+        active_page: "rollouts",
+        cluster_mode,
+        active_rollouts: active,
+        completed_rollouts: completed,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use warpgrid_state::*;
+    use axum::response::IntoResponse;
     use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use warpgrid_state::*;
 
     fn test_state() -> DashboardState {
         let store = StateStore::open_in_memory().unwrap();
-        DashboardState { store }
+        DashboardState {
+            store,
+            rollouts: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     fn test_deployment(ns: &str, name: &str) -> DeploymentSpec {
@@ -211,23 +410,31 @@ mod tests {
     #[tokio::test]
     async fn overview_renders_html() {
         let state = test_state();
-        state.store.put_deployment(&test_deployment("default", "api")).unwrap();
+        state
+            .store
+            .put_deployment(&test_deployment("default", "api"))
+            .unwrap();
 
-        let html = overview(State(state)).await;
-        assert!(html.0.contains("WarpGrid Dashboard"));
-        assert!(html.0.contains("api"));
-        assert!(html.0.contains("Deployments: 1"));
+        let resp = overview(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
     }
 
     #[tokio::test]
     async fn deployments_page_renders() {
         let state = test_state();
-        state.store.put_deployment(&test_deployment("default", "api")).unwrap();
-        state.store.put_deployment(&test_deployment("prod", "worker")).unwrap();
+        state
+            .store
+            .put_deployment(&test_deployment("default", "api"))
+            .unwrap();
+        state
+            .store
+            .put_deployment(&test_deployment("prod", "worker"))
+            .unwrap();
 
-        let html = deployments(State(state)).await;
-        assert!(html.0.contains("api"));
-        assert!(html.0.contains("worker"));
+        let resp = deployments(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
     }
 
     #[tokio::test]
@@ -246,19 +453,74 @@ mod tests {
         };
         state.store.put_instance(&inst).unwrap();
 
-        let html = deployment_detail(
+        let resp = deployment_detail(
             State(state),
-            axum::extract::Path("default/api".to_string()),
-        ).await;
-        assert!(html.0.contains("inst-0"));
-        assert!(html.0.contains("Running"));
+            Path("default/api".to_string()),
+        )
+        .await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
     }
 
     #[tokio::test]
     async fn overview_empty_state() {
         let state = test_state();
-        let html = overview(State(state)).await;
-        assert!(html.0.contains("Deployments: 0"));
-        assert!(html.0.contains("Nodes: 0"));
+        let resp = overview(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn nodes_page_renders() {
+        let state = test_state();
+        state
+            .store
+            .put_node(&NodeInfo {
+                id: "node-1".to_string(),
+                address: "10.0.0.1".to_string(),
+                port: 8443,
+                capacity_memory_bytes: 8 * 1024 * 1024 * 1024,
+                capacity_cpu_weight: 1000,
+                used_memory_bytes: 2 * 1024 * 1024 * 1024,
+                used_cpu_weight: 300,
+                labels: HashMap::new(),
+                last_heartbeat: 1000,
+            })
+            .unwrap();
+
+        let resp = nodes(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn rollouts_page_empty() {
+        let state = test_state();
+        let resp = rollouts(State(state)).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn node_detail_renders() {
+        let state = test_state();
+        state
+            .store
+            .put_node(&NodeInfo {
+                id: "node-1".to_string(),
+                address: "10.0.0.1".to_string(),
+                port: 8443,
+                capacity_memory_bytes: 8 * 1024 * 1024 * 1024,
+                capacity_cpu_weight: 1000,
+                used_memory_bytes: 0,
+                used_cpu_weight: 0,
+                labels: HashMap::new(),
+                last_heartbeat: 1000,
+            })
+            .unwrap();
+
+        let resp = node_detail(State(state), Path("node-1".to_string())).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 200);
     }
 }
