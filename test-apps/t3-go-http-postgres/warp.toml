@@ -1,0 +1,8 @@
+[package]
+name = "t3-go-http-postgres"
+version = "0.1.0"
+description = "T3 Integration Test: Go HTTP handler with Postgres via WarpGrid shims"
+
+[build]
+lang = "go"
+entry = "main.go"

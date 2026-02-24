@@ -2,7 +2,7 @@
 //!
 //! Supports multiple language targets:
 //! - `rust` — cargo-component (stub)
-//! - `go` — TinyGo (stub)
+//! - `go` — TinyGo wasip2
 //! - `typescript` / `js` — ComponentizeJS via jco
 //! - `bun` — Bun → jco pipeline (stub)
 
@@ -10,6 +10,7 @@ use anyhow::{Result, bail};
 use std::path::Path;
 use warp_core::WarpConfig;
 
+mod go;
 mod js;
 
 #[derive(Debug)]
@@ -27,7 +28,7 @@ pub fn pack(project_path: &Path) -> Result<PackResult> {
 
     match lang {
         "rust" => pack_rust(project_path, &config),
-        "go" => pack_go(project_path, &config),
+        "go" => go::pack_go(project_path, &config),
         "typescript" | "js" => js::pack_js(project_path, &config),
         "bun" => pack_bun(project_path, &config),
         _ => bail!("Unsupported language: {lang}. Supported: rust, go, typescript, js, bun"),
@@ -36,10 +37,6 @@ pub fn pack(project_path: &Path) -> Result<PackResult> {
 
 fn pack_rust(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
     bail!("Rust packaging not yet implemented. Requires cargo-component.")
-}
-
-fn pack_go(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
-    bail!("Go packaging not yet implemented. Requires TinyGo.")
 }
 
 fn pack_bun(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
