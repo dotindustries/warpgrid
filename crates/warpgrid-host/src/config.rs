@@ -13,6 +13,7 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use crate::db_proxy::PoolConfig;
+use crate::dns::cache::DnsCacheConfig;
 
 /// Known shim domain names for forward-compatibility validation.
 const KNOWN_SHIM_KEYS: &[&str] = &[
@@ -37,6 +38,16 @@ impl Default for DnsConfig {
         Self {
             ttl_seconds: 30,
             cache_size: 1024,
+        }
+    }
+}
+
+impl DnsConfig {
+    /// Convert to the internal `DnsCacheConfig` used by the cached DNS resolver.
+    pub fn to_cache_config(&self) -> DnsCacheConfig {
+        DnsCacheConfig {
+            ttl: Duration::from_secs(self.ttl_seconds),
+            max_entries: self.cache_size,
         }
     }
 }
@@ -123,6 +134,8 @@ pub struct ShimConfig {
     pub dns_config: DnsConfig,
     /// Domain-specific database proxy configuration.
     pub database_proxy_config: DatabaseProxyConfig,
+    /// DNS cache configuration (derived from dns_config).
+    pub dns_cache_config: DnsCacheConfig,
     /// Service registry entries for DNS resolution.
     pub service_registry: HashMap<String, Vec<IpAddr>>,
     /// Custom `/etc/hosts` content for DNS resolution.
@@ -136,6 +149,7 @@ pub struct ShimConfig {
 impl Default for ShimConfig {
     fn default() -> Self {
         let db_config = DatabaseProxyConfig::default();
+        let dns_config = DnsConfig::default();
         Self {
             filesystem: true,
             dns: true,
@@ -143,7 +157,8 @@ impl Default for ShimConfig {
             database_proxy: true,
             threading: true,
             filesystem_config: FilesystemConfig::default(),
-            dns_config: DnsConfig::default(),
+            dns_cache_config: dns_config.to_cache_config(),
+            dns_config,
             database_proxy_config: db_config.clone(),
             service_registry: HashMap::new(),
             etc_hosts_content: String::new(),
@@ -229,6 +244,7 @@ impl ShimConfig {
                     if let Some(size) = t.get("cache_size").and_then(|v| v.as_integer()) {
                         config.dns_config.cache_size = size as usize;
                     }
+                    config.dns_cache_config = config.dns_config.to_cache_config();
                 }
                 _ => anyhow::bail!("shims.dns must be a boolean or table"),
             }

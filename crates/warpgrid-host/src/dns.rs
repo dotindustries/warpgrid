@@ -6,12 +6,18 @@
 //! 3. **Host system DNS** — fallback via `tokio::net::lookup_host`
 //!
 //! Resolution stops at the first chain link that returns results.
+//! Results are cached with configurable TTL and returned in round-robin
+//! order for load balancing across service replicas.
 //! All resolution steps are logged at `tracing::debug` level.
 
+pub mod cache;
 pub mod host;
 
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::Mutex;
+
+use cache::{DnsCache, DnsCacheConfig};
 
 /// Parsed `/etc/hosts` entries: hostname → list of IP addresses.
 ///
@@ -173,6 +179,114 @@ impl DnsResolver {
                 Err(format!("HostNotFound: {hostname}"))
             }
         }
+    }
+}
+
+/// DNS resolver with TTL caching and round-robin address selection.
+///
+/// Wraps a [`DnsResolver`] and a [`DnsCache`], caching successful resolution
+/// results with a configurable TTL. Consecutive lookups for hostnames with
+/// multiple addresses are returned in round-robin order using per-hostname
+/// atomic counters (no mutex contention on the hot path once the cache
+/// lock is released).
+///
+/// # Concurrency
+///
+/// The cache is protected by a `std::sync::Mutex`. Lock hold time is
+/// minimised to a single hash map lookup or insert — the expensive async
+/// resolution runs *outside* the lock.
+pub struct CachedDnsResolver {
+    /// The underlying resolver implementing the three-tier chain.
+    resolver: DnsResolver,
+    /// TTL-bounded, LRU-evicting DNS cache.
+    cache: Mutex<DnsCache>,
+}
+
+impl CachedDnsResolver {
+    /// Create a new cached resolver.
+    ///
+    /// # Arguments
+    /// - `resolver` — the underlying DNS resolver
+    /// - `cache_config` — TTL and capacity configuration for the cache
+    pub fn new(resolver: DnsResolver, cache_config: DnsCacheConfig) -> Self {
+        Self {
+            resolver,
+            cache: Mutex::new(DnsCache::new(cache_config)),
+        }
+    }
+
+    /// Resolve a hostname, returning all addresses.
+    ///
+    /// Checks the cache first. On a miss (or TTL expiry), delegates to the
+    /// underlying resolver and caches the result.
+    pub async fn resolve(&self, hostname: &str) -> Result<Vec<IpAddr>, String> {
+        // Fast path: check cache
+        {
+            let mut cache = self.cache.lock().unwrap();
+            if let Some(addrs) = cache.get(hostname) {
+                return Ok(addrs.to_vec());
+            }
+        }
+
+        // Cache miss — resolve through the chain
+        let addrs = self.resolver.resolve(hostname).await?;
+
+        // Populate cache
+        {
+            let mut cache = self.cache.lock().unwrap();
+            cache.insert(hostname, addrs.clone());
+        }
+
+        Ok(addrs)
+    }
+
+    /// Resolve a hostname and return one address in round-robin order.
+    ///
+    /// Checks the cache first. On a miss, resolves and caches, then returns
+    /// the first address. Subsequent calls cycle through all cached addresses.
+    pub async fn resolve_round_robin(&self, hostname: &str) -> Result<IpAddr, String> {
+        // Fast path: check cache for round-robin hit
+        {
+            let mut cache = self.cache.lock().unwrap();
+            if let Some(addr) = cache.get_round_robin(hostname) {
+                return Ok(addr);
+            }
+        }
+
+        // Cache miss — resolve through the chain
+        let addrs = self.resolver.resolve(hostname).await?;
+
+        if addrs.is_empty() {
+            return Err(format!("HostNotFound: {hostname}"));
+        }
+
+        // First address to return (before cache takes ownership)
+        let first = addrs[0];
+
+        // Populate cache (next call will get round-robin index 1)
+        {
+            let mut cache = self.cache.lock().unwrap();
+            cache.insert(hostname, addrs);
+            // Advance the counter once since we're returning the first address
+            // The insert creates a fresh entry with counter 0, and the caller
+            // gets index 0. Next get_round_robin will get index 0 again (since
+            // we haven't called get_round_robin yet for this entry). We need
+            // to call get_round_robin to advance the counter properly.
+            let _ = cache.get_round_robin(hostname);
+        }
+
+        Ok(first)
+    }
+
+    /// Get a reference to the underlying resolver.
+    pub fn resolver(&self) -> &DnsResolver {
+        &self.resolver
+    }
+
+    /// Get cache statistics: `(hits, misses, evictions)`.
+    pub fn cache_stats(&self) -> (u64, u64, u64) {
+        let cache = self.cache.lock().unwrap();
+        cache.stats()
     }
 }
 
@@ -434,5 +548,155 @@ mod tests {
         assert_eq!(addrs.len(), 2);
         assert!(addrs.iter().any(|a| a.is_ipv4()));
         assert!(addrs.iter().any(|a| a.is_ipv6()));
+    }
+
+    // ── CachedDnsResolver ────────────────────────────────────────────
+
+    fn make_cached_resolver(
+        registry: HashMap<String, Vec<IpAddr>>,
+        hosts_content: &str,
+        cache_config: DnsCacheConfig,
+    ) -> CachedDnsResolver {
+        let resolver = DnsResolver::new(registry, hosts_content);
+        CachedDnsResolver::new(resolver, cache_config)
+    }
+
+    #[tokio::test]
+    async fn cached_resolve_returns_same_as_uncached() {
+        let mut registry = HashMap::new();
+        let expected = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5));
+        registry.insert("db.warp.local".to_string(), vec![expected]);
+
+        let cached = make_cached_resolver(registry, "", DnsCacheConfig::default());
+        let addrs = cached.resolve("db.warp.local").await.unwrap();
+        assert_eq!(addrs, vec![expected]);
+    }
+
+    #[tokio::test]
+    async fn cached_resolve_second_call_hits_cache() {
+        let mut registry = HashMap::new();
+        registry.insert(
+            "db.warp.local".to_string(),
+            vec![IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5))],
+        );
+        let cached = make_cached_resolver(registry, "", DnsCacheConfig::default());
+
+        // First call: miss
+        cached.resolve("db.warp.local").await.unwrap();
+        // Second call: hit
+        cached.resolve("db.warp.local").await.unwrap();
+
+        let (hits, misses, _) = cached.cache_stats();
+        assert_eq!(hits, 1);
+        assert_eq!(misses, 1);
+    }
+
+    #[tokio::test]
+    async fn cached_resolve_ttl_expiry_re_resolves() {
+        use std::time::Duration;
+
+        let mut registry = HashMap::new();
+        registry.insert(
+            "svc.warp.local".to_string(),
+            vec![IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))],
+        );
+        let config = DnsCacheConfig {
+            ttl: Duration::from_millis(50),
+            max_entries: 1024,
+        };
+        let cached = make_cached_resolver(registry, "", config);
+
+        // First call: miss
+        cached.resolve("svc.warp.local").await.unwrap();
+
+        // Wait for TTL to expire
+        tokio::time::sleep(Duration::from_millis(80)).await;
+
+        // Second call: miss again (expired)
+        cached.resolve("svc.warp.local").await.unwrap();
+
+        let (hits, misses, _) = cached.cache_stats();
+        assert_eq!(hits, 0);
+        assert_eq!(misses, 2);
+    }
+
+    #[tokio::test]
+    async fn cached_round_robin_cycles_addresses() {
+        let mut registry = HashMap::new();
+        let addrs = vec![
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3)),
+        ];
+        registry.insert("api.warp.local".to_string(), addrs.clone());
+
+        let cached = make_cached_resolver(registry, "", DnsCacheConfig::default());
+
+        // First call populates cache and returns first address
+        let a1 = cached.resolve_round_robin("api.warp.local").await.unwrap();
+        assert_eq!(a1, addrs[0]);
+
+        // Subsequent calls cycle through cached addresses
+        let a2 = cached.resolve_round_robin("api.warp.local").await.unwrap();
+        assert_eq!(a2, addrs[1]);
+
+        let a3 = cached.resolve_round_robin("api.warp.local").await.unwrap();
+        assert_eq!(a3, addrs[2]);
+
+        // Wraps around
+        let a4 = cached.resolve_round_robin("api.warp.local").await.unwrap();
+        assert_eq!(a4, addrs[0]);
+    }
+
+    #[tokio::test]
+    async fn cached_round_robin_single_address() {
+        let mut registry = HashMap::new();
+        let addr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        registry.insert("single.warp.local".to_string(), vec![addr]);
+
+        let cached = make_cached_resolver(registry, "", DnsCacheConfig::default());
+
+        for _ in 0..5 {
+            let result = cached.resolve_round_robin("single.warp.local").await.unwrap();
+            assert_eq!(result, addr);
+        }
+    }
+
+    #[tokio::test]
+    async fn cached_resolve_nonexistent_returns_error() {
+        let cached = make_cached_resolver(HashMap::new(), "", DnsCacheConfig::default());
+
+        let result = cached
+            .resolve("this-hostname-definitely-does-not-exist.invalid")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("HostNotFound"));
+    }
+
+    #[tokio::test]
+    async fn cached_resolve_nonexistent_not_cached() {
+        let cached = make_cached_resolver(HashMap::new(), "", DnsCacheConfig::default());
+
+        // Failed resolutions should not be cached
+        let _ = cached
+            .resolve("nonexistent.invalid")
+            .await;
+
+        let (hits, _, _) = cached.cache_stats();
+        assert_eq!(hits, 0);
+    }
+
+    #[tokio::test]
+    async fn cached_resolve_etc_hosts_fallback() {
+        let hosts = "10.0.0.20 cache.warp.local\n";
+        let cached = make_cached_resolver(HashMap::new(), hosts, DnsCacheConfig::default());
+
+        let addrs = cached.resolve("cache.warp.local").await.unwrap();
+        assert_eq!(addrs[0], IpAddr::V4(Ipv4Addr::new(10, 0, 0, 20)));
+
+        // Second call should hit cache
+        cached.resolve("cache.warp.local").await.unwrap();
+        let (hits, _, _) = cached.cache_stats();
+        assert_eq!(hits, 1);
     }
 }

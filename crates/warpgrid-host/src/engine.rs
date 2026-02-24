@@ -22,6 +22,7 @@ use crate::bindings::WarpgridShims;
 use crate::config::ShimConfig;
 use crate::db_proxy::host::DbProxyHost;
 use crate::db_proxy::{ConnectionFactory, ConnectionPoolManager};
+use crate::dns::CachedDnsResolver;
 use crate::dns::host::DnsHost;
 use crate::dns::DnsResolver;
 use crate::filesystem::host::FilesystemHost;
@@ -216,12 +217,16 @@ impl WarpGridEngine {
         };
 
         let dns = if config.dns {
-            let resolver = Arc::new(DnsResolver::new(
+            let resolver = DnsResolver::new(
                 config.service_registry.clone(),
                 &config.etc_hosts_content,
+            );
+            let cached = Arc::new(CachedDnsResolver::new(
+                resolver,
+                config.dns_cache_config.clone(),
             ));
             let runtime_handle = tokio::runtime::Handle::current();
-            Some(DnsHost::new(resolver, runtime_handle))
+            Some(DnsHost::new(cached, runtime_handle))
         } else {
             None
         };

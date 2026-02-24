@@ -15,13 +15,43 @@
 //! ```
 
 pub mod host;
+pub mod mysql;
+pub mod redis;
 pub mod tcp;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{Mutex, Semaphore};
+
+/// Wire protocol type for a database connection.
+///
+/// The pool manager uses this to differentiate pools and select
+/// protocol-specific health check strategies. The actual wire protocol
+/// bytes are always passed through without parsing — the guest module
+/// handles all protocol negotiation (handshakes, auth, queries).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum Protocol {
+    /// PostgreSQL wire protocol (default).
+    #[default]
+    Postgres,
+    /// MySQL wire protocol.
+    MySQL,
+    /// Redis RESP protocol.
+    Redis,
+}
+
+impl std::fmt::Display for Protocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Protocol::Postgres => write!(f, "postgres"),
+            Protocol::MySQL => write!(f, "mysql"),
+            Protocol::Redis => write!(f, "redis"),
+        }
+    }
+}
 
 /// Key identifying a connection pool — connections with the same key share a pool.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -30,6 +60,7 @@ pub struct PoolKey {
     pub port: u16,
     pub database: String,
     pub user: String,
+    pub protocol: Protocol,
 }
 
 impl PoolKey {
@@ -39,6 +70,24 @@ impl PoolKey {
             port,
             database: database.to_string(),
             user: user.to_string(),
+            protocol: Protocol::default(),
+        }
+    }
+
+    /// Create a pool key with an explicit protocol discriminator.
+    pub fn with_protocol(
+        host: &str,
+        port: u16,
+        database: &str,
+        user: &str,
+        protocol: Protocol,
+    ) -> Self {
+        Self {
+            host: host.to_string(),
+            port,
+            database: database.to_string(),
+            user: user.to_string(),
+            protocol,
         }
     }
 }
@@ -60,6 +109,10 @@ pub struct PoolConfig {
     pub use_tls: bool,
     /// Whether to verify TLS certificates (default: true).
     pub verify_certificates: bool,
+    /// Timeout for connection draining on shutdown (default: 30s).
+    /// During draining, new `connect()` calls are rejected while in-flight
+    /// operations are allowed to complete up to this timeout.
+    pub drain_timeout: Duration,
 }
 
 impl Default for PoolConfig {
@@ -72,6 +125,7 @@ impl Default for PoolConfig {
             recv_timeout: Duration::from_secs(30),
             use_tls: true,
             verify_certificates: true,
+            drain_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -149,10 +203,14 @@ pub struct PoolStats {
     pub wait_count: u64,
 }
 
-/// Manages connection pools keyed by `(host, port, database, user)` tuple.
+/// Manages connection pools keyed by `(host, port, database, user, protocol)` tuple.
 ///
 /// Each unique tuple gets its own bounded pool. Connections are reused
 /// when returned via `release()` and reaped when idle too long.
+///
+/// Supports connection draining on shutdown: calling `drain()` stops
+/// accepting new connections while allowing in-flight operations to
+/// complete up to the configured drain timeout.
 pub struct ConnectionPoolManager {
     /// Per-key pools.
     pools: Mutex<HashMap<PoolKey, Pool>>,
@@ -166,6 +224,8 @@ pub struct ConnectionPoolManager {
     factory: Arc<dyn ConnectionFactory>,
     /// Per-key wait counters for statistics.
     wait_counts: Mutex<HashMap<PoolKey, u64>>,
+    /// When true, new `checkout()` calls are rejected.
+    draining: AtomicBool,
 }
 
 impl ConnectionPoolManager {
@@ -178,7 +238,13 @@ impl ConnectionPoolManager {
             config,
             factory,
             wait_counts: Mutex::new(HashMap::new()),
+            draining: AtomicBool::new(false),
         }
+    }
+
+    /// Check if the pool manager is currently draining connections.
+    pub fn is_draining(&self) -> bool {
+        self.draining.load(Ordering::Relaxed)
     }
 
     /// Allocate the next connection handle.
@@ -199,6 +265,10 @@ impl ConnectionPoolManager {
         key: &PoolKey,
         password: Option<&str>,
     ) -> Result<u64, String> {
+        if self.draining.load(Ordering::Relaxed) {
+            return Err("connection pool is draining — no new connections accepted".to_string());
+        }
+
         let semaphore = {
             let mut pools = self.pools.lock().await;
             let pool = pools
@@ -249,6 +319,7 @@ impl ConnectionPoolManager {
                     host = %key.host,
                     port = key.port,
                     database = %key.database,
+                    protocol = %key.protocol,
                     "reused idle connection from pool"
                 );
                 self.checked_out.lock().await.insert(handle, conn);
@@ -292,6 +363,7 @@ impl ConnectionPoolManager {
             host = %key.host,
             port = key.port,
             database = %key.database,
+            protocol = %key.protocol,
             "created new connection"
         );
 
@@ -462,6 +534,75 @@ impl ConnectionPoolManager {
         }
     }
 
+    /// Drain all connections: stop accepting new `connect()` calls, wait for
+    /// in-flight connections to be released, then close all remaining connections.
+    ///
+    /// Returns the number of connections that were force-closed after the
+    /// drain timeout expired.
+    pub async fn drain(&self) -> usize {
+        self.draining.store(true, Ordering::Relaxed);
+        tracing::info!(
+            drain_timeout = ?self.config.drain_timeout,
+            "connection pool draining started"
+        );
+
+        // Poll until all checked-out connections are released, or timeout.
+        let deadline = Instant::now() + self.config.drain_timeout;
+        let poll_interval = Duration::from_millis(50);
+
+        loop {
+            let active_count = self.checked_out.lock().await.len();
+            if active_count == 0 {
+                tracing::info!("all in-flight connections drained gracefully");
+                break;
+            }
+            if Instant::now() >= deadline {
+                tracing::warn!(
+                    remaining = active_count,
+                    "drain timeout expired, force-closing remaining connections"
+                );
+                break;
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+
+        // Force-close any remaining checked-out connections.
+        let mut checked_out = self.checked_out.lock().await;
+        let force_closed = checked_out.len();
+        for (handle, mut conn) in checked_out.drain() {
+            if let Some(backend) = conn.connection_data.as_mut() {
+                backend.close();
+            }
+            tracing::debug!(handle = handle, "force-closed connection during drain");
+        }
+
+        // Close all idle connections.
+        let mut pools = self.pools.lock().await;
+        for (key, pool) in pools.iter_mut() {
+            let idle_count = pool.idle.len();
+            for mut conn in pool.idle.drain(..) {
+                if let Some(backend) = conn.connection_data.as_mut() {
+                    backend.close();
+                }
+            }
+            pool.total_count = 0;
+            if idle_count > 0 {
+                tracing::debug!(
+                    host = %key.host,
+                    port = key.port,
+                    closed = idle_count,
+                    "closed idle connections during drain"
+                );
+            }
+        }
+
+        tracing::info!(
+            force_closed = force_closed,
+            "connection pool drain complete"
+        );
+        force_closed
+    }
+
     /// Log pool statistics for all pools at `tracing::info` level.
     pub async fn log_stats(&self) {
         let pools = self.pools.lock().await;
@@ -496,6 +637,7 @@ impl std::fmt::Debug for ConnectionPoolManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConnectionPoolManager")
             .field("config", &self.config)
+            .field("draining", &self.draining.load(Ordering::Relaxed))
             .finish_non_exhaustive()
     }
 }
@@ -595,6 +737,7 @@ mod tests {
             recv_timeout: Duration::from_secs(30),
             use_tls: false,
             verify_certificates: false,
+            drain_timeout: Duration::from_millis(200),
         }
     }
 
@@ -1045,5 +1188,168 @@ mod tests {
         let stats = mgr.stats(&key).await;
         assert_eq!(stats.active, 0);
         assert_eq!(stats.idle, 1);
+    }
+
+    // ── Protocol enum ──────────────────────────────────────────────
+
+    #[test]
+    fn protocol_default_is_postgres() {
+        assert_eq!(Protocol::default(), Protocol::Postgres);
+    }
+
+    #[test]
+    fn protocol_display() {
+        assert_eq!(Protocol::Postgres.to_string(), "postgres");
+        assert_eq!(Protocol::MySQL.to_string(), "mysql");
+        assert_eq!(Protocol::Redis.to_string(), "redis");
+    }
+
+    #[test]
+    fn protocol_equality() {
+        assert_eq!(Protocol::MySQL, Protocol::MySQL);
+        assert_ne!(Protocol::MySQL, Protocol::Postgres);
+        assert_ne!(Protocol::MySQL, Protocol::Redis);
+    }
+
+    // ── PoolKey with protocol ──────────────────────────────────────
+
+    #[test]
+    fn pool_key_new_defaults_to_postgres() {
+        let key = PoolKey::new("host", 5432, "db", "user");
+        assert_eq!(key.protocol, Protocol::Postgres);
+    }
+
+    #[test]
+    fn pool_key_with_protocol() {
+        let key = PoolKey::with_protocol("host", 3306, "db", "user", Protocol::MySQL);
+        assert_eq!(key.protocol, Protocol::MySQL);
+    }
+
+    #[test]
+    fn pool_key_different_protocol_not_equal() {
+        let pg = PoolKey::with_protocol("host", 5432, "db", "user", Protocol::Postgres);
+        let mysql = PoolKey::with_protocol("host", 5432, "db", "user", Protocol::MySQL);
+        assert_ne!(pg, mysql, "same host:port with different protocols must be separate pools");
+    }
+
+    #[test]
+    fn pool_key_different_protocol_different_hash() {
+        use std::hash::{Hash, Hasher};
+        let pg = PoolKey::with_protocol("host", 5432, "db", "user", Protocol::Postgres);
+        let mysql = PoolKey::with_protocol("host", 5432, "db", "user", Protocol::MySQL);
+
+        let mut h1 = std::collections::hash_map::DefaultHasher::new();
+        let mut h2 = std::collections::hash_map::DefaultHasher::new();
+        pg.hash(&mut h1);
+        mysql.hash(&mut h2);
+        assert_ne!(h1.finish(), h2.finish());
+    }
+
+    #[tokio::test]
+    async fn different_protocols_get_separate_pools() {
+        let (mgr, factory) = make_manager(test_config());
+        let pg_key = PoolKey::with_protocol("db.local", 5432, "app", "user", Protocol::Postgres);
+        let mysql_key = PoolKey::with_protocol("db.local", 3306, "app", "user", Protocol::MySQL);
+
+        mgr.checkout(&pg_key, None).await.unwrap();
+        mgr.checkout(&mysql_key, None).await.unwrap();
+
+        // Separate pools — two factory calls.
+        assert_eq!(factory.connects(), 2);
+
+        let pg_stats = mgr.stats(&pg_key).await;
+        let mysql_stats = mgr.stats(&mysql_key).await;
+        assert_eq!(pg_stats.active, 1);
+        assert_eq!(mysql_stats.active, 1);
+    }
+
+    // ── PoolConfig: drain_timeout ──────────────────────────────────
+
+    #[test]
+    fn pool_config_default_drain_timeout() {
+        let config = PoolConfig::default();
+        assert_eq!(config.drain_timeout, Duration::from_secs(30));
+    }
+
+    // ── Connection draining ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn drain_rejects_new_connections() {
+        let (mgr, _) = make_manager(test_config());
+        let key = test_key();
+
+        // Checkout one connection, then start draining.
+        let h = mgr.checkout(&key, None).await.unwrap();
+        assert!(!mgr.is_draining());
+
+        // Trigger drain in background so we can test checkout rejection.
+        mgr.draining.store(true, Ordering::Relaxed);
+        assert!(mgr.is_draining());
+
+        // New checkouts are rejected.
+        let result = mgr.checkout(&key, None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("draining"));
+
+        mgr.release(h).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn drain_waits_for_inflight_then_closes() {
+        let (mgr, _) = make_manager(test_config());
+        let mgr = Arc::new(mgr);
+        let key = test_key();
+
+        // Checkout a connection.
+        let h = mgr.checkout(&key, None).await.unwrap();
+        assert_eq!(mgr.stats(&key).await.active, 1);
+
+        // Start drain in background.
+        let mgr_clone = Arc::clone(&mgr);
+        let drain_handle = tokio::spawn(async move {
+            mgr_clone.drain().await
+        });
+
+        // Give drain a moment to start, then release.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        mgr.release(h).await.unwrap();
+
+        // Drain should complete with 0 force-closed.
+        let force_closed = drain_handle.await.unwrap();
+        assert_eq!(force_closed, 0, "all connections released gracefully");
+    }
+
+    #[tokio::test]
+    async fn drain_force_closes_after_timeout() {
+        let config = PoolConfig {
+            drain_timeout: Duration::from_millis(50),
+            ..test_config()
+        };
+        let (mgr, _) = make_manager(config);
+        let mgr = Arc::new(mgr);
+        let key = test_key();
+
+        // Checkout a connection and never release it.
+        let _h = mgr.checkout(&key, None).await.unwrap();
+
+        // Drain should timeout and force-close.
+        let force_closed = mgr.drain().await;
+        assert_eq!(force_closed, 1, "one connection should be force-closed");
+    }
+
+    #[tokio::test]
+    async fn drain_closes_idle_connections() {
+        let (mgr, _) = make_manager(test_config());
+        let key = test_key();
+
+        // Create and release a connection (goes to idle pool).
+        let h = mgr.checkout(&key, None).await.unwrap();
+        mgr.release(h).await.unwrap();
+        assert_eq!(mgr.stats(&key).await.idle, 1);
+
+        // Drain should close idle connections too.
+        let force_closed = mgr.drain().await;
+        assert_eq!(force_closed, 0, "no active connections to force-close");
+        assert_eq!(mgr.stats(&key).await.idle, 0, "idle connections should be closed");
     }
 }
