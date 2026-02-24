@@ -1,0 +1,8 @@
+[package]
+name = "js-warpgrid-handler"
+version = "0.1.0"
+description = "Test fixture: JS handler using WarpGrid shim globals"
+
+[build]
+lang = "js"
+entry = "src/handler.js"
