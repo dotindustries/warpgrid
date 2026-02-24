@@ -152,6 +152,19 @@ after each iteration and it's included in prompts for context.
 - `jco serve` for verification (Node.js based, supports WASI 0.2.3); `wasmtime serve` requires Wasmtime 41+
 - Idempotency via stamp file: `build/componentize-js/.build-stamp` records `tag:jco_version:mode`
 
+### Bun SDK Architecture (Domain 6)
+- Package: `@warpgrid/bun-sdk` at `packages/warpgrid-bun-sdk/`
+- Subpath exports: `@warpgrid/bun-sdk/postgres`, `@warpgrid/bun-sdk/errors`
+- Dual-mode pattern: `createPool(config?)` auto-detects native vs Wasm via `typeof globalThis.Bun`
+- Mode override: `config.mode = 'native' | 'wasm' | 'auto'`
+- Wasm mode shim injection: `config.shim` or `globalThis.warpgrid.database`
+- `WasmPool` manages client-side pool of connection handles + Postgres wire protocol
+- `NativePool` wraps `pg.Pool` with lazy initialization via dynamic import
+- `WarpGridDatabaseError` extends `WarpGridError` extends `Error` — always chains `cause`
+- Wire protocol: `postgres-protocol.ts` handles startup, auth (trust/cleartext/MD5), simple query (`Q`), extended query (Parse/Bind/Execute/Sync), and response parsing
+- Test pattern: `MockDatabaseShim` with per-handle response queues for protocol-level testing
+- Bun tsconfig requires `allowImportingTsExtensions: true` for `.ts` import paths
+
 ---
 
 ## 2026-02-22 - warpgrid-agm.2
@@ -655,5 +668,31 @@ after each iteration and it's included in prompts for context.
   - Raw TCP pool reuse doesn't work with Postgres protocol — reused connections are already past the handshake phase. Protocol-aware pooling (like PgBouncer) is needed for real pool reuse
   - The `test-apps/` directory is a new top-level convention for cross-domain integration tests (distinct from `tests/fixtures/` which are guest components)
   - ComponentizeJS supports arbitrary WIT imports via `import { fn } from 'package:interface/name'` ES module syntax (e.g., `import { connect } from "warpgrid:shim/database-proxy@0.1.0"`)
+---
+
+## 2026-02-24 - warpgrid-agm.73
+- **What was implemented:** US-606 — `@warpgrid/bun-sdk/postgres` with dual-mode `createPool()` function
+- **Files changed:**
+  - `packages/warpgrid-bun-sdk/package.json` — Package config with `pg` dependency, bun scripts
+  - `packages/warpgrid-bun-sdk/tsconfig.json` — TypeScript config with `allowImportingTsExtensions`
+  - `packages/warpgrid-bun-sdk/src/errors.ts` — `WarpGridError` and `WarpGridDatabaseError` with cause chaining
+  - `packages/warpgrid-bun-sdk/src/postgres.ts` — `createPool()` factory, `Pool` interface, types, mode detection
+  - `packages/warpgrid-bun-sdk/src/postgres-protocol.ts` — Postgres v3.0 wire protocol: startup, auth (trust/cleartext/MD5), simple query, extended query (parameterized), response parsing
+  - `packages/warpgrid-bun-sdk/src/postgres-wasm.ts` — `WasmPool` using `DatabaseProxyShim` with client-side connection management, wire protocol handshake, query execution
+  - `packages/warpgrid-bun-sdk/src/postgres-native.ts` — `NativePool` delegating to `pg` npm package with lazy init
+  - `packages/warpgrid-bun-sdk/src/index.ts` — Public re-exports
+  - `packages/warpgrid-bun-sdk/tests/errors.test.ts` — 5 error type tests
+  - `packages/warpgrid-bun-sdk/tests/protocol.test.ts` — 16 wire protocol tests
+  - `packages/warpgrid-bun-sdk/tests/pool-wasm.test.ts` — 14 WasmPool tests with mock shim
+  - `packages/warpgrid-bun-sdk/tests/pool.test.ts` — 10 factory + mode detection tests
+- **Quality gates:** `bun run typecheck` passes, `bun test` passes (65 tests, 0 failures)
+- **Learnings:**
+  - Bun's TypeScript type checking with `@types/bun` needs `allowImportingTsExtensions: true` for `.ts` import paths
+  - `crypto.subtle.digest()` in strict TypeScript rejects `Uint8Array` directly — must copy to a fresh `ArrayBuffer` first
+  - Postgres wire protocol startup handshake is entirely guest-side when using byte passthrough proxy — the SDK must handle auth exchange, not the host
+  - Mode detection pattern: `typeof (globalThis as Record<string, unknown>).Bun !== "undefined"` works cross-environment without `@ts-expect-error`
+  - Mock shim pattern: `MockDatabaseShim` with response queues per handle enables realistic protocol testing without a real database
+  - WasmPool manages a client-side connection pool (checkout/return) on top of the host's pool — `getPoolSize()`/`getIdleCount()` reflect the guest-side pool state
+  - Extended query protocol (Parse/Bind/Execute/Sync) needed for parameterized queries — simple query protocol (`Q` message) only supports inline SQL
 ---
 
