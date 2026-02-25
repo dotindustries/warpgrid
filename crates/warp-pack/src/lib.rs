@@ -1,17 +1,14 @@
 //! warp pack — compile and package Wasm components.
 //!
-//! Supports multiple language targets:
-//! - `rust` — cargo-component (stub)
-//! - `go` — TinyGo wasip2
-//! - `typescript` / `js` — ComponentizeJS via jco
-//! - `bun` — Bun → jco pipeline (stub)
+//! Phase 1: wraps cargo-component, TinyGo, and ComponentizeJS.
+//! Phase 2: adds Bun compilation via bun build + jco componentize.
 
 use anyhow::{Result, bail};
+use sha2::{Sha256, Digest};
 use std::path::Path;
 use warp_core::WarpConfig;
 
-mod go;
-mod js;
+mod bun;
 
 #[derive(Debug)]
 pub struct PackResult {
@@ -28,17 +25,33 @@ pub fn pack(project_path: &Path) -> Result<PackResult> {
 
     match lang {
         "rust" => pack_rust(project_path, &config),
-        "go" => go::pack_go(project_path, &config),
-        "typescript" | "js" => js::pack_js(project_path, &config),
-        "bun" => pack_bun(project_path, &config),
-        _ => bail!("Unsupported language: {lang}. Supported: rust, go, typescript, js, bun"),
+        "go" => pack_go(project_path, &config),
+        "typescript" => pack_typescript(project_path, &config),
+        "bun" => bun::pack_bun(project_path, &config),
+        _ => bail!("Unsupported language: {lang}. Supported: rust, go, typescript, bun"),
     }
 }
 
+/// Compute SHA-256 hash of a file and return the hex digest.
+pub(crate) fn sha256_file(path: &Path) -> Result<String> {
+    let bytes = std::fs::read(path)?;
+    let hash = Sha256::digest(&bytes);
+    Ok(hex::encode(hash))
+}
+
 fn pack_rust(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
+    // TODO: Invoke cargo-component
+    // cargo component build --release --target wasm32-wasip2
     bail!("Rust packaging not yet implemented. Requires cargo-component.")
 }
 
-fn pack_bun(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
-    bail!("Bun packaging not yet implemented. Requires @warpgrid/bun-sdk.")
+fn pack_go(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
+    // TODO: Invoke TinyGo or Go 1.24+
+    // tinygo build -target=wasip2 -o output.wasm
+    bail!("Go packaging not yet implemented. Requires TinyGo.")
+}
+
+fn pack_typescript(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
+    // TODO: Invoke ComponentizeJS
+    bail!("TypeScript packaging not yet implemented. Requires ComponentizeJS.")
 }
