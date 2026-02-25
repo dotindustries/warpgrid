@@ -668,3 +668,24 @@ after each iteration and it's included in prompts for context.
   - Postgres wire protocol canned responses: RowDescription ('T') + DataRow ('D') + CommandComplete ('C') + ReadyForQuery ('Z')
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
 ---
+
+## 2026-02-25 - warpgrid-agm.84
+- Implemented US-702: Rust HTTP + Postgres integration test (T1)
+- Created end-to-end integration test for the Rust axum compilation path with DNS and database proxy shims
+- All 6 integration tests pass (total: 357 tests across workspace)
+- Files changed:
+  - NEW: `test-apps/t1-rust-http-postgres/` — reference Rust axum application (Cargo.toml + src/main.rs)
+  - NEW: `tests/fixtures/rust-http-postgres-guest/` — Wasm guest component fixture (Cargo.toml, src/lib.rs, wit/)
+  - NEW: `crates/warpgrid-host/tests/integration_rust_http_postgres.rs` — 6 integration tests
+- Test coverage:
+  1. DNS resolution for db.test.warp.local via service registry
+  2. GET /users returns 5 seed users via Postgres wire protocol
+  3. POST /users (INSERT frank) then GET returns 6 users including frank
+  4. Invalid DB host returns DNS error (simulates 503)
+  5. Proxy round-trip echoes bytes through database proxy shim
+  6. Full lifecycle: all 4 exports exercised sequentially with fresh instances
+- **Learnings:**
+  - Extracted `fresh_instance()` as an async function instead of T3's macro approach — async functions are cleaner than macros when lifetime constraints allow it
+  - Guest fixtures use `[workspace]` empty table in Cargo.toml to prevent Cargo from treating them as part of the main workspace — critical for independent `wasm32-unknown-unknown` builds
+  - T1 (Rust axum path) and T3 (Go TinyGo path) share identical shim chain patterns — validates cross-language shim layer design
+---

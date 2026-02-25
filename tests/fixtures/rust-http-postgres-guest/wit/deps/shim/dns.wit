@@ -1,0 +1,19 @@
+package warpgrid:shim@0.1.0;
+
+/// DNS resolution shim interface.
+///
+/// Routes hostname resolution through WarpGrid's service registry,
+/// virtual `/etc/hosts`, and host system DNS in that order.
+interface dns {
+    /// A resolved IP address record.
+    record ip-address-record {
+        /// The IP address as a string (e.g. "10.0.0.1" or "::1").
+        address: string,
+        /// Whether this is an IPv6 address.
+        is-ipv6: bool,
+    }
+
+    /// Resolve a hostname to a list of IP address records.
+    /// The resolution chain is: service registry -> /etc/hosts -> system DNS.
+    resolve-address: func(hostname: string) -> result<list<ip-address-record>, string>;
+}
