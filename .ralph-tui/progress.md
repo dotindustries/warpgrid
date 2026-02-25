@@ -152,6 +152,16 @@ after each iteration and it's included in prompts for context.
 - `jco serve` for verification (Node.js based, supports WASI 0.2.3); `wasmtime serve` requires Wasmtime 41+
 - Idempotency via stamp file: `build/componentize-js/.build-stamp` records `tag:jco_version:mode`
 
+### Bun Pack Pipeline (warp-pack)
+- Pipeline: `bun build --target browser --format esm` → `jco componentize` → `wasm-tools component wit` validate
+- jco resolution: `$WARPGRID_JCO_PATH` > `build/componentize-js/node_modules/.bin/jco` > `$PATH`
+- WIT resolution: project-local `wit/` > shared `tests/fixtures/js-http-handler/wit/`
+- Output: `target/wasm/<module-name>.wasm` (consistent with other language targets)
+- `find_project_root()` walks up from project path, falls back to CWD for tempdir compatibility
+- Bun handlers use same `addEventListener("fetch", ...)` pattern as ComponentizeJS (Domain 4)
+- jco error messages include hint about unsupported APIs and native bindings
+- Entry point validated before toolchain resolution for better error UX
+
 ---
 
 ## 2026-02-22 - warpgrid-agm.2
@@ -667,4 +677,26 @@ after each iteration and it's included in prompts for context.
   - Guest `#![no_std]` requires explicit `#[panic_handler]` for wasm32-unknown-unknown target
   - Postgres wire protocol canned responses: RowDescription ('T') + DataRow ('D') + CommandComplete ('C') + ReadyForQuery ('Z')
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
+---
+
+## 2026-02-25 - warpgrid-agm.70
+- **What was implemented:** US-603 — `warp pack --lang bun` compilation pipeline
+  - 3-stage pipeline: `bun build` (bundle) → `jco componentize` (Wasm) → `wasm-tools component wit` (validate)
+  - Added `"bun"` case to `warp_pack::pack()` language dispatcher
+  - Tool resolution: jco via `$WARPGRID_JCO_PATH` > project-local `build/componentize-js/` > `$PATH`
+  - WIT resolution: project `wit/` > shared fixture `tests/fixtures/js-http-handler/wit/`
+  - Output to `target/wasm/<module-name>.wasm` with SHA-256 hash
+  - Error messages include stderr/stdout from failed tools, exit codes, and hints about unsupported APIs
+  - 12 tests: 6 unit (dispatch, entry point, build section, jco env, WIT resolution) + 3 bun-only + 3 full pipeline integration
+- **Files changed:**
+  - `crates/warp-pack/src/lib.rs` — added `mod bun`, `#[derive(Debug)]` on `PackResult`, `sha256_file()` helper
+  - `crates/warp-pack/src/bun.rs` — NEW: full Bun compilation pipeline module (270 lines production + 270 lines tests)
+  - `crates/warp-pack/Cargo.toml` — added `tempfile` dev-dependency
+- **Learnings:**
+  - Rust 2024 edition makes `std::env::set_var` and `std::env::remove_var` unsafe (data race protection)
+  - `find_project_root()` must fall back to CWD-based search when project_path is a tempdir (common in tests)
+  - Clippy in Rust 2024 aggressively enforces `collapsible_if` with `let` chains (edition 2024 feature)
+  - `bun build --target browser --format esm` produces a WASI-compatible bundle (no Node.js polyfills injected)
+  - jco componentize reuses the same WIT definitions as TypeScript/Node.js — Bun handlers use the same `addEventListener("fetch", ...)` pattern
+  - Validate user inputs (entry point) before checking toolchain availability — better UX for common errors
 ---

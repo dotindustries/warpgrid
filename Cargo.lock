@@ -3470,6 +3470,7 @@ dependencies = [
  "anyhow",
  "hex",
  "sha2",
+ "tempfile",
  "tracing",
  "warp-core",
 ]
