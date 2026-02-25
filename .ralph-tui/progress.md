@@ -152,6 +152,17 @@ after each iteration and it's included in prompts for context.
 - `jco serve` for verification (Node.js based, supports WASI 0.2.3); `wasmtime serve` requires Wasmtime 41+
 - Idempotency via stamp file: `build/componentize-js/.build-stamp` records `tag:jco_version:mode`
 
+### WarpGrid JS SDK Architecture (Domain 4)
+- `packages/warpgrid-js/` npm package `@warpgrid/js` provides TypeScript types and runtime code
+- `WarpGridDatabase` class wraps `DatabaseProxyBindings` interface (DI for testability — mocks in tests, WIT imports in Wasm)
+- `setupWarpGridGlobal(bindings)` installs `globalThis.warpgrid.database.connect()` — called by `warp pack` pipeline
+- User API: `warpgrid.database.connect({ host, port, database, username, password? })` → `Connection { send, recv, close }`
+- Maps `username` (JS) → `user` (WIT) for idiomatic developer experience
+- jco type mapping: WIT `u64` → `bigint`, `u32`/`u16` → `number`, `list<u8>` → `Uint8Array`, `option<T>` → `T | undefined`
+- WIT `result<T, string>` → returns T or throws; wrapper catches and re-throws as `WarpGridError` with `cause`
+- Handler WIT world must `import warpgrid:shim/database-proxy` for database access
+- Test fixture at `tests/fixtures/js-db-handler/` includes database-proxy WIT deps
+
 ---
 
 ## 2026-02-22 - warpgrid-agm.2
@@ -667,4 +678,29 @@ after each iteration and it's included in prompts for context.
   - Guest `#![no_std]` requires explicit `#[panic_handler]` for wasm32-unknown-unknown target
   - Postgres wire protocol canned responses: RowDescription ('T') + DataRow ('D') + CommandComplete ('C') + ReadyForQuery ('Z')
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
+---
+
+## 2026-02-25 - warpgrid-agm.50
+- **What was implemented:** US-403 — `warpgrid.database.connect()` global function for ComponentizeJS runtime
+- **Files changed:**
+  - `packages/warpgrid-js/package.json` — New npm package `@warpgrid/js`
+  - `packages/warpgrid-js/tsconfig.json` — TypeScript config
+  - `packages/warpgrid-js/vitest.config.ts` — Test config
+  - `packages/warpgrid-js/src/errors.ts` — `WarpGridError` class extending `Error`
+  - `packages/warpgrid-js/src/types.ts` — TypeScript interfaces for WIT bindings and user-facing API
+  - `packages/warpgrid-js/src/database.ts` — `WarpGridDatabase` class wrapping WIT bindings
+  - `packages/warpgrid-js/src/global.ts` — `setupWarpGridGlobal()` for ComponentizeJS injection
+  - `packages/warpgrid-js/src/index.ts` — Package exports
+  - `packages/warpgrid-js/src/__tests__/errors.test.ts` — 5 error tests
+  - `packages/warpgrid-js/src/__tests__/database.test.ts` — 20 database tests
+  - `packages/warpgrid-js/src/__tests__/global.test.ts` — 4 global setup tests
+  - `tests/fixtures/js-db-handler/` — Test fixture with database-proxy WIT world
+- **Test results:** 29 tests passing, `npm run typecheck` and `npm test` both green
+- **Learnings:**
+  - ComponentizeJS WIT imports are accessible in JS via ES module imports using WIT package paths (e.g., `import { connect } from 'warpgrid:shim/database-proxy'`)
+  - jco type mapping: WIT `u64` → JS `bigint`, `u32`/`u16` → `number`, `list<u8>` → `Uint8Array`, `option<T>` → `T | undefined`, `result<T,E>` → returns T or throws E
+  - Dependency injection pattern essential for WIT bindings — WIT imports only exist in componentized Wasm, mocks needed for unit tests
+  - `setupWarpGridGlobal(bindings)` is cleaner than eager import-time resolution — avoids side effects, composable with `warp pack` pipeline
+  - JS API maps `username` (JS convention) → `user` (WIT field name) to provide idiomatic developer experience
+  - `wrapWitError()` pattern converts WIT string errors to typed `WarpGridError` with original `cause` preserved
 ---
