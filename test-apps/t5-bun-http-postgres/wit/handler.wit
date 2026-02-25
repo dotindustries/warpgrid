@@ -1,0 +1,10 @@
+package warpgrid:t5-handler;
+
+world handler {
+  // Standard WASI HTTP imports/exports
+  import wasi:http/types@0.2.3;
+  export wasi:http/incoming-handler@0.2.3;
+
+  // WarpGrid shim imports for database access
+  import warpgrid:shim/database-proxy@0.1.0;
+}

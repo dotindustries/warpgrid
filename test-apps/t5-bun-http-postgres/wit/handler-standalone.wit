@@ -1,0 +1,9 @@
+/// Standalone handler world — works with current ComponentizeJS tooling.
+/// Uses only standard WASI HTTP interfaces (no warpgrid:shim imports).
+/// The full handler.wit adds warpgrid:shim/database-proxy for DB access.
+package warpgrid:t5-handler-standalone;
+
+world handler-standalone {
+  import wasi:http/types@0.2.3;
+  export wasi:http/incoming-handler@0.2.3;
+}

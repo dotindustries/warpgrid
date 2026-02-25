@@ -635,3 +635,27 @@ after each iteration and it's included in prompts for context.
   - MockRedisServer is simpler than MockMysqlServer — Redis inline commands are easy to detect and respond to without packet framing
 ---
 
+## 2026-02-25 - warpgrid-agm.88
+- **What was implemented:** US-706 — T5 Bun HTTP + Postgres integration test with behavioral parity to T4
+- **Files changed:**
+  - `test-apps/t5-bun-http-postgres/` (new — full test app directory)
+    - `src/handler-standalone.js` — standalone handler with in-memory data, T4-identical responses
+    - `src/handler.js` — full handler with warpgrid:shim/database-proxy WIT imports + Bun polyfill helpers
+    - `build.sh` — componentize pipeline (bun build → jco componentize → wasm-tools validate)
+    - `test.sh` — 8 integration tests including response parity with T4
+    - `package.json` — hono 4.7.x dependency
+    - `wit/` — full WASI 0.2.3 WIT deps + warpgrid:shim/database-proxy
+    - `README.md` — architecture docs
+  - `tests/fixtures/t5-db-proxy-guest/` (new — Rust guest Wasm component)
+    - `src/lib.rs` — simulates Bun handler's database proxy shim usage
+    - `wit/test.wit` — t5-db-proxy-test world
+    - `Cargo.toml` — wit-bindgen 0.42 + dlmalloc
+  - `crates/warpgrid-host/tests/integration_t5_bun_http_postgres.rs` (new — 5 Rust integration tests)
+- **All quality gates pass:** cargo check, 5 new T5 integration tests pass, 319 unit tests + all existing integration tests unaffected, clippy clean (warpgrid-host)
+- **Learnings:**
+  - T4 and T5 share identical database proxy shim paths — the Rust guest components are nearly identical because the WIT interface is language-agnostic. The differentiation is in the JS compilation pipeline (ComponentizeJS for T4 vs Bun build + jco for T5)
+  - Bun polyfills use a graceful degradation chain: `Bun.env` → `process.env` → undefined. This pattern ensures the handler works in native Bun mode, Wasm mode with polyfills, and standalone ComponentizeJS mode
+  - Response byte-parity between T4 and T5 requires identical JSON key ordering, header names, status codes, and seed data — verified via the `jsonResponse()` helper function that both handlers share
+  - The `wasm32-unknown-unknown` target + `wasm-tools component new` conversion pattern (not `wasm32-wasi`) is required for guest fixtures that only import WIT shims without WASI
+---
+
