@@ -139,19 +139,6 @@ after each iteration and it's included in prompts for context.
 - Public API for US-210/211: `__warpgrid_proxy_fd_is_proxied(fd)`, `__warpgrid_proxy_fd_get_handle(fd)`, `__warpgrid_proxy_fd_remove(fd)`
 - Return protocol matches FS shim: `-2` (not intercepted), `-1` (error), `>= 0` (success)
 
-### Bun SDK Dual-Mode Architecture (Domain 6)
-- `@warpgrid/bun-sdk/postgres` exports `createPool()` — auto-detects native vs Wasm mode
-- `NativePool` delegates to `pg` npm package (real TCP connections)
-- `WasmPool` speaks Postgres v3.0 wire protocol over `DatabaseProxyShim` (WIT database-proxy)
-- Mode detection: `typeof globalThis.Bun !== "undefined"` → native, else wasm. `__WARPGRID_WASM__` overrides to wasm.
-- `PoolConfig.mode` overrides auto-detection: `"native"`, `"wasm"`, or `"auto"` (default)
-- `PoolConfig.shim` allows injecting mock `DatabaseProxyShim` for testing
-- Handler pattern: `createHandler(pool: Pool)` — dependency injection enables dual-mode testing
-- Parity testing: MockNativePool (returns JS objects) vs MockWasmShim (returns wire protocol bytes) → WasmPool parses bytes into same JS objects → handler produces identical JSON responses
-- Extended query protocol (Parse+Bind+Execute+Sync) used for parameterized queries ($1, $2)
-- `containsReadyForQuery()` scans from end of buffer for 'Z' (0x5A) + Int32(5) + status byte
-- `file:` protocol in package.json resolves local SDK without publishing
-
 ### ComponentizeJS Build Pipeline (Domain 4)
 - ComponentizeJS 0.19.3 cloned into `vendor/componentize-js/` for future patching (US-403+)
 - Build toolchain: `@bytecodealliance/jco` 1.16.1 + `@bytecodealliance/componentize-js` 0.18.4
@@ -682,35 +669,23 @@ after each iteration and it's included in prompts for context.
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
 ---
 
-## 2026-02-25 - warpgrid-agm.76
-### US-609: E2E Bun handler queries Postgres in native and Wasm modes
-- **Status:** COMPLETED
-- **Files created:**
-  - `packages/warpgrid-bun-sdk/package.json` — @warpgrid/bun-sdk npm package config
-  - `packages/warpgrid-bun-sdk/tsconfig.json` — TypeScript config for SDK
-  - `packages/warpgrid-bun-sdk/src/index.ts` — SDK entry point (re-exports)
-  - `packages/warpgrid-bun-sdk/src/errors.ts` — WarpGridError, WarpGridDatabaseError classes
-  - `packages/warpgrid-bun-sdk/src/postgres.ts` — Dual-mode Pool factory (createPool, detectMode)
-  - `packages/warpgrid-bun-sdk/src/postgres-native.ts` — NativePool (delegates to `pg` npm package)
-  - `packages/warpgrid-bun-sdk/src/postgres-wasm.ts` — WasmPool (Postgres wire protocol over database-proxy shim)
-  - `packages/warpgrid-bun-sdk/src/postgres-protocol.ts` — Postgres v3.0 wire protocol helpers
-  - `tests/fixtures/bun-postgres-handler/package.json` — Test fixture package
-  - `tests/fixtures/bun-postgres-handler/tsconfig.json` — TypeScript config
-  - `tests/fixtures/bun-postgres-handler/src/handler.ts` — Dual-mode HTTP handler (POST /users, GET /users/:id)
-  - `tests/fixtures/bun-postgres-handler/src/mock-native-pool.ts` — MockNativePool with canned responses
-  - `tests/fixtures/bun-postgres-handler/src/mock-wasm-shim.ts` — MockWasmShim speaking Postgres wire protocol
-  - `tests/fixtures/bun-postgres-handler/src/handler.test.ts` — 20 tests across 4 test suites
-- **Test coverage (20 tests):**
-  - Native mode (7 tests): POST 201, GET 200, GET 404, POST+GET lifecycle, missing fields 400, invalid JSON 400, unknown route 404
-  - Wasm mode (6 tests): Same as native but through WasmPool + mock wire protocol shim
-  - Dual-mode parity (5 tests): GET existing, GET 404, POST, POST+GET lifecycle, validation errors — all byte-identical
-  - createPool integration (2 tests): Factory creates WasmPool, handler works with factory-produced pool
-- **Quality gates:** `bun run typecheck` passes, `bun test` passes (20/20), `cargo check -p warpgrid-host` still clean
+## 2026-02-25 - warpgrid-agm.84
+- Implemented US-702: Rust HTTP + Postgres integration test (T1)
+- Created end-to-end integration test for the Rust axum compilation path with DNS and database proxy shims
+- All 6 integration tests pass (total: 357 tests across workspace)
+- Files changed:
+  - NEW: `test-apps/t1-rust-http-postgres/` — reference Rust axum application (Cargo.toml + src/main.rs)
+  - NEW: `tests/fixtures/rust-http-postgres-guest/` — Wasm guest component fixture (Cargo.toml, src/lib.rs, wit/)
+  - NEW: `crates/warpgrid-host/tests/integration_rust_http_postgres.rs` — 6 integration tests
+- Test coverage:
+  1. DNS resolution for db.test.warp.local via service registry
+  2. GET /users returns 5 seed users via Postgres wire protocol
+  3. POST /users (INSERT frank) then GET returns 6 users including frank
+  4. Invalid DB host returns DNS error (simulates 503)
+  5. Proxy round-trip echoes bytes through database proxy shim
+  6. Full lifecycle: all 4 exports exercised sequentially with fresh instances
 - **Learnings:**
-  - **Dependency injection is key for dual-mode testing.** The handler accepts a `Pool` interface, not a concrete implementation. This allows the same handler code to be tested with both MockNativePool (simulating `pg`) and WasmPool (simulating database-proxy shim), making parity assertions straightforward.
-  - **MockWasmShim must speak Postgres wire protocol.** Unlike the native mock (which returns JS objects), the Wasm mock must build actual Postgres wire protocol messages (RowDescription, DataRow, CommandComplete, ReadyForQuery) because WasmPool parses raw bytes. This means the mock is significantly more complex but validates the full protocol path.
-  - **Extended query protocol for parameterized queries.** The handler uses `$1, $2` params, which routes through the extended query protocol (Parse+Bind+Execute+Sync) instead of simple query ('Q'). The mock shim must handle both paths — detecting message type to route responses correctly.
-  - **Bind message parameter extraction requires careful offset tracking.** The Bind message has portal name, statement name, format codes, and then params — all with variable-length null-terminated strings. Off-by-one errors in offset tracking are the most common source of bugs.
-  - **`Record<string, unknown>` to interface cast needs double-cast.** TypeScript strict mode rejects `result.rows[0] as User` because the types don't overlap. Must use `result.rows[0] as unknown as User` or assign to the interface type with runtime validation.
-  - **Bun's file: protocol dependency resolution works well.** Using `"@warpgrid/bun-sdk": "file:../../../packages/warpgrid-bun-sdk"` in package.json correctly resolves the SDK from the monorepo without publishing.
+  - Extracted `fresh_instance()` as an async function instead of T3's macro approach — async functions are cleaner than macros when lifetime constraints allow it
+  - Guest fixtures use `[workspace]` empty table in Cargo.toml to prevent Cargo from treating them as part of the main workspace — critical for independent `wasm32-unknown-unknown` builds
+  - T1 (Rust axum path) and T3 (Go TinyGo path) share identical shim chain patterns — validates cross-language shim layer design
 ---
