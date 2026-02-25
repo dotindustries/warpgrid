@@ -10,5 +10,5 @@
 /vendor/tinygo
 /vendor/componentize-js
 tests/fixtures/fs-shim-guest/target/
-test-apps/*/node_modules/
-test-apps/*/dist/
+test-apps/**/target/
+test-apps/**/Cargo.lock

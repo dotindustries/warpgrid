@@ -635,27 +635,41 @@ after each iteration and it's included in prompts for context.
   - MockRedisServer is simpler than MockMysqlServer — Redis inline commands are easy to detect and respond to without packet framing
 ---
 
-## 2026-02-25 - warpgrid-agm.88
-- **What was implemented:** US-706 — T5 Bun HTTP + Postgres integration test with behavioral parity to T4
-- **Files changed:**
-  - `test-apps/t5-bun-http-postgres/` (new — full test app directory)
-    - `src/handler-standalone.js` — standalone handler with in-memory data, T4-identical responses
-    - `src/handler.js` — full handler with warpgrid:shim/database-proxy WIT imports + Bun polyfill helpers
-    - `build.sh` — componentize pipeline (bun build → jco componentize → wasm-tools validate)
-    - `test.sh` — 8 integration tests including response parity with T4
-    - `package.json` — hono 4.7.x dependency
-    - `wit/` — full WASI 0.2.3 WIT deps + warpgrid:shim/database-proxy
-    - `README.md` — architecture docs
-  - `tests/fixtures/t5-db-proxy-guest/` (new — Rust guest Wasm component)
-    - `src/lib.rs` — simulates Bun handler's database proxy shim usage
-    - `wit/test.wit` — t5-db-proxy-test world
-    - `Cargo.toml` — wit-bindgen 0.42 + dlmalloc
-  - `crates/warpgrid-host/tests/integration_t5_bun_http_postgres.rs` (new — 5 Rust integration tests)
-- **All quality gates pass:** cargo check, 5 new T5 integration tests pass, 319 unit tests + all existing integration tests unaffected, clippy clean (warpgrid-host)
+## 2026-02-25 - warpgrid-agm.89
+- **US-707: Multi-service polyglot integration test (T6)**
+- Built 4 Wasm guest components exercising DNS, Postgres, Redis, and Filesystem shims in one WarpGridEngine
+- Created shared WIT definitions with 4 worlds (gateway-service, user-service, notification-service, analytics-service)
+- Each component exports `handle-request(method, path, body) -> result<tuple<u16, string, string>, string>`
+- **Files created:**
+  - `test-apps/t6-multi-service/wit/worlds.wit` — Shared world definitions for all 4 services
+  - `test-apps/t6-multi-service/wit/deps/shim/filesystem.wit` — Filesystem WIT interface copy
+  - `test-apps/t6-multi-service/wit/deps/shim/dns.wit` — DNS WIT interface copy
+  - `test-apps/t6-multi-service/wit/deps/shim/database-proxy.wit` — Database proxy WIT interface copy
+  - `test-apps/t6-multi-service/gateway-svc/{Cargo.toml,src/lib.rs}` — DNS-routing gateway (resolves *.test.warp.local)
+  - `test-apps/t6-multi-service/user-svc/{Cargo.toml,src/lib.rs}` — Postgres CRUD via DB proxy
+  - `test-apps/t6-multi-service/notification-svc/{Cargo.toml,src/lib.rs}` — Redis RPUSH via DB proxy
+  - `test-apps/t6-multi-service/analytics-svc/{Cargo.toml,src/lib.rs}` — Postgres analytics INSERT via DB proxy
+  - `crates/warpgrid-host/tests/integration_multi_service.rs` — 5 integration tests orchestrating all 4 components
+- **Architecture decisions:**
+  - All 4 services are Rust-compiled (Go/TS/Bun pipelines don't exist yet) but represent different "language" services conceptually
+  - Shared WIT directory with `path: "../wit"` from each crate + `world:` parameter selects per-service interface subset
+  - Each service gets its own Store<HostState> with appropriate shim configuration (DNS for gateway, DB proxy for others)
+  - Config injection via VirtualFileMapBuilder: `/etc/warpgrid/db.conf` (host port database user), `/etc/warpgrid/redis.conf` (host port)
+  - Gateway returns error source in tuple third element for X-WarpGrid-Source-Service header simulation
+- **Test coverage (5 tests):**
+  - `multi_service_full_flow` — Full 7-step flow: gateway→user POST→notify POST→analytics POST→user GET
+  - `dns_routes_all_service_hostnames` — Verifies DNS for all 3 service paths
+  - `service_error_includes_source_service_header` — 404 for unknown paths
+  - `dns_failure_populates_error_source` — Empty DNS registry → 503 with error_source hostname
+  - `four_components_instantiate_in_same_engine` — All 4 components load in one engine
+- **All quality gates pass:** cargo check, 361 tests (319 unit + 10 Postgres + 5 FS + 5 multi-service + 11 MySQL + 11 Redis), clippy clean on new code
 - **Learnings:**
-  - T4 and T5 share identical database proxy shim paths — the Rust guest components are nearly identical because the WIT interface is language-agnostic. The differentiation is in the JS compilation pipeline (ComponentizeJS for T4 vs Bun build + jco for T5)
-  - Bun polyfills use a graceful degradation chain: `Bun.env` → `process.env` → undefined. This pattern ensures the handler works in native Bun mode, Wasm mode with polyfills, and standalone ComponentizeJS mode
-  - Response byte-parity between T4 and T5 requires identical JSON key ordering, header names, status codes, and seed data — verified via the `jsonResponse()` helper function that both handlers share
-  - The `wasm32-unknown-unknown` target + `wasm-tools component new` conversion pattern (not `wasm32-wasi`) is required for guest fixtures that only import WIT shims without WASI
+  - Components importing a SUBSET of interfaces work fine with a linker that has ALL interfaces registered — unused registrations are simply ignored by Wasmtime
+  - Shared WIT directory with multiple worlds is cleaner than duplicating WIT across 4 crates — `wit_bindgen::generate!` selects the right world via `world:` parameter
+  - Per-protocol DB proxy factories (TcpConnectionFactory vs RedisConnectionFactory) are naturally isolated per Store<HostState> — no conflict when multiple protocols coexist in the same Engine
+  - Postgres v3.0 wire protocol in no_std: startup message = [length:4][protocol 196608:4][params...], SimpleQuery = ['Q'][length:4][query\0]
+  - Redis RESP in no_std: `*<count>\r\n$<len>\r\n<data>\r\n...` — straightforward to build with Vec<u8>
+  - `wasm-tools component new` converts core Wasm modules to the Component Model format — essential step after `cargo build --target wasm32-unknown-unknown`
+  - OnceLock<Vec<u8>> caching pattern for compiled components prevents redundant builds across tests in the same binary
 ---
 
