@@ -1,0 +1,16 @@
+/// JS handler world with WarpGrid shim imports.
+///
+/// This world defines a standard WASI HTTP handler that also imports
+/// WarpGrid shim interfaces for database, DNS, and filesystem access.
+package warpgrid:js-handler;
+
+world handler {
+  // Standard WASI HTTP
+  import wasi:http/types@0.2.3;
+  export wasi:http/incoming-handler@0.2.3;
+
+  // WarpGrid shim imports (injected by prelude)
+  import warpgrid:shim/database-proxy@0.1.0;
+  import warpgrid:shim/dns@0.1.0;
+  import warpgrid:shim/filesystem@0.1.0;
+}

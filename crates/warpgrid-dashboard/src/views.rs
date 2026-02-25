@@ -916,3 +916,136 @@ mod tests {
         assert!((rows[1].rps_bar_width - 100.0).abs() < 0.1);
     }
 }
+
+// ── Density Demo ────────────────────────────────────────────────
+
+pub const DENSITY_DEMO_DEPLOYMENT_ID: &str = "demo/wastebin-density";
+
+pub struct DensityDemoView {
+    pub instance_count: usize,
+    pub pool_size: usize,
+    pub is_deployed: bool,
+    pub status_label: String,
+    pub live_instance_count: usize,
+    pub live_total_memory: String,
+    pub live_rps: String,
+    pub live_latency_p50: String,
+    pub live_error_rate: String,
+    pub wasm_memory_display: String,
+    pub wasm_memory_per_instance: String,
+    pub wasm_startup_display: String,
+    pub wasm_connections_display: String,
+    pub wasm_binary_display: String,
+    pub wasm_bar_percent: String,
+    pub docker_memory_display: String,
+    pub docker_memory_per_instance: String,
+    pub docker_startup_display: String,
+    pub docker_connections_display: String,
+    pub docker_binary_display: String,
+    pub memory_ratio: String,
+    pub startup_ratio: String,
+    pub connection_ratio: String,
+    pub binary_ratio: String,
+    pub stack_items: Vec<StackItem>,
+}
+
+pub struct StackItem {
+    pub label: String,
+    pub detail: String,
+}
+
+pub fn build_density_demo(instance_count: usize, pool_size: usize) -> DensityDemoView {
+    let wasm_mem_per = 3;
+    let docker_mem_per = 50;
+    let wasm_total = instance_count * wasm_mem_per;
+    let docker_total = instance_count * docker_mem_per;
+    let docker_connections = instance_count * 10;
+
+    DensityDemoView {
+        instance_count,
+        pool_size,
+        is_deployed: false,
+        status_label: "ESTIMATED".to_string(),
+        live_instance_count: 0,
+        live_total_memory: "—".to_string(),
+        live_rps: "—".to_string(),
+        live_latency_p50: "—".to_string(),
+        live_error_rate: "—".to_string(),
+        wasm_memory_display: format!("{wasm_total} MB"),
+        wasm_memory_per_instance: format!("~{wasm_mem_per} MB"),
+        wasm_startup_display: "5 ms".into(),
+        wasm_connections_display: pool_size.to_string(),
+        wasm_binary_display: "~8 MB".into(),
+        wasm_bar_percent: if docker_total > 0 {
+            format!("{:.0}", (wasm_total as f64 / docker_total as f64) * 100.0)
+        } else {
+            "0".to_string()
+        },
+        docker_memory_display: format!("{:.1} GB", docker_total as f64 / 1024.0),
+        docker_memory_per_instance: format!("~{docker_mem_per} MB"),
+        docker_startup_display: "2.5 s".into(),
+        docker_connections_display: format!("{docker_connections}"),
+        docker_binary_display: "~45 MB".into(),
+        memory_ratio: format!("{:.0}x less", docker_total as f64 / wasm_total as f64),
+        startup_ratio: format!("{:.0}x faster", 2500.0_f64 / 5.0),
+        connection_ratio: format!("{:.0}x fewer", docker_connections as f64 / pool_size as f64),
+        binary_ratio: format!("{:.0}x smaller", 45.0_f64 / 8.0),
+        stack_items: vec![
+            StackItem { label: "Application".into(), detail: "wastebin (pastebin)".into() },
+            StackItem { label: "Database".into(), detail: "PostgreSQL 16 via libpq FFI".into() },
+            StackItem { label: "Runtime".into(), detail: "wasm32-wasip2 (Wasmtime)".into() },
+            StackItem { label: "HTTP".into(), detail: "wasi:http/incoming-handler".into() },
+            StackItem { label: "DB Proxy".into(), detail: "Shared connection pool".into() },
+            StackItem { label: "TLS".into(), detail: "Host-terminated (transparent)".into() },
+            StackItem { label: "DNS".into(), detail: "WarpGrid DNS shim".into() },
+            StackItem { label: "Filesystem".into(), detail: "Virtual (proxy.conf, etc.)".into() },
+            StackItem { label: "Isolation".into(), detail: "Wasm sandbox + instance_id".into() },
+        ],
+    }
+}
+
+pub fn build_density_demo_live(store: &warpgrid_state::StateStore) -> DensityDemoView {
+    let deployed = store
+        .get_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+        .ok()
+        .flatten();
+
+    let Some(spec) = deployed else {
+        return build_density_demo(100, 10);
+    };
+
+    let instances = store
+        .list_instances_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+        .unwrap_or_default();
+    let latest_metrics = store
+        .list_metrics_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID, 1)
+        .unwrap_or_default();
+
+    let running_count = instances
+        .iter()
+        .filter(|i| i.status == warpgrid_state::InstanceStatus::Running)
+        .count();
+    let total_memory: u64 = instances.iter().map(|i| i.memory_bytes).sum();
+    let pool_size = spec.env.get("WARPGRID_POOL_SIZE")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(10);
+
+    let (rps, latency_p50, error_rate) = match latest_metrics.first() {
+        Some(m) => (
+            format!("{:.1}", m.rps),
+            format!("{:.1} ms", m.latency_p50_ms),
+            format!("{:.2}%", m.error_rate * 100.0),
+        ),
+        None => ("0.0".into(), "— ms".into(), "0.00%".into()),
+    };
+
+    let mut view = build_density_demo(running_count, pool_size);
+    view.is_deployed = true;
+    view.status_label = "LIVE".to_string();
+    view.live_instance_count = running_count;
+    view.live_total_memory = format_bytes(total_memory);
+    view.live_rps = rps;
+    view.live_latency_p50 = latency_p50;
+    view.live_error_rate = error_rate;
+    view
+}

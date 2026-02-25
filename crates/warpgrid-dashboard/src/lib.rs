@@ -54,6 +54,7 @@ pub fn dashboard_router(state: DashboardState) -> Router {
         .route("/nodes", get(pages::nodes))
         .route("/nodes/{id}", get(pages::node_detail))
         .route("/rollouts", get(pages::rollouts))
+        .route("/density-demo", get(pages::density_demo))
         // HTMX partial routes
         .route("/_overview_stats", get(partials::overview_stats))
         .route("/_deployments_table", get(partials::deployments_table))
@@ -63,7 +64,10 @@ pub fn dashboard_router(state: DashboardState) -> Router {
         )
         .route("/_rollout_cards", get(partials::rollout_cards))
         .route("/_node_cards", get(partials::node_cards))
+        .route("/_density_stats", get(partials::density_stats))
         // Action routes
+        .route("/density-demo/deploy", post(actions::deploy_demo))
+        .route("/density-demo/teardown", post(actions::teardown_demo))
         .route(
             "/deployments/{id}/scale",
             post(actions::scale_deployment),

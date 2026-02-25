@@ -8,8 +8,13 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
 
 use warpgrid_rollout::{Rollout, RolloutStrategy};
+use warpgrid_state::{
+    DeploymentSpec, HealthStatus, InstanceConstraints, InstanceState, InstanceStatus,
+    MetricsSnapshot, ResourceLimits, ShimsEnabled, TriggerConfig,
+};
 
 use crate::DashboardState;
+use crate::views::DENSITY_DEMO_DEPLOYMENT_ID;
 
 // ── Scale ───────────────────────────────────────────────────────
 
@@ -190,6 +195,115 @@ pub async fn delete_deployment(
     }
 }
 
+// ── Deploy / Teardown Density Demo ──────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct DeployForm {
+    pub instance_count: Option<u32>,
+}
+
+pub async fn deploy_demo(
+    State(state): State<DashboardState>,
+    axum::extract::Form(form): axum::extract::Form<DeployForm>,
+) -> impl IntoResponse {
+    let instance_count = form.instance_count.unwrap_or(100).min(500) as usize;
+
+    // Idempotent: if already deployed, just redirect
+    if let Ok(Some(_)) = state.store.get_deployment(DENSITY_DEMO_DEPLOYMENT_ID) {
+        return Redirect::to("/dashboard/density-demo").into_response();
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let mut env = std::collections::HashMap::new();
+    env.insert(
+        "WASTEBIN_DATABASE_URL".to_string(),
+        "postgres://warpgrid:warpgrid@localhost:5432/wastebin".to_string(),
+    );
+    env.insert("WASTEBIN_INSTANCE_ID".to_string(), "auto".to_string());
+    env.insert("WARPGRID_POOL_SIZE".to_string(), "10".to_string());
+
+    let spec = DeploymentSpec {
+        id: DENSITY_DEMO_DEPLOYMENT_ID.to_string(),
+        namespace: "demo".to_string(),
+        name: "wastebin-density".to_string(),
+        source: "file://demos/wastebin/wastebin-demo.wasm".to_string(),
+        trigger: TriggerConfig::Http { port: Some(8080) },
+        instances: InstanceConstraints {
+            min: instance_count as u32,
+            max: (instance_count as u32) * 2,
+        },
+        resources: ResourceLimits {
+            memory_bytes: 16 * 1024 * 1024,
+            cpu_weight: 50,
+        },
+        scaling: None,
+        health: None,
+        shims: ShimsEnabled {
+            timezone: true,
+            dev_urandom: true,
+            dns: true,
+            signals: true,
+            database_proxy: true,
+        },
+        env,
+        created_at: now,
+        updated_at: now,
+    };
+
+    if let Err(e) = state.store.put_deployment(&spec) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(format!(
+                r#"<div class="text-rose-400 text-sm font-mono">Deploy error: {e}</div>"#
+            )),
+        )
+            .into_response();
+    }
+
+    // Create instance records
+    for i in 0..instance_count {
+        let inst = InstanceState {
+            id: format!("demo-wb-{i:04}"),
+            deployment_id: DENSITY_DEMO_DEPLOYMENT_ID.to_string(),
+            node_id: "standalone".to_string(),
+            status: InstanceStatus::Running,
+            health: HealthStatus::Healthy,
+            restart_count: 0,
+            memory_bytes: 3 * 1024 * 1024, // ~3 MB each
+            started_at: now,
+            updated_at: now,
+        };
+        let _ = state.store.put_instance(&inst);
+    }
+
+    // Create initial metrics snapshot
+    let snapshot = MetricsSnapshot {
+        deployment_id: DENSITY_DEMO_DEPLOYMENT_ID.to_string(),
+        epoch: now,
+        rps: 0.0,
+        latency_p50_ms: 0.0,
+        latency_p99_ms: 0.0,
+        error_rate: 0.0,
+        total_memory_bytes: (instance_count as u64) * 3 * 1024 * 1024,
+        active_instances: instance_count as u32,
+    };
+    let _ = state.store.put_metrics(&snapshot);
+
+    Redirect::to("/dashboard/density-demo").into_response()
+}
+
+pub async fn teardown_demo(State(state): State<DashboardState>) -> impl IntoResponse {
+    let _ = state
+        .store
+        .delete_instances_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID);
+    let _ = state.store.delete_deployment(DENSITY_DEMO_DEPLOYMENT_ID);
+    Redirect::to("/dashboard/density-demo")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,5 +452,82 @@ mod tests {
         let resp = resume_rollout(State(state), Path("default/api".to_string())).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn deploy_demo_creates_deployment() {
+        let state = test_state();
+        let resp = deploy_demo(
+            State(state.clone()),
+            axum::extract::Form(DeployForm { instance_count: Some(10) }),
+        )
+        .await;
+        let resp = resp.into_response();
+        // Redirect on success
+        assert_eq!(resp.status(), 303);
+
+        // Verify deployment was created
+        let dep = state.store.get_deployment(DENSITY_DEMO_DEPLOYMENT_ID).unwrap();
+        assert!(dep.is_some());
+
+        // Verify instances were created
+        let instances = state
+            .store
+            .list_instances_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+            .unwrap();
+        assert_eq!(instances.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn teardown_demo_removes_deployment() {
+        let state = test_state();
+        // Deploy first
+        deploy_demo(
+            State(state.clone()),
+            axum::extract::Form(DeployForm { instance_count: Some(5) }),
+        )
+        .await;
+
+        // Teardown
+        let resp = teardown_demo(State(state.clone())).await;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), 303);
+
+        // Verify deployment is gone
+        let dep = state.store.get_deployment(DENSITY_DEMO_DEPLOYMENT_ID).unwrap();
+        assert!(dep.is_none());
+
+        // Verify instances are gone
+        let instances = state
+            .store
+            .list_instances_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+            .unwrap();
+        assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
+    async fn deploy_demo_idempotent() {
+        let state = test_state();
+        // Deploy twice
+        deploy_demo(
+            State(state.clone()),
+            axum::extract::Form(DeployForm { instance_count: Some(10) }),
+        )
+        .await;
+        let resp = deploy_demo(
+            State(state.clone()),
+            axum::extract::Form(DeployForm { instance_count: Some(50) }),
+        )
+        .await;
+        let resp = resp.into_response();
+        // Second deploy should redirect (idempotent)
+        assert_eq!(resp.status(), 303);
+
+        // Should still have 10 instances (not 50)
+        let instances = state
+            .store
+            .list_instances_for_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+            .unwrap();
+        assert_eq!(instances.len(), 10);
     }
 }

@@ -1,0 +1,27 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for T4 TypeScript HTTP + Postgres integration test.
+///
+/// Guest component imports the database-proxy shim and exports test functions
+/// that simulate what the TypeScript handler would do:
+/// - Connect to Postgres through the proxy
+/// - Send a startup handshake
+/// - Execute a SELECT query
+/// - Execute an INSERT query
+/// - Close the connection
+world t4-db-proxy-test {
+    import warpgrid:shim/database-proxy@0.1.0;
+
+    /// Connect to Postgres, perform startup handshake, return handle as string.
+    export test-db-connect: func(host: string, port: u16, database: string, user: string) -> result<string, string>;
+
+    /// Send a SELECT query on an existing connection and return raw response bytes (hex-encoded).
+    export test-db-query: func(handle-str: string, sql: string) -> result<list<u8>, string>;
+
+    /// Close a database connection.
+    export test-db-close: func(handle-str: string) -> result<string, string>;
+
+    /// Full lifecycle: connect, handshake, query SELECT 1, close.
+    /// Returns the query response bytes.
+    export test-full-lifecycle: func(host: string, port: u16, database: string, user: string) -> result<list<u8>, string>;
+}

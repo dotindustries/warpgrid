@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Density Demo - WarpGrid{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="mb-10 flex items-start justify-between">
+  <div>
+    <div class="flex items-center gap-3 mb-2">
+      <h1 class="font-display text-3xl font-bold text-slate-100 tracking-tight">Density Showcase</h1>
+      {% if demo.is_deployed %}
+      <span class="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>LIVE
+      </span>
+      {% else %}
+      <span class="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 bg-slate-500/10 border border-slate-500/20 rounded-full px-2.5 py-1">
+        ESTIMATED
+      </span>
+      {% endif %}
+    </div>
+    <p class="text-slate-400 max-w-2xl">
+      {{ demo.instance_count }} instances of a real-world pastebin (wastebin) running on a single WarpGrid node,
+      sharing {{ demo.pool_size }} PostgreSQL connections through the DB proxy shim.
+    </p>
+  </div>
+  <div class="flex-shrink-0 ml-4">
+    {% if demo.is_deployed %}
+    <form method="POST" action="/dashboard/density-demo/teardown">
+      <button type="submit"
+        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-mono font-medium text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-lg hover:bg-rose-500/20 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Teardown
+      </button>
+    </form>
+    {% else %}
+    <form method="POST" action="/dashboard/density-demo/deploy" class="flex items-center gap-2">
+      <label class="text-xs font-mono text-slate-500">Instances:</label>
+      <input type="number" name="instance_count" value="100" min="1" max="500"
+        class="w-20 px-2 py-1.5 text-sm font-mono text-slate-200 bg-grid-800 border border-grid-700/50 rounded-md focus:border-grid-accent/50 focus:outline-none" />
+      <button type="submit"
+        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-mono font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Deploy Demo
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Comparison Cards + Memory Bar (HTMX polled when deployed) -->
+<div id="density-stats"
+     {% if demo.is_deployed %}hx-get="/dashboard/_density_stats" hx-trigger="every 3s" hx-swap="innerHTML"{% endif %}>
+  {% include "_partials/density_stats.html" %}
+</div>
+
+<!-- Architecture & Tech Stack -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+  <!-- Architecture Diagram -->
+  <div class="rounded-xl border border-grid-700/40 bg-grid-850 p-6 animate-slide-up">
+    <h2 class="font-display text-lg font-semibold text-slate-200 mb-4">Architecture</h2>
+    <pre class="font-mono text-xs leading-relaxed text-slate-400 overflow-x-auto"><span class="text-grid-accent">Browser</span>
+  |
+  v
+<span class="text-grid-info">HTTP Trigger</span> (host-side TLS termination)
+  |
+  v
+<span class="text-grid-accent">Instance Pool</span> ({{ demo.instance_count }} Wasm instances)
+  |
+  v
+<span class="text-grid-warn">Wasm Component</span> (wastebin.wasm)
+  |  exports: wasi:http/incoming-handler
+  |  imports: warpgrid shims
+  |
+  +--&gt; <span class="text-purple-400">Filesystem Shim</span>  /etc/warpgrid/proxy.conf
+  +--&gt; <span class="text-purple-400">DNS Shim</span>         resolv.conf, /etc/hosts
+  +--&gt; <span class="text-purple-400">Signals Shim</span>     graceful shutdown
+  +--&gt; <span class="text-purple-400">Threading Shim</span>   cooperative yields
+  |
+  +--&gt; <span class="text-grid-warn">DB Proxy Shim</span> (wire-protocol passthrough)
+        |
+        v
+      <span class="text-grid-accent">Shared Connection Pool</span> ({{ demo.pool_size }} conns)
+        |
+        v
+      <span class="text-grid-info">PostgreSQL</span></pre>
+  </div>
+
+  <!-- Tech Stack -->
+  <div class="rounded-xl border border-grid-700/40 bg-grid-850 p-6 animate-slide-up">
+    <h2 class="font-display text-lg font-semibold text-slate-200 mb-4">Tech Stack</h2>
+    <div class="space-y-3">
+      {% for item in demo.stack_items %}
+      <div class="flex items-start gap-3 py-2 {% if !loop.last %}border-b border-grid-700/20{% endif %}">
+        <span class="font-mono text-xs text-grid-accent min-w-[90px] pt-0.5">{{ item.label }}</span>
+        <span class="text-sm text-slate-300">{{ item.detail }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- How It Works -->
+<div class="rounded-xl border border-grid-700/40 bg-grid-850 p-6 mb-10 animate-fade-in">
+  <h2 class="font-display text-lg font-semibold text-slate-200 mb-4">How It Works</h2>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-6 h-6 rounded-md bg-grid-accent/10 border border-grid-accent/30 flex items-center justify-center text-xs font-mono text-grid-accent">1</div>
+        <h3 class="font-display font-medium text-slate-200">Compile to Wasm</h3>
+      </div>
+      <p class="text-sm text-slate-400 leading-relaxed">
+        wastebin is compiled to a wasm32-wasip2 component with libpq statically linked.
+        The binary is ~8 MB vs a ~45 MB Docker image.
+      </p>
+    </div>
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-6 h-6 rounded-md bg-grid-info/10 border border-grid-info/30 flex items-center justify-center text-xs font-mono text-grid-info">2</div>
+        <h3 class="font-display font-medium text-slate-200">Shared Resources</h3>
+      </div>
+      <p class="text-sm text-slate-400 leading-relaxed">
+        All {{ demo.instance_count }} instances share {{ demo.pool_size }} PostgreSQL connections through the
+        DB proxy shim. TLS is handled once at the host level, not per instance.
+      </p>
+    </div>
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-6 h-6 rounded-md bg-grid-warn/10 border border-grid-warn/30 flex items-center justify-center text-xs font-mono text-grid-warn">3</div>
+        <h3 class="font-display font-medium text-slate-200">Instant Scale</h3>
+      </div>
+      <p class="text-sm text-slate-400 leading-relaxed">
+        New instances start in ~5 ms (vs 2.5 s for Docker). Wasm sandbox provides
+        memory isolation without container overhead. Each instance uses ~3 MB.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Benchmark Table -->
+<div class="rounded-xl border border-grid-700/40 bg-grid-850 overflow-hidden animate-fade-in">
+  <div class="px-6 py-4 border-b border-grid-700/30">
+    <h2 class="font-display text-lg font-semibold text-slate-200">Detailed Comparison</h2>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-grid-700/30 text-left">
+          <th class="px-6 py-3 font-mono text-xs text-slate-500 uppercase tracking-wider">Metric</th>
+          <th class="px-6 py-3 font-mono text-xs text-grid-accent uppercase tracking-wider">WarpGrid</th>
+          <th class="px-6 py-3 font-mono text-xs text-slate-400 uppercase tracking-wider">Docker</th>
+          <th class="px-6 py-3 font-mono text-xs text-slate-500 uppercase tracking-wider">Improvement</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-grid-700/20">
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">Memory ({{ demo.instance_count }} instances)</td>
+          <td class="px-6 py-3 font-mono text-grid-accent">{{ demo.wasm_memory_display }}</td>
+          <td class="px-6 py-3 font-mono text-slate-400">{{ demo.docker_memory_display }}</td>
+          <td class="px-6 py-3 font-mono text-grid-accent font-medium">{{ demo.memory_ratio }}</td>
+        </tr>
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">Per-instance memory</td>
+          <td class="px-6 py-3 font-mono text-grid-accent">{{ demo.wasm_memory_per_instance }}</td>
+          <td class="px-6 py-3 font-mono text-slate-400">{{ demo.docker_memory_per_instance }}</td>
+          <td class="px-6 py-3 font-mono text-grid-accent font-medium">{{ demo.memory_ratio }}</td>
+        </tr>
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">Cold start time</td>
+          <td class="px-6 py-3 font-mono text-grid-info">{{ demo.wasm_startup_display }}</td>
+          <td class="px-6 py-3 font-mono text-slate-400">{{ demo.docker_startup_display }}</td>
+          <td class="px-6 py-3 font-mono text-grid-info font-medium">{{ demo.startup_ratio }}</td>
+        </tr>
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">PostgreSQL connections</td>
+          <td class="px-6 py-3 font-mono text-grid-warn">{{ demo.wasm_connections_display }}</td>
+          <td class="px-6 py-3 font-mono text-slate-400">{{ demo.docker_connections_display }}</td>
+          <td class="px-6 py-3 font-mono text-grid-warn font-medium">{{ demo.connection_ratio }}</td>
+        </tr>
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">Binary / image size</td>
+          <td class="px-6 py-3 font-mono text-purple-400">{{ demo.wasm_binary_display }}</td>
+          <td class="px-6 py-3 font-mono text-slate-400">{{ demo.docker_binary_display }}</td>
+          <td class="px-6 py-3 font-mono text-purple-400 font-medium">{{ demo.binary_ratio }}</td>
+        </tr>
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">TLS termination</td>
+          <td class="px-6 py-3 font-mono text-grid-accent">Host (1x)</td>
+          <td class="px-6 py-3 font-mono text-slate-400">Per container</td>
+          <td class="px-6 py-3 font-mono text-grid-accent font-medium">Shared</td>
+        </tr>
+        <tr class="row-hover">
+          <td class="px-6 py-3 text-slate-300">Isolation</td>
+          <td class="px-6 py-3 font-mono text-grid-accent">Wasm sandbox</td>
+          <td class="px-6 py-3 font-mono text-slate-400">Linux namespaces</td>
+          <td class="px-6 py-3 font-mono text-slate-500">Comparable</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
