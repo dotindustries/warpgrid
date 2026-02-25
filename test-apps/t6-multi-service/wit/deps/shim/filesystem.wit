@@ -1,0 +1,14 @@
+package warpgrid:shim@0.1.0;
+
+interface filesystem {
+    record file-stat {
+        size: u64,
+        is-file: bool,
+        is-directory: bool,
+    }
+
+    open-virtual: func(path: string) -> result<u64, string>;
+    read-virtual: func(handle: u64, len: u32) -> result<list<u8>, string>;
+    stat-virtual: func(path: string) -> result<file-stat, string>;
+    close-virtual: func(handle: u64) -> result<_, string>;
+}

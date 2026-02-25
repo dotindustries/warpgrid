@@ -1,0 +1,9 @@
+/Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/user-svc/target/wasm32-unknown-unknown/release/deps/user_svc.d: src/lib.rs /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/dns.wit /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/filesystem.wit /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/worlds.wit /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/database-proxy.wit
+
+/Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/user-svc/target/wasm32-unknown-unknown/release/deps/user_svc.wasm: src/lib.rs /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/dns.wit /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/filesystem.wit /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/worlds.wit /Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/database-proxy.wit
+
+src/lib.rs:
+/Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/dns.wit:
+/Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/filesystem.wit:
+/Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/worlds.wit:
+/Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-0/test-apps/t6-multi-service/wit/deps/shim/database-proxy.wit:

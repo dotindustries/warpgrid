@@ -1,0 +1,39 @@
+package warpgrid:polyglot-test@0.1.0;
+
+/// Gateway service — routes requests to downstream services via DNS resolution.
+/// Represents the Rust gateway in the polyglot architecture.
+world gateway-service {
+    import warpgrid:shim/dns@0.1.0;
+    import warpgrid:shim/filesystem@0.1.0;
+
+    /// Handle an incoming request. Returns (status, body, error-source).
+    /// error-source is the failing service hostname when a downstream error occurs.
+    export handle-request: func(method: string, path: string, body: string) -> result<tuple<u16, string, string>, string>;
+}
+
+/// User service — manages users in Postgres.
+/// Represents the Go user service in the polyglot architecture.
+world user-service {
+    import warpgrid:shim/database-proxy@0.1.0;
+    import warpgrid:shim/filesystem@0.1.0;
+
+    export handle-request: func(method: string, path: string, body: string) -> result<tuple<u16, string, string>, string>;
+}
+
+/// Notification service — enqueues notifications to Redis.
+/// Represents the TypeScript notification service in the polyglot architecture.
+world notification-service {
+    import warpgrid:shim/database-proxy@0.1.0;
+    import warpgrid:shim/filesystem@0.1.0;
+
+    export handle-request: func(method: string, path: string, body: string) -> result<tuple<u16, string, string>, string>;
+}
+
+/// Analytics service — records events to Postgres.
+/// Represents the Bun analytics service in the polyglot architecture.
+world analytics-service {
+    import warpgrid:shim/database-proxy@0.1.0;
+    import warpgrid:shim/filesystem@0.1.0;
+
+    export handle-request: func(method: string, path: string, body: string) -> result<tuple<u16, string, string>, string>;
+}

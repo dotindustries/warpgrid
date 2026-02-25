@@ -1,0 +1,10 @@
+package warpgrid:shim@0.1.0;
+
+interface dns {
+    record ip-address-record {
+        address: string,
+        is-ipv6: bool,
+    }
+
+    resolve-address: func(hostname: string) -> result<list<ip-address-record>, string>;
+}
