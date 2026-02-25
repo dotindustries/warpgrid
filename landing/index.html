@@ -395,6 +395,158 @@
     .pain-col.before .pain-item { color: var(--text-4); }
     .pain-col.after .pain-item { color: var(--text-2); }
 
+    /* ── Architecture Deep Dive ─────────────────── */
+    .arch-section {
+      background: var(--grid-950);
+    }
+    .arch-columns {
+      display: grid;
+      grid-template-columns: 1fr 80px 1fr;
+      gap: 0;
+      margin-top: 3rem;
+      align-items: start;
+    }
+    .arch-stack {
+      background: var(--grid-850);
+      border: 1px solid rgba(30, 45, 61, 0.4);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .arch-stack.docker { border-color: rgba(255, 92, 108, 0.2); }
+    .arch-stack.wasm { border-color: rgba(0, 229, 160, 0.2); }
+    .arch-stack-header {
+      padding: 1rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(30, 45, 61, 0.4);
+    }
+    .arch-stack.docker .arch-stack-header {
+      background: rgba(255, 92, 108, 0.06);
+      color: var(--danger);
+    }
+    .arch-stack.wasm .arch-stack-header {
+      background: rgba(0, 229, 160, 0.06);
+      color: var(--accent);
+    }
+    .arch-layer {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid rgba(30, 45, 61, 0.2);
+      font-size: 0.85rem;
+      transition: background 0.2s;
+    }
+    .arch-layer:last-child { border-bottom: none; }
+    .arch-layer:hover { background: rgba(30, 45, 61, 0.2); }
+    .arch-layer .layer-bar {
+      flex-shrink: 0;
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      min-width: 56px;
+      padding: 0 0.5rem;
+    }
+    .arch-stack.docker .layer-bar {
+      background: rgba(255, 92, 108, 0.1);
+      color: var(--danger);
+      border: 1px solid rgba(255, 92, 108, 0.2);
+    }
+    .arch-stack.wasm .layer-bar {
+      background: rgba(0, 229, 160, 0.1);
+      color: var(--accent);
+      border: 1px solid rgba(0, 229, 160, 0.2);
+    }
+    .arch-layer .layer-name {
+      font-weight: 500;
+      color: var(--text-2);
+    }
+    .arch-layer .layer-detail {
+      font-size: 0.75rem;
+      color: var(--text-5);
+      margin-left: auto;
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+    .arch-layer.eliminated {
+      opacity: 0.35;
+      text-decoration: line-through;
+      text-decoration-color: var(--danger);
+    }
+    .arch-layer.eliminated .layer-bar {
+      background: rgba(255, 92, 108, 0.05);
+      border-color: rgba(255, 92, 108, 0.1);
+    }
+    .arch-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-top: 4rem;
+      color: var(--text-5);
+      font-size: 1.5rem;
+    }
+    .arch-callouts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+    .arch-callout {
+      background: var(--grid-850);
+      border: 1px solid rgba(30, 45, 61, 0.3);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .arch-callout-value {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.25rem;
+    }
+    .arch-callout-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 0.5rem;
+    }
+    .arch-callout-desc {
+      font-size: 0.8rem;
+      color: var(--text-4);
+      line-height: 1.6;
+    }
+    .arch-explainer {
+      margin-top: 3rem;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .arch-explainer p {
+      font-size: 0.95rem;
+      color: var(--text-3);
+      line-height: 1.8;
+      margin-bottom: 1rem;
+    }
+    .arch-explainer strong { color: var(--text-1); }
+    .strikethrough {
+      text-decoration: line-through;
+      text-decoration-color: var(--danger);
+      color: var(--text-5);
+    }
+    @media (max-width: 768px) {
+      .arch-columns { grid-template-columns: 1fr; gap: 1rem; }
+      .arch-arrow { display: none; }
+      .arch-callouts { grid-template-columns: 1fr; }
+    }
+
     /* ── How It Works ──────────────────────────── */
     .steps-grid {
       display: grid;
@@ -785,6 +937,177 @@
         <div class="pain-item"><span class="icon">&check;</span> One <span class="mono accent">warp.toml</span> per service. Scaling, health, shims — all in one file.</div>
         <div class="pain-item"><span class="icon">&check;</span> Capability-based sandbox is the default. No bolt-ons.</div>
         <div class="pain-item"><span class="icon">&check;</span> 5,000+ instances per node. Each uses 1-10MB of memory.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Architecture Deep Dive ───────────────────── -->
+<section id="architecture" class="arch-section">
+  <div class="container">
+    <div class="text-center">
+      <div class="section-label">Under the Hood</div>
+      <h2>What Docker actually runs<br>vs. what you actually need</h2>
+      <p class="section-desc centered">Every container you deploy carries an invisible tax — seven layers of kernel machinery between your code and the hardware. WarpGrid removes six of them.</p>
+    </div>
+
+    <div class="arch-columns">
+      <!-- Docker stack -->
+      <div class="arch-stack docker">
+        <div class="arch-stack-header">Docker / Kubernetes Stack</div>
+        <div class="arch-layer">
+          <span class="layer-bar">APP</span>
+          <span class="layer-name">Your Application Code</span>
+          <span class="layer-detail">2-50 MB</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">LANG</span>
+          <span class="layer-name">Language Runtime</span>
+          <span class="layer-detail">50-800 MB</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">OS</span>
+          <span class="layer-name">Container OS (Ubuntu/Alpine)</span>
+          <span class="layer-detail">5-200 MB</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">OCI</span>
+          <span class="layer-name">Image Layers + OverlayFS</span>
+          <span class="layer-detail">copy-on-write</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">RT</span>
+          <span class="layer-name">containerd + runc</span>
+          <span class="layer-detail">~80 MB</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">NS</span>
+          <span class="layer-name">Linux Namespaces (pid, net, mnt, uts, ipc, user)</span>
+          <span class="layer-detail">per container</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">CG</span>
+          <span class="layer-name">cgroups v2 (cpu, memory, io limits)</span>
+          <span class="layer-detail">per container</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">SEC</span>
+          <span class="layer-name">seccomp + AppArmor / SELinux</span>
+          <span class="layer-detail">300+ syscalls</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">NET</span>
+          <span class="layer-name">veth pairs + bridge + iptables / CNI</span>
+          <span class="layer-detail">per container</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">K8S</span>
+          <span class="layer-name">kubelet + kube-proxy + CSI + CRI</span>
+          <span class="layer-detail">~200 MB</span>
+        </div>
+        <div class="arch-layer" style="border-bottom:none;">
+          <span class="layer-bar">HOST</span>
+          <span class="layer-name">Linux Kernel</span>
+          <span class="layer-detail">required</span>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div class="arch-arrow">&rarr;</div>
+
+      <!-- Wasm stack -->
+      <div class="arch-stack wasm">
+        <div class="arch-stack-header">WarpGrid Stack</div>
+        <div class="arch-layer">
+          <span class="layer-bar">APP</span>
+          <span class="layer-name">Your Application Code</span>
+          <span class="layer-detail">1-10 MB</span>
+        </div>
+        <div class="arch-layer eliminated">
+          <span class="layer-bar">&mdash;</span>
+          <span class="layer-name">Language Runtime</span>
+          <span class="layer-detail">compiled out</span>
+        </div>
+        <div class="arch-layer eliminated">
+          <span class="layer-bar">&mdash;</span>
+          <span class="layer-name">Container OS</span>
+          <span class="layer-detail">not needed</span>
+        </div>
+        <div class="arch-layer eliminated">
+          <span class="layer-bar">&mdash;</span>
+          <span class="layer-name">Image Layers + OverlayFS</span>
+          <span class="layer-detail">not needed</span>
+        </div>
+        <div class="arch-layer eliminated">
+          <span class="layer-bar">&mdash;</span>
+          <span class="layer-name">containerd + runc</span>
+          <span class="layer-detail">not needed</span>
+        </div>
+        <div class="arch-layer eliminated">
+          <span class="layer-bar">&mdash;</span>
+          <span class="layer-name">Linux Namespaces</span>
+          <span class="layer-detail">not needed</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">MEM</span>
+          <span class="layer-name">Linear Memory Sandbox</span>
+          <span class="layer-detail">1-10 MB</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">CAP</span>
+          <span class="layer-name">Capability-based Permissions</span>
+          <span class="layer-detail">deny-all default</span>
+        </div>
+        <div class="arch-layer eliminated">
+          <span class="layer-bar">&mdash;</span>
+          <span class="layer-name">veth + bridge + iptables</span>
+          <span class="layer-detail">not needed</span>
+        </div>
+        <div class="arch-layer">
+          <span class="layer-bar">WG</span>
+          <span class="layer-name">warpd (runtime + scheduler + API)</span>
+          <span class="layer-detail">~25 MB</span>
+        </div>
+        <div class="arch-layer" style="border-bottom:none;">
+          <span class="layer-bar">HOST</span>
+          <span class="layer-name">Linux Kernel</span>
+          <span class="layer-detail">required</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Explainer -->
+    <div class="arch-explainer">
+      <p>
+        <strong>Here's what Docker actually does when you run a container.</strong>
+        It asks the Linux kernel to create six isolated namespaces (pid, net, mnt, uts, ipc, user) — each container gets its own view of process IDs, network interfaces, mount points, and users. Then it sets up cgroups v2 to enforce CPU and memory limits. It creates a virtual ethernet pair (veth) and bridges it to the host network through iptables rules. It unpacks a layered filesystem image through OverlayFS. It applies a seccomp profile that filters 300+ system calls. And only then does your 2MB of application code run on top of a 200MB OS image, inside an 80MB container runtime, managed by a 200MB orchestrator stack.
+      </p>
+      <p>
+        <strong>WebAssembly doesn't need any of that.</strong>
+        A Wasm module executes inside a <em>linear memory sandbox</em> — a flat byte array that the module can read and write, but cannot escape. There is no filesystem access, no network access, no system calls, and no process table unless the host explicitly provides them through typed capability imports. Isolation isn't enforced by the kernel after the fact — it's a structural property of the bytecode format itself. There is nothing to escape <em>from</em> because there is nothing to escape <em>to</em>.
+      </p>
+      <p>
+        <strong>This is where the density comes from.</strong>
+        A Docker container pays a minimum overhead of ~50-100MB for <span class="strikethrough">the guest OS</span>, <span class="strikethrough">namespace bookkeeping</span>, <span class="strikethrough">veth pairs</span>, <span class="strikethrough">cgroup tracking</span>, and <span class="strikethrough">OverlayFS metadata</span>. A WarpGrid instance pays 1-10MB for the Wasm linear memory — because that overhead simply doesn't exist. The six layers between your code and the hardware are gone, not optimized. That's how one node goes from 50 containers to 5,000 instances. It's not a benchmark trick. It's fewer things.
+      </p>
+    </div>
+
+    <!-- Callout stats -->
+    <div class="arch-callouts">
+      <div class="arch-callout">
+        <div class="arch-callout-value">6 layers</div>
+        <div class="arch-callout-label">Removed, not optimized</div>
+        <div class="arch-callout-desc">No container OS. No OverlayFS. No containerd. No namespaces. No veth pairs. No seccomp. They don't exist in the Wasm execution model.</div>
+      </div>
+      <div class="arch-callout">
+        <div class="arch-callout-value">0 syscalls</div>
+        <div class="arch-callout-label">Available by default</div>
+        <div class="arch-callout-desc">Docker's seccomp filters 300+ syscalls after allowing access. Wasm starts at zero — your module can only call functions the host explicitly provides. The attack surface is what you declare, not what you fail to block.</div>
+      </div>
+      <div class="arch-callout">
+        <div class="arch-callout-value">~1ms</div>
+        <div class="arch-callout-label">Instance startup</div>
+        <div class="arch-callout-desc">No image pull. No layer unpacking. No filesystem mount. No namespace creation. No network bridge. AOT-compiled Wasm instantiates from a memory-mapped module in under a millisecond.</div>
       </div>
     </div>
   </div>
