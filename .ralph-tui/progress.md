@@ -635,57 +635,27 @@ after each iteration and it's included in prompts for context.
   - MockRedisServer is simpler than MockMysqlServer — Redis inline commands are easy to detect and respond to without packet framing
 ---
 
-
-## 2026-02-25 - warpgrid-agm.86
-### US-704: Go HTTP + Postgres Integration Test (T3)
-- **Status:** COMPLETED
-- **Files created:**
-  - `test-apps/t3-go-http-postgres/go.mod` — Reference Go module (pgx v5.7.4)
-  - `test-apps/t3-go-http-postgres/main.go` — Reference Go HTTP handler (GET/POST /users via pgx)
-  - `tests/fixtures/go-http-postgres-guest/Cargo.toml` — Standalone no_std Rust crate (cdylib)
-  - `tests/fixtures/go-http-postgres-guest/src/lib.rs` — Guest Wasm component exercising DNS + database-proxy shims
-  - `tests/fixtures/go-http-postgres-guest/wit/test.wit` — WIT world with 5 test exports
-  - `tests/fixtures/go-http-postgres-guest/wit/deps/shim/dns.wit` — DNS shim interface copy
-  - `tests/fixtures/go-http-postgres-guest/wit/deps/shim/database-proxy.wit` — DB proxy shim interface copy
-  - `crates/warpgrid-host/tests/integration_go_http_postgres.rs` — 6 integration tests with QueryAwareMockPostgres
-- **Architecture decisions:**
-  - Domain 3 (TinyGo patches) not yet available — Rust guest substitutes for Go guest, exercises identical WIT shim interfaces
-  - Go source code (`main.go`) is reference implementation for when warp-tinygo is complete
-  - QueryAwareMockPostgres dispatches based on SQL query content (SELECT vs INSERT), maintains had_insert state
-  - Guest passes mock server port as u16 parameter to avoid hardcoded ports
-  - Each test step in lifecycle test uses fresh store+instance due to Wasm component model re-entrancy rules
-- **Test coverage (6 tests):**
-  1. DNS resolution via service registry (db.test.warp.local → 127.0.0.1)
-  2. GET /users returns 5 seed users (alice, bob, charlie, dave, eve) via Postgres wire protocol
-  3. POST /users (INSERT frank) then GET returns 6 users including frank
-  4. Invalid DB host returns DNS error (simulates 503)
-  5. Proxy round-trip echoes bytes through database proxy shim
-  6. Full lifecycle: all 4 exports exercised sequentially with fresh instances
+## 2026-02-25 - warpgrid-agm.88
+- **What was implemented:** US-706 — T5 Bun HTTP + Postgres integration test with behavioral parity to T4
+- **Files changed:**
+  - `test-apps/t5-bun-http-postgres/` (new — full test app directory)
+    - `src/handler-standalone.js` — standalone handler with in-memory data, T4-identical responses
+    - `src/handler.js` — full handler with warpgrid:shim/database-proxy WIT imports + Bun polyfill helpers
+    - `build.sh` — componentize pipeline (bun build → jco componentize → wasm-tools validate)
+    - `test.sh` — 8 integration tests including response parity with T4
+    - `package.json` — hono 4.7.x dependency
+    - `wit/` — full WASI 0.2.3 WIT deps + warpgrid:shim/database-proxy
+    - `README.md` — architecture docs
+  - `tests/fixtures/t5-db-proxy-guest/` (new — Rust guest Wasm component)
+    - `src/lib.rs` — simulates Bun handler's database proxy shim usage
+    - `wit/test.wit` — t5-db-proxy-test world
+    - `Cargo.toml` — wit-bindgen 0.42 + dlmalloc
+  - `crates/warpgrid-host/tests/integration_t5_bun_http_postgres.rs` (new — 5 Rust integration tests)
+- **All quality gates pass:** cargo check, 5 new T5 integration tests pass, 319 unit tests + all existing integration tests unaffected, clippy clean (warpgrid-host)
 - **Learnings:**
-  - Wasm component model "cannot enter component instance" trap: after calling an export, `post_return` must be called before re-entering — use separate store+instance per call, or macro to avoid async closure lifetime issues
-  - `macro_rules!` is the cleanest workaround for Rust's async closure lifetime limitations — expands inline at each call site, no borrowing across async boundaries
-  - Guest `#![no_std]` requires explicit `#[panic_handler]` for wasm32-unknown-unknown target
-  - Postgres wire protocol canned responses: RowDescription ('T') + DataRow ('D') + CommandComplete ('C') + ReadyForQuery ('Z')
-  - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
+  - T4 and T5 share identical database proxy shim paths — the Rust guest components are nearly identical because the WIT interface is language-agnostic. The differentiation is in the JS compilation pipeline (ComponentizeJS for T4 vs Bun build + jco for T5)
+  - Bun polyfills use a graceful degradation chain: `Bun.env` → `process.env` → undefined. This pattern ensures the handler works in native Bun mode, Wasm mode with polyfills, and standalone ComponentizeJS mode
+  - Response byte-parity between T4 and T5 requires identical JSON key ordering, header names, status codes, and seed data — verified via the `jsonResponse()` helper function that both handlers share
+  - The `wasm32-unknown-unknown` target + `wasm-tools component new` conversion pattern (not `wasm32-wasi`) is required for guest fixtures that only import WIT shims without WASI
 ---
 
-## 2026-02-25 - warpgrid-agm.84
-- Implemented US-702: Rust HTTP + Postgres integration test (T1)
-- Created end-to-end integration test for the Rust axum compilation path with DNS and database proxy shims
-- All 6 integration tests pass (total: 357 tests across workspace)
-- Files changed:
-  - NEW: `test-apps/t1-rust-http-postgres/` — reference Rust axum application (Cargo.toml + src/main.rs)
-  - NEW: `tests/fixtures/rust-http-postgres-guest/` — Wasm guest component fixture (Cargo.toml, src/lib.rs, wit/)
-  - NEW: `crates/warpgrid-host/tests/integration_rust_http_postgres.rs` — 6 integration tests
-- Test coverage:
-  1. DNS resolution for db.test.warp.local via service registry
-  2. GET /users returns 5 seed users via Postgres wire protocol
-  3. POST /users (INSERT frank) then GET returns 6 users including frank
-  4. Invalid DB host returns DNS error (simulates 503)
-  5. Proxy round-trip echoes bytes through database proxy shim
-  6. Full lifecycle: all 4 exports exercised sequentially with fresh instances
-- **Learnings:**
-  - Extracted `fresh_instance()` as an async function instead of T3's macro approach — async functions are cleaner than macros when lifetime constraints allow it
-  - Guest fixtures use `[workspace]` empty table in Cargo.toml to prevent Cargo from treating them as part of the main workspace — critical for independent `wasm32-unknown-unknown` builds
-  - T1 (Rust axum path) and T3 (Go TinyGo path) share identical shim chain patterns — validates cross-language shim layer design
----

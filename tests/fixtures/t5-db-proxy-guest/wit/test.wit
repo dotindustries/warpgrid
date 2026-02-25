@@ -1,0 +1,30 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for T5 Bun HTTP + Postgres integration test.
+///
+/// Guest component imports the database-proxy shim and exports test functions
+/// that simulate what the Bun handler would do:
+/// - Connect to Postgres through the proxy
+/// - Send a startup handshake
+/// - Execute a SELECT query
+/// - Execute an INSERT query
+/// - Close the connection
+///
+/// This is identical to the T4 guest world — both T4 (TypeScript) and T5 (Bun)
+/// use the same database proxy WIT interface, so the guest simulation is the same.
+world t5-db-proxy-test {
+    import warpgrid:shim/database-proxy@0.1.0;
+
+    /// Connect to Postgres, perform startup handshake, return handle as string.
+    export test-db-connect: func(host: string, port: u16, database: string, user: string) -> result<string, string>;
+
+    /// Send a SELECT query on an existing connection and return raw response bytes.
+    export test-db-query: func(handle-str: string, sql: string) -> result<list<u8>, string>;
+
+    /// Close a database connection.
+    export test-db-close: func(handle-str: string) -> result<string, string>;
+
+    /// Full lifecycle: connect, handshake, SELECT test_users, close.
+    /// Returns the query response bytes.
+    export test-full-lifecycle: func(host: string, port: u16, database: string, user: string) -> result<list<u8>, string>;
+}
