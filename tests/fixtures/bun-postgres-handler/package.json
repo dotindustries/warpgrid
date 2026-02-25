@@ -1,0 +1,17 @@
+{
+  "name": "bun-postgres-handler-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@warpgrid/bun-sdk": "file:../../../packages/warpgrid-bun-sdk"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.9",
+    "typescript": "^5.7.0"
+  }
+}
