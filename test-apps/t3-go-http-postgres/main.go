@@ -1,150 +1,121 @@
-// T3 Integration Test: Go HTTP handler with Postgres via WarpGrid shims.
+// Package main implements a Go HTTP handler with Postgres (pgx) for WarpGrid.
 //
-// This handler demonstrates the intended Go HTTP + Postgres pattern on WarpGrid:
-// - HTTP routing via standard net/http (mapped to wasi:http by warpgrid/net/http overlay)
-// - Database access via warpgrid:shim/database-proxy WIT imports (abstracted by pgx)
+// This is the reference Go application for the T3 integration test.
+// When compiled with patched TinyGo (warp-tinygo) targeting wasip2,
+// net.Dial routes through the WarpGrid database proxy shim and DNS
+// resolution goes through the WarpGrid DNS shim.
 //
-// Routes:
+// Build: warp pack --lang go  (requires patched TinyGo from Domain 3)
+// Target: wasm32-wasip2
 //
-//	GET  /users      — list all users from test_users table
-//	POST /users      — insert a new user, return 201
-//	GET  /health     — health check
+// The HTTP handler implements:
+//   GET  /users     — returns all users as JSON
+//   POST /users     — creates a new user, returns 201
 //
-// Environment:
-//
-//	DB_HOST           — Postgres host (default: db.test.warp.local)
-//	DB_PORT           — Postgres port (default: 5432)
-//	DB_NAME           — database name (default: testdb)
-//	DB_USER           — database user (default: testuser)
-//
-// Dependencies (upstream user stories):
-//
-//	US-305: pgx Postgres driver over patched net.Dial
-//	US-307: warpgrid/net/http overlay — request/response round-trip
-//	US-310: warp pack --lang go integration
+// Database connectivity flows through the WarpGrid shim chain:
+//   net.Dial("tcp", "db.test.warp.local:5432")
+//     → DNS shim resolves "db.test.warp.local" to service registry IP
+//     → connect() routed through database proxy shim
+//     → send/recv pass raw Postgres wire protocol bytes through proxy
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
-	"strconv"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // User represents a row in the test_users table.
 type User struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-// createUserRequest is the expected POST /users request body.
-type createUserRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-// errorResponse is the standard error response body.
-type errorResponse struct {
-	Error string `json:"error"`
-}
-
-// healthResponse is the GET /health response body.
-type healthResponse struct {
-	Status string `json:"status"`
-}
-
-// seedUsers provides in-memory seed data matching test-infra/seed.sql.
-// When pgx + database proxy (US-305) is ready, this will be replaced
-// with actual Postgres queries.
-var seedUsers = []User{
-	{ID: 1, Name: "Alice Johnson", Email: "alice@example.com"},
-	{ID: 2, Name: "Bob Smith", Email: "bob@example.com"},
-	{ID: 3, Name: "Carol Williams", Email: "carol@example.com"},
-	{ID: 4, Name: "Dave Brown", Email: "dave@example.com"},
-	{ID: 5, Name: "Eve Davis", Email: "eve@example.com"},
-}
-
-var nextID = 6
-
-func writeJSON(w http.ResponseWriter, status int, data any) {
-	body, err := json.Marshal(data)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-App-Name", envOrDefault("APP_NAME", "t3-go-http-postgres"))
-	w.WriteHeader(status)
-	w.Write(body)
-}
-
-func handleGetUsers(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, seedUsers)
-}
-
-func handlePostUsers(w http.ResponseWriter, r *http.Request) {
-	var req createUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Invalid JSON"})
-		return
-	}
-
-	if req.Name == "" || req.Email == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name and email are required"})
-		return
-	}
-
-	user := User{
-		ID:    nextID,
-		Name:  req.Name,
-		Email: req.Email,
-	}
-	nextID++
-	seedUsers = append(seedUsers, user)
-
-	writeJSON(w, http.StatusCreated, user)
-}
-
-func handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
-}
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.URL.Path == "/users" && r.Method == http.MethodGet:
-		handleGetUsers(w, r)
-	case r.URL.Path == "/users" && r.Method == http.MethodPost:
-		handlePostUsers(w, r)
-	case r.URL.Path == "/health":
-		handleHealth(w, r)
-	default:
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "Not Found"})
-	}
-}
-
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 func main() {
-	port := envOrDefault("PORT", "8080")
-	portNum, err := strconv.Atoi(port)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid PORT: %s\n", port)
-		os.Exit(1)
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "postgres://testuser@db.test.warp.local:5432/testdb"
 	}
 
-	addr := fmt.Sprintf(":%d", portNum)
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleGetUsers(w, r, connStr)
+		case http.MethodPost:
+			handlePostUser(w, r, connStr)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
-	fmt.Fprintf(os.Stderr, "Server listening on %s\n", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-		os.Exit(1)
+	log.Println("listening on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func handleGetUsers(w http.ResponseWriter, _ *http.Request, connStr string) {
+	conn, err := pgx.Connect(context.Background(), connStr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("db connect: %v", err), http.StatusServiceUnavailable)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	rows, err := conn.Query(context.Background(), "SELECT id, name FROM test_users ORDER BY id")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("query: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Name); err != nil {
+			http.Error(w, fmt.Sprintf("scan: %v", err), http.StatusInternalServerError)
+			return
+		}
+		users = append(users, u)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(users); err != nil {
+		http.Error(w, fmt.Sprintf("encode: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func handlePostUser(w http.ResponseWriter, r *http.Request, connStr string) {
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := pgx.Connect(context.Background(), connStr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("db connect: %v", err), http.StatusServiceUnavailable)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	var id int
+	err = conn.QueryRow(context.Background(),
+		"INSERT INTO test_users (name) VALUES ($1) RETURNING id", input.Name,
+	).Scan(&id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("insert: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(User{ID: id, Name: input.Name}); err != nil {
+		http.Error(w, fmt.Sprintf("encode: %v", err), http.StatusInternalServerError)
 	}
 }
