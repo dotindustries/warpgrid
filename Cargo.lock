@@ -3545,6 +3545,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "warpgrid-bun"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tracing",
+ "warpgrid-host",
+]
+
+[[package]]
 name = "warpgrid-cluster"
 version = "0.1.0"
 dependencies = [

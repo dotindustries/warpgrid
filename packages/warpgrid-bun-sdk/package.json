@@ -1,0 +1,21 @@
+{
+  "name": "@warpgrid/bun-sdk",
+  "version": "0.1.0",
+  "description": "WarpGrid SDK for Bun — write Bun TypeScript handlers that deploy as WASI components",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "bun x tsc --noEmit",
+    "build": "bun build ./src/index.ts --outdir ./dist --target=browser",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/bun": "^1.2.0"
+  },
+  "license": "Apache-2.0"
+}

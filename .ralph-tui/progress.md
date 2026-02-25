@@ -668,3 +668,21 @@ after each iteration and it's included in prompts for context.
   - Postgres wire protocol canned responses: RowDescription ('T') + DataRow ('D') + CommandComplete ('C') + ReadyForQuery ('Z')
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
 ---
+
+## 2026-02-25 - warpgrid-agm.68
+- **US-601: Scaffold warpgrid-bun crate and @warpgrid/bun-sdk npm package**
+- Files changed:
+  - `crates/warpgrid-bun/Cargo.toml` — new Rust crate with warpgrid-host, anyhow, tracing, serde, serde_json deps
+  - `crates/warpgrid-bun/src/lib.rs` — BunPipelineConfig struct + validate_config fn + 4 unit tests
+  - `Cargo.toml` — added `crates/warpgrid-bun` to workspace members
+  - `packages/warpgrid-bun-sdk/package.json` — @warpgrid/bun-sdk npm package with bun test/build/typecheck scripts
+  - `packages/warpgrid-bun-sdk/tsconfig.json` — strict TS config targeting ESNext with bun-types
+  - `packages/warpgrid-bun-sdk/src/index.ts` — WarpGridHandler interface (fetch + optional init hook)
+  - `packages/warpgrid-bun-sdk/src/index.test.ts` — 4 tests: sync Response, async Promise<Response>, init hook, no init
+- **Quality gates:** cargo check ✓, cargo test (4/4) ✓, bun test (4/4) ✓, bun build ✓, tsc --noEmit ✓
+- **Learnings:**
+  - `packages/` directory is new to the workspace — first non-Rust package directory (Go packages existed in another worktree)
+  - Bun 1.3.5 `bun build --target=browser` produces 0 KB for interface-only TypeScript (all types erased) — expected and correct
+  - Pre-existing clippy failures in `warp-core` (manual_strip) prevent `cargo clippy -p warpgrid-bun -D warnings` from passing at workspace level, but warpgrid-bun itself has no clippy issues
+  - `@types/bun` v1.3.9 provides complete Bun type definitions including `Request`/`Response` web API types
+---
