@@ -1,17 +1,18 @@
 {
-  "name": "@warpgrid/t4-ts-http-postgres",
+  "name": "t4-ts-http-postgres",
   "version": "0.0.0",
   "private": true,
-  "description": "T4 Integration Test: TypeScript HTTP handler with Postgres via WarpGrid shims",
+  "description": "WarpGrid T4 integration test: TypeScript HTTP handler with Postgres via database proxy shim",
   "type": "module",
   "scripts": {
-    "build": "./build.sh",
-    "build:standalone": "./build.sh --standalone",
-    "test": "./test.sh",
-    "typecheck": "echo 'No TypeScript compilation needed for JS handler'"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "build": "bash scripts/build.sh",
+    "build:componentize": "bash scripts/build.sh --componentize-only"
   },
-  "dependencies": {
-    "hono": "4.7.x"
-  },
-  "devDependencies": {}
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
 }

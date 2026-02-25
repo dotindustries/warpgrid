@@ -1,27 +1,23 @@
 /**
- * T4 Integration Test: TypeScript HTTP handler with Postgres via WarpGrid shims.
+ * WarpGrid T4 test fixture: TypeScript HTTP handler with Postgres connectivity.
  *
- * This handler demonstrates the intended warpgrid/pg API pattern:
- * - HTTP routing via web-standard fetch event
- * - Database access via warpgrid:shim/database-proxy WIT imports
- * - Environment variable access via process.env polyfill
+ * This handler is componentized by jco into a WASI HTTP Wasm component.
+ * It imports the WarpGrid database proxy WIT interface for raw Postgres
+ * wire protocol access and wraps it in a pg.Client-compatible API.
  *
  * Routes:
- *   GET  /users      — list all users from test_users table
- *   POST /users      — insert a new user, return 201
- *   GET  /health     — health check
+ *   GET  /users       — list all users as JSON
+ *   GET  /users/:id   — get user by ID
+ *   POST /users       — create a new user (body: { "name": "..." })
  *
- * Environment:
- *   APP_NAME          — included in X-App-Name response header
- *   DB_HOST           — Postgres host (default: db.test.warp.local)
- *   DB_PORT           — Postgres port (default: 5432)
- *   DB_NAME           — database name (default: testdb)
- *   DB_USER           — database user (default: testuser)
+ * Build: npm run build (or: scripts/build.sh)
+ * Compile: jco componentize src/handler.js --wit wit/ --world-name handler ...
  */
 
-// WarpGrid shim imports (warpgrid:shim/database-proxy)
-// When running inside a componentized Wasm module, these are provided by the host.
-// When the warpgrid/pg bridge (US-403/404) is ready, this will use the higher-level API.
+// ── WIT Imports ──────────────────────────────────────────────────────────────
+// These resolve to host-provided functions when running as a Wasm component.
+// The jco componentize tool links them to the warpgrid:shim/database-proxy WIT.
+
 import {
   connect as dbConnect,
   send as dbSend,
@@ -29,235 +25,401 @@ import {
   close as dbClose,
 } from "warpgrid:shim/database-proxy@0.1.0";
 
-// ── Postgres Wire Protocol Helpers ──────────────────────────────────
+// ── Postgres Wire Protocol (inline for single-file componentization) ─────────
 
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
-/** Build a Postgres v3.0 startup message. */
-function buildStartupMessage(database, user) {
-  const params = `user\0${user}\0database\0${database}\0\0`;
-  const paramsBytes = TEXT_ENCODER.encode(params);
-  const len = 4 + 4 + paramsBytes.length;
-  const buf = new ArrayBuffer(len);
-  const view = new DataView(buf);
-  view.setInt32(0, len);
-  view.setInt32(4, 196608); // protocol version 3.0
-  new Uint8Array(buf).set(paramsBytes, 8);
-  return new Uint8Array(buf);
+function pgEncodeStartup(user, database) {
+  const params = `user\0${user}\0database\0${database}\0`;
+  const paramsBytes = textEncoder.encode(params);
+  const totalLength = 4 + 4 + paramsBytes.byteLength + 1;
+  const buf = new Uint8Array(totalLength);
+  const view = new DataView(buf.buffer);
+  view.setInt32(0, totalLength);
+  view.setInt32(4, 196608);
+  buf.set(paramsBytes, 8);
+  buf[totalLength - 1] = 0;
+  return buf;
 }
 
-/** Build a Postgres simple query message. */
-function buildQueryMessage(sql) {
-  const sqlBytes = TEXT_ENCODER.encode(sql + "\0");
-  const len = 4 + sqlBytes.length;
-  const buf = new ArrayBuffer(1 + len);
-  const view = new DataView(buf);
-  view.setUint8(0, 0x51); // 'Q'
-  view.setInt32(1, len);
-  new Uint8Array(buf).set(sqlBytes, 5);
-  return new Uint8Array(buf);
+function pgEncodeSimpleQuery(sql) {
+  const sqlBytes = textEncoder.encode(sql);
+  const payloadLen = 4 + sqlBytes.byteLength + 1;
+  const buf = new Uint8Array(1 + payloadLen);
+  const view = new DataView(buf.buffer);
+  buf[0] = 0x51;
+  view.setInt32(1, payloadLen);
+  buf.set(sqlBytes, 5);
+  buf[5 + sqlBytes.byteLength] = 0;
+  return buf;
 }
 
-/** Parse Postgres response messages (simplified — handles DataRow and ReadyForQuery). */
-function parseResponse(data) {
-  const rows = [];
+function pgEncodeExtendedQuery(sql, params) {
+  // Parse message
+  const sqlBytes = textEncoder.encode(sql);
+  const parsePayload = 4 + 1 + sqlBytes.byteLength + 1 + 2 + 4 * params.length;
+  const parseBuf = new Uint8Array(1 + parsePayload);
+  let pv = new DataView(parseBuf.buffer);
+  parseBuf[0] = 0x50;
+  pv.setInt32(1, parsePayload);
+  let off = 5;
+  parseBuf[off++] = 0;
+  parseBuf.set(sqlBytes, off);
+  off += sqlBytes.byteLength;
+  parseBuf[off++] = 0;
+  pv.setInt16(off, params.length);
+  off += 2;
+  for (let i = 0; i < params.length; i++) { pv.setInt32(off, 0); off += 4; }
+
+  // Bind message
+  const encodedParams = params.map((p) =>
+    p === null ? null : textEncoder.encode(String(p))
+  );
+  let paramDataLen = 0;
+  for (const ep of encodedParams) paramDataLen += 4 + (ep ? ep.byteLength : 0);
+  const bindPayload = 4 + 1 + 1 + 2 + 2 + paramDataLen + 2;
+  const bindBuf = new Uint8Array(1 + bindPayload);
+  let bv = new DataView(bindBuf.buffer);
+  bindBuf[0] = 0x42;
+  bv.setInt32(1, bindPayload);
+  off = 5;
+  bindBuf[off++] = 0;
+  bindBuf[off++] = 0;
+  bv.setInt16(off, 0); off += 2;
+  bv.setInt16(off, params.length); off += 2;
+  for (const ep of encodedParams) {
+    if (ep === null) { bv.setInt32(off, -1); off += 4; }
+    else { bv.setInt32(off, ep.byteLength); off += 4; bindBuf.set(ep, off); off += ep.byteLength; }
+  }
+  bv.setInt16(off, 0);
+
+  // Execute message
+  const execBuf = new Uint8Array(10);
+  const ev = new DataView(execBuf.buffer);
+  execBuf[0] = 0x45;
+  ev.setInt32(1, 9);
+  execBuf[5] = 0;
+  ev.setInt32(6, 0);
+
+  // Sync message
+  const syncBuf = new Uint8Array(5);
+  const sv = new DataView(syncBuf.buffer);
+  syncBuf[0] = 0x53;
+  sv.setInt32(1, 4);
+
+  const total = parseBuf.byteLength + bindBuf.byteLength + execBuf.byteLength + syncBuf.byteLength;
+  const result = new Uint8Array(total);
+  let pos = 0;
+  result.set(parseBuf, pos); pos += parseBuf.byteLength;
+  result.set(bindBuf, pos); pos += bindBuf.byteLength;
+  result.set(execBuf, pos); pos += execBuf.byteLength;
+  result.set(syncBuf, pos);
+  return result;
+}
+
+function pgEncodeTerminate() {
+  const buf = new Uint8Array(5);
+  const view = new DataView(buf.buffer);
+  buf[0] = 0x58;
+  view.setInt32(1, 4);
+  return buf;
+}
+
+function pgEncodePassword(password) {
+  const passBytes = textEncoder.encode(password);
+  const payloadLen = 4 + passBytes.byteLength + 1;
+  const buf = new Uint8Array(1 + payloadLen);
+  const view = new DataView(buf.buffer);
+  buf[0] = 0x70;
+  view.setInt32(1, payloadLen);
+  buf.set(passBytes, 5);
+  buf[5 + passBytes.byteLength] = 0;
+  return buf;
+}
+
+function pgParseMessages(buf) {
+  const messages = [];
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let offset = 0;
 
-  while (offset < data.length) {
-    if (offset + 5 > data.length) break;
+  while (offset < buf.byteLength) {
+    if (offset + 5 > buf.byteLength) break;
+    const typeCode = buf[offset];
+    const length = view.getInt32(offset + 1);
+    const msgEnd = offset + 1 + length;
+    if (msgEnd > buf.byteLength) break;
+    const payload = buf.subarray(offset + 5, msgEnd);
+    const pv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
 
-    const msgType = String.fromCharCode(data[offset]);
-    const view = new DataView(data.buffer, data.byteOffset + offset + 1, 4);
-    const msgLen = view.getInt32(0);
-
-    if (msgType === "D") {
-      // DataRow
-      const row = parseDataRow(data, offset + 5, msgLen - 4);
-      rows.push(row);
-    } else if (msgType === "Z") {
-      // ReadyForQuery — we're done
-      break;
+    switch (typeCode) {
+      case 0x52: { // Authentication
+        const authType = pv.getInt32(0);
+        messages.push({ type: "auth", authType });
+        break;
+      }
+      case 0x5a: // ReadyForQuery
+        messages.push({ type: "ready", status: String.fromCharCode(payload[0]) });
+        break;
+      case 0x54: { // RowDescription
+        const numFields = pv.getInt16(0);
+        const fields = [];
+        let fo = 2;
+        for (let i = 0; i < numFields; i++) {
+          const ns = fo;
+          while (fo < payload.byteLength && payload[fo] !== 0) fo++;
+          const name = textDecoder.decode(payload.subarray(ns, fo));
+          fo++;
+          const fv = new DataView(payload.buffer, payload.byteOffset + fo, 18);
+          fields.push({ name, typeOid: fv.getInt32(6) });
+          fo += 18;
+        }
+        messages.push({ type: "rowDesc", fields });
+        break;
+      }
+      case 0x44: { // DataRow
+        const numCols = pv.getInt16(0);
+        const values = [];
+        let ro = 2;
+        for (let i = 0; i < numCols; i++) {
+          const cv = new DataView(payload.buffer, payload.byteOffset + ro, 4);
+          const len = cv.getInt32(0);
+          ro += 4;
+          if (len === -1) values.push(null);
+          else { values.push(textDecoder.decode(payload.subarray(ro, ro + len))); ro += len; }
+        }
+        messages.push({ type: "dataRow", values });
+        break;
+      }
+      case 0x43: { // CommandComplete
+        const str = textDecoder.decode(payload);
+        messages.push({ type: "complete", tag: str.substring(0, str.indexOf("\0")) });
+        break;
+      }
+      case 0x45: { // ErrorResponse
+        const fields = {};
+        let eo = 0;
+        while (eo < payload.byteLength && payload[eo] !== 0) {
+          const fc = String.fromCharCode(payload[eo++]);
+          const vs = eo;
+          while (eo < payload.byteLength && payload[eo] !== 0) eo++;
+          fields[fc] = textDecoder.decode(payload.subarray(vs, eo));
+          eo++;
+        }
+        messages.push({ type: "error", severity: fields["S"], code: fields["C"], message: fields["M"] });
+        break;
+      }
+      case 0x31: messages.push({ type: "parseComplete" }); break;
+      case 0x32: messages.push({ type: "bindComplete" }); break;
+      default: messages.push({ type: "unknown", typeCode }); break;
     }
-    // Skip CommandComplete, RowDescription, etc.
-
-    offset += 1 + msgLen;
+    offset = msgEnd;
   }
-
-  return rows;
+  return messages;
 }
 
-/** Parse a single DataRow message. */
-function parseDataRow(data, start, len) {
-  const view = new DataView(data.buffer, data.byteOffset + start, len);
-  const fieldCount = view.getInt16(0);
-  const fields = [];
-  let pos = 2;
+// ── Postgres Client ──────────────────────────────────────────────────────────
 
-  for (let i = 0; i < fieldCount; i++) {
-    const fieldLen = view.getInt32(pos);
-    pos += 4;
-    if (fieldLen === -1) {
-      fields.push(null);
+class PgClient {
+  constructor(config) {
+    this.config = config;
+    this.handle = null;
+  }
+
+  connect() {
+    this.handle = dbConnect({
+      host: this.config.host,
+      port: this.config.port,
+      database: this.config.database,
+      user: this.config.user,
+      password: this.config.password,
+    });
+    this._send(pgEncodeStartup(this.config.user, this.config.database));
+    this._processStartup();
+  }
+
+  query(sql, params) {
+    if (params && params.length > 0) {
+      this._send(pgEncodeExtendedQuery(sql, params));
     } else {
-      const fieldData = data.slice(start + pos, start + pos + fieldLen);
-      fields.push(TEXT_DECODER.decode(fieldData));
-      pos += fieldLen;
+      this._send(pgEncodeSimpleQuery(sql));
     }
+    return this._readQueryResult();
   }
 
-  return fields;
-}
-
-// ── Database Connection ─────────────────────────────────────────────
-
-let _dbHandle = null;
-
-async function getDbConnection() {
-  if (_dbHandle !== null) return _dbHandle;
-
-  const host = globalThis.process?.env?.DB_HOST ?? "db.test.warp.local";
-  const port = parseInt(globalThis.process?.env?.DB_PORT ?? "5432", 10);
-  const database = globalThis.process?.env?.DB_NAME ?? "testdb";
-  const user = globalThis.process?.env?.DB_USER ?? "testuser";
-
-  _dbHandle = dbConnect({ host, port, database, user });
-
-  // Perform startup handshake
-  const startup = buildStartupMessage(database, user);
-  dbSend(_dbHandle, startup);
-
-  // Read until ReadyForQuery
-  let response = dbRecv(_dbHandle, 4096);
-  // The server sends AuthOk + params + ReadyForQuery — consume them all
-  while (response.length > 0) {
-    const lastByte = response[response.length - 1];
-    // ReadyForQuery ends with a transaction status byte (I, T, or E)
-    if (response.length >= 6) {
-      const possibleZ = response[response.length - 6];
-      if (possibleZ === 0x5a) break; // 'Z'
-    }
-    const more = dbRecv(_dbHandle, 4096);
-    if (more.length === 0) break;
-    const combined = new Uint8Array(response.length + more.length);
-    combined.set(response);
-    combined.set(more, response.length);
-    response = combined;
+  end() {
+    if (this.handle === null) return;
+    try { this._send(pgEncodeTerminate()); } catch { /* ignore */ }
+    try { dbClose(this.handle); } catch { /* ignore */ }
+    this.handle = null;
   }
 
-  return _dbHandle;
-}
+  _send(data) {
+    dbSend(this.handle, data);
+  }
 
-async function query(sql) {
-  const handle = await getDbConnection();
-  const msg = buildQueryMessage(sql);
-  dbSend(handle, msg);
+  _recv() {
+    return dbRecv(this.handle, 65536);
+  }
 
-  // Collect response until ReadyForQuery
-  let allData = new Uint8Array(0);
-  while (true) {
-    const chunk = dbRecv(handle, 65536);
-    if (chunk.length === 0) break;
+  _readMessages() {
+    const data = this._recv();
+    if (!data || data.byteLength === 0) return [];
+    return pgParseMessages(data);
+  }
 
-    const combined = new Uint8Array(allData.length + chunk.length);
-    combined.set(allData);
-    combined.set(chunk, allData.length);
-    allData = combined;
+  _readUntil(pred) {
+    const collected = [];
+    for (let i = 0; i < 100; i++) {
+      const msgs = this._readMessages();
+      for (const m of msgs) {
+        collected.push(m);
+        if (pred(m)) return collected;
+      }
+    }
+    throw new Error("Timeout waiting for backend message");
+  }
 
-    // Check for ReadyForQuery marker
-    for (let i = allData.length - 6; i >= 0; i--) {
-      if (allData[i] === 0x5a) { // 'Z'
-        return parseResponse(allData);
+  _processStartup() {
+    const msgs = this._readUntil((m) => m.type === "ready");
+    for (const m of msgs) {
+      if (m.type === "auth" && m.authType === 3) {
+        if (!this.config.password) throw new Error("Password required");
+        this._send(pgEncodePassword(this.config.password));
+      } else if (m.type === "error") {
+        throw new Error(`Startup error [${m.code}]: ${m.message}`);
       }
     }
   }
 
-  return parseResponse(allData);
-}
-
-// ── HTTP Handler ────────────────────────────────────────────────────
-
-function jsonResponse(data, status = 200, extraHeaders = {}) {
-  const body = JSON.stringify(data);
-  const headers = {
-    "Content-Type": "application/json",
-    ...extraHeaders,
-  };
-
-  // Include APP_NAME in response headers if available
-  const appName = globalThis.process?.env?.APP_NAME;
-  if (appName) {
-    headers["X-App-Name"] = appName;
+  _readQueryResult() {
+    const msgs = this._readUntil((m) => m.type === "ready");
+    let fields = [];
+    const rows = [];
+    let rowCount = 0;
+    for (const m of msgs) {
+      if (m.type === "error") throw new Error(`[${m.code}]: ${m.message}`);
+      if (m.type === "rowDesc") fields = m.fields;
+      if (m.type === "dataRow") {
+        const row = {};
+        for (let i = 0; i < m.values.length && i < fields.length; i++) {
+          row[fields[i].name] = m.values[i];
+        }
+        rows.push(row);
+      }
+      if (m.type === "complete") {
+        const parts = m.tag.split(" ");
+        const n = parseInt(parts[parts.length - 1], 10);
+        rowCount = isNaN(n) ? rows.length : n;
+      }
+    }
+    return { rows, rowCount, fields };
   }
-
-  return new Response(body, { status, headers });
 }
 
-async function handleGetUsers() {
-  const rows = await query("SELECT id, name, email FROM test_users ORDER BY id");
-  const users = rows.map((row) => ({
-    id: parseInt(row[0], 10),
-    name: row[1],
-    email: row[2],
-  }));
-  return jsonResponse(users);
+// ── Database Configuration ───────────────────────────────────────────────────
+
+const DB_CONFIG = {
+  host: "db.test.warp.local",
+  port: 5432,
+  database: "testdb",
+  user: "testuser",
+  password: undefined,
+};
+
+// ── HTTP Handler ─────────────────────────────────────────────────────────────
+
+function jsonResponse(status, data) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
-async function handlePostUsers(request) {
-  let body;
+function withClient(fn) {
+  const client = new PgClient(DB_CONFIG);
   try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Invalid JSON" }, 400);
+    client.connect();
+    return fn(client);
+  } finally {
+    client.end();
   }
-
-  if (!body.name || !body.email) {
-    return jsonResponse({ error: "name and email are required" }, 400);
-  }
-
-  // Escape single quotes for SQL safety (simplified — real code would use params)
-  const name = body.name.replace(/'/g, "''");
-  const email = body.email.replace(/'/g, "''");
-
-  const rows = await query(
-    `INSERT INTO test_users (name, email) VALUES ('${name}', '${email}') RETURNING id, name, email`
-  );
-
-  if (rows.length > 0) {
-    const user = {
-      id: parseInt(rows[0][0], 10),
-      name: rows[0][1],
-      email: rows[0][2],
-    };
-    return jsonResponse(user, 201);
-  }
-
-  return jsonResponse({ error: "Insert failed" }, 500);
 }
 
-function handleHealth() {
-  return jsonResponse({ status: "ok" });
+function handleGetUsers() {
+  try {
+    return withClient((client) => {
+      const result = client.query("SELECT id, name FROM test_users ORDER BY id");
+      return jsonResponse(200, result.rows);
+    });
+  } catch (err) {
+    return jsonResponse(500, { error: err.message || String(err) });
+  }
 }
 
-// ── Fetch Event Listener ────────────────────────────────────────────
+function handleGetUserById(idStr) {
+  const id = parseInt(idStr, 10);
+  if (isNaN(id) || id <= 0) {
+    return jsonResponse(400, { error: "invalid user ID: must be a positive integer" });
+  }
+  try {
+    return withClient((client) => {
+      const result = client.query("SELECT id, name FROM test_users WHERE id = $1", [String(id)]);
+      if (result.rows.length === 0) return jsonResponse(404, { error: `user ${id} not found` });
+      return jsonResponse(200, result.rows[0]);
+    });
+  } catch (err) {
+    return jsonResponse(500, { error: err.message || String(err) });
+  }
+}
+
+function handlePostUser(body) {
+  if (!body) return jsonResponse(400, { error: "request body is required" });
+
+  let parsed;
+  try { parsed = JSON.parse(body); } catch { return jsonResponse(400, { error: "invalid JSON in request body" }); }
+
+  if (typeof parsed !== "object" || parsed === null) return jsonResponse(400, { error: "invalid JSON: expected an object" });
+
+  const name = parsed.name;
+  if (typeof name !== "string" || name.trim() === "") return jsonResponse(400, { error: "name field is required and must be a non-empty string" });
+
+  try {
+    return withClient((client) => {
+      const result = client.query("INSERT INTO test_users (name) VALUES ($1) RETURNING id, name", [name.trim()]);
+      if (result.rows.length === 0) return jsonResponse(500, { error: "insert did not return a row" });
+      return jsonResponse(201, result.rows[0]);
+    });
+  } catch (err) {
+    return jsonResponse(500, { error: err.message || String(err) });
+  }
+}
+
+// ── Fetch Event Listener ─────────────────────────────────────────────────────
 
 addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  const method = event.request.method;
+  const request = event.request;
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const method = request.method;
 
-  let responsePromise;
+  let response;
 
-  if (url.pathname === "/users" && method === "GET") {
-    responsePromise = handleGetUsers();
-  } else if (url.pathname === "/users" && method === "POST") {
-    responsePromise = handlePostUsers(event.request);
-  } else if (url.pathname === "/health") {
-    responsePromise = Promise.resolve(handleHealth());
+  if (path === "/users" && method === "GET") {
+    response = handleGetUsers();
+  } else if (path === "/users" && method === "POST") {
+    const body = request.text ? request.text() : null;
+    response = handlePostUser(body);
   } else {
-    responsePromise = Promise.resolve(
-      jsonResponse({ error: "Not Found" }, 404)
-    );
+    const match = path.match(/^\/users\/([^/]+)$/);
+    if (match && method === "GET") {
+      response = handleGetUserById(match[1]);
+    } else if (path.startsWith("/users")) {
+      response = jsonResponse(405, { error: "method not allowed" });
+    } else {
+      response = jsonResponse(404, { error: "not found" });
+    }
   }
 
-  event.respondWith(responsePromise);
+  event.respondWith(response);
 });

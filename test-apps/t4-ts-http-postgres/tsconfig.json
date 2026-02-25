@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "paths": {
+      "warpgrid:shim/database-proxy@0.1.0": ["./src/warpgrid-shim.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
