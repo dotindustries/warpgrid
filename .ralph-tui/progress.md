@@ -635,3 +635,36 @@ after each iteration and it's included in prompts for context.
   - MockRedisServer is simpler than MockMysqlServer — Redis inline commands are easy to detect and respond to without packet framing
 ---
 
+
+## 2026-02-25 - warpgrid-agm.86
+### US-704: Go HTTP + Postgres Integration Test (T3)
+- **Status:** COMPLETED
+- **Files created:**
+  - `test-apps/t3-go-http-postgres/go.mod` — Reference Go module (pgx v5.7.4)
+  - `test-apps/t3-go-http-postgres/main.go` — Reference Go HTTP handler (GET/POST /users via pgx)
+  - `tests/fixtures/go-http-postgres-guest/Cargo.toml` — Standalone no_std Rust crate (cdylib)
+  - `tests/fixtures/go-http-postgres-guest/src/lib.rs` — Guest Wasm component exercising DNS + database-proxy shims
+  - `tests/fixtures/go-http-postgres-guest/wit/test.wit` — WIT world with 5 test exports
+  - `tests/fixtures/go-http-postgres-guest/wit/deps/shim/dns.wit` — DNS shim interface copy
+  - `tests/fixtures/go-http-postgres-guest/wit/deps/shim/database-proxy.wit` — DB proxy shim interface copy
+  - `crates/warpgrid-host/tests/integration_go_http_postgres.rs` — 6 integration tests with QueryAwareMockPostgres
+- **Architecture decisions:**
+  - Domain 3 (TinyGo patches) not yet available — Rust guest substitutes for Go guest, exercises identical WIT shim interfaces
+  - Go source code (`main.go`) is reference implementation for when warp-tinygo is complete
+  - QueryAwareMockPostgres dispatches based on SQL query content (SELECT vs INSERT), maintains had_insert state
+  - Guest passes mock server port as u16 parameter to avoid hardcoded ports
+  - Each test step in lifecycle test uses fresh store+instance due to Wasm component model re-entrancy rules
+- **Test coverage (6 tests):**
+  1. DNS resolution via service registry (db.test.warp.local → 127.0.0.1)
+  2. GET /users returns 5 seed users (alice, bob, charlie, dave, eve) via Postgres wire protocol
+  3. POST /users (INSERT frank) then GET returns 6 users including frank
+  4. Invalid DB host returns DNS error (simulates 503)
+  5. Proxy round-trip echoes bytes through database proxy shim
+  6. Full lifecycle: all 4 exports exercised sequentially with fresh instances
+- **Learnings:**
+  - Wasm component model "cannot enter component instance" trap: after calling an export, `post_return` must be called before re-entering — use separate store+instance per call, or macro to avoid async closure lifetime issues
+  - `macro_rules!` is the cleanest workaround for Rust's async closure lifetime limitations — expands inline at each call site, no borrowing across async boundaries
+  - Guest `#![no_std]` requires explicit `#[panic_handler]` for wasm32-unknown-unknown target
+  - Postgres wire protocol canned responses: RowDescription ('T') + DataRow ('D') + CommandComplete ('C') + ReadyForQuery ('Z')
+  - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
+---

@@ -1,0 +1,35 @@
+package warpgrid:test-go@0.1.0;
+
+/// Test world for Go HTTP + Postgres integration tests (T3).
+///
+/// Guest component imports DNS and database-proxy shims and exports test
+/// functions that simulate Go net/http handler behavior:
+///   - DNS resolution for the database hostname
+///   - Connection via database proxy
+///   - Postgres wire protocol round-trip (startup handshake + query)
+///   - Error handling for invalid hosts
+world go-http-postgres-test {
+    import warpgrid:shim/dns@0.1.0;
+    import warpgrid:shim/database-proxy@0.1.0;
+
+    /// Resolve "db.test.warp.local" via DNS shim and return the first IP address.
+    /// Validates that net.Dial hostname resolution routes through WarpGrid DNS.
+    export test-resolve-db-host: func() -> result<string, string>;
+
+    /// Simulate GET /users: resolve DNS, connect to Postgres via proxy,
+    /// send startup handshake + SELECT query, receive response rows.
+    /// The port parameter is the mock server's port (determined at test runtime).
+    export test-get-users: func(port: u16) -> result<list<u8>, string>;
+
+    /// Simulate POST /users then GET /users: connect, send INSERT,
+    /// receive ack, then send SELECT and receive updated rows.
+    export test-post-and-get-users: func(port: u16) -> result<list<u8>, string>;
+
+    /// Attempt to resolve a non-existent hostname ("nonexistent.warp.local").
+    /// Should return an error, simulating a 503 response for invalid DB host.
+    export test-invalid-db-host: func() -> result<string, string>;
+
+    /// Full proxy round-trip: connect, send data, receive echoed data, close.
+    /// Validates that net.Dial TCP connections route through the database proxy.
+    export test-proxy-roundtrip: func(port: u16) -> result<list<u8>, string>;
+}
