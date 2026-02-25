@@ -152,17 +152,6 @@ after each iteration and it's included in prompts for context.
 - `jco serve` for verification (Node.js based, supports WASI 0.2.3); `wasmtime serve` requires Wasmtime 41+
 - Idempotency via stamp file: `build/componentize-js/.build-stamp` records `tag:jco_version:mode`
 
-### TypeScript HTTP Handler Architecture (Domain 4 - US-405)
-- Test app at `test-apps/t4-ts-http-postgres/` — TypeScript HTTP handler with Postgres via database proxy
-- 3-layer testable architecture: (1) `pg-wire.ts` — pure protocol encoding/decoding, (2) `pg-client.ts` — Client with Transport DI, (3) `handler-logic.ts` — HTTP routing with ClientFactory DI
-- `handler.js` is the componentizable artifact — inlines all pg-wire logic + uses WIT imports directly
-- WIT imports in JS: `import { connect, send, recv, close } from 'warpgrid:shim/database-proxy@0.1.0'`
-- WIT world: imports `wasi:http/types@0.2.3` + `warpgrid:shim/database-proxy@0.1.0`, exports `wasi:http/incoming-handler@0.2.3`
-- tsconfig.json `paths` maps WIT module names to `.d.ts` declarations for type checking
-- Tests use `node --import tsx --test test/*.test.ts` (Node.js built-in test runner + tsx for TS)
-- MockTransport pattern: queue pre-built Postgres backend messages, verify sent message types
-- Postgres wire protocol: Simple Query (`Q` + sql) for no-param queries, Extended Query (`P/B/E/S`) for parameterized
-
 ---
 
 ## 2026-02-22 - warpgrid-agm.2
@@ -680,32 +669,20 @@ after each iteration and it's included in prompts for context.
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
 ---
 
-## 2026-02-25 - warpgrid-agm.52
-- **What was implemented:** US-405 — End-to-end TypeScript HTTP handler with Postgres query
-- **Files created:**
-  - `test-apps/t4-ts-http-postgres/package.json` — npm config with typecheck/test/build scripts
-  - `test-apps/t4-ts-http-postgres/tsconfig.json` — TypeScript config with WIT module path mapping
-  - `test-apps/t4-ts-http-postgres/src/pg-wire.ts` — Postgres wire protocol encoder/decoder (pure TS, no deps)
-  - `test-apps/t4-ts-http-postgres/src/pg-client.ts` — pg.Client-compatible class with Transport DI
-  - `test-apps/t4-ts-http-postgres/src/handler-logic.ts` — HTTP handler logic (pure functions, testable)
-  - `test-apps/t4-ts-http-postgres/src/handler.js` — Componentizable handler (WIT imports + inline pg protocol)
-  - `test-apps/t4-ts-http-postgres/src/warpgrid-shim.d.ts` — TypeScript declarations for WIT module
-  - `test-apps/t4-ts-http-postgres/test/pg-wire.test.ts` — 10 wire protocol tests
-  - `test-apps/t4-ts-http-postgres/test/pg-client.test.ts` — 10 client tests with MockTransport
-  - `test-apps/t4-ts-http-postgres/test/handler.test.ts` — 14 handler route tests with MockPgClient
-  - `test-apps/t4-ts-http-postgres/wit/handler.wit` — WIT world importing database-proxy, exporting HTTP
-  - `test-apps/t4-ts-http-postgres/wit/deps/warpgrid/database-proxy.wit` — WarpGrid database proxy WIT
-  - `test-apps/t4-ts-http-postgres/wit/deps/{cli,clocks,filesystem,http,io,random,sockets}/` — WASI 0.2.3 deps
-  - `test-apps/t4-ts-http-postgres/scripts/build.sh` — Componentization pipeline (typecheck → jco → wasm-tools)
-  - `.gitignore` — Added test-apps/*/node_modules/ and test-apps/*/dist/ exclusions
-- **Quality gates:** 44 tests pass, typecheck passes, 0 errors
+## 2026-02-25 - warpgrid-agm.68
+- **US-601: Scaffold warpgrid-bun crate and @warpgrid/bun-sdk npm package**
+- Files changed:
+  - `crates/warpgrid-bun/Cargo.toml` — new Rust crate with warpgrid-host, anyhow, tracing, serde, serde_json deps
+  - `crates/warpgrid-bun/src/lib.rs` — BunPipelineConfig struct + validate_config fn + 4 unit tests
+  - `Cargo.toml` — added `crates/warpgrid-bun` to workspace members
+  - `packages/warpgrid-bun-sdk/package.json` — @warpgrid/bun-sdk npm package with bun test/build/typecheck scripts
+  - `packages/warpgrid-bun-sdk/tsconfig.json` — strict TS config targeting ESNext with bun-types
+  - `packages/warpgrid-bun-sdk/src/index.ts` — WarpGridHandler interface (fetch + optional init hook)
+  - `packages/warpgrid-bun-sdk/src/index.test.ts` — 4 tests: sync Response, async Promise<Response>, init hook, no init
+- **Quality gates:** cargo check ✓, cargo test (4/4) ✓, bun test (4/4) ✓, bun build ✓, tsc --noEmit ✓
 - **Learnings:**
-  - ComponentizeJS handler.js must be a single file for componentization — either bundle (esbuild) or inline all logic
-  - WIT imports in JS use syntax: `import { fn } from 'package:ns/interface@version'` — esbuild needs `--external:package:*` to preserve these
-  - Handler.js uses `addEventListener("fetch", ...)` pattern (web-standard fetch event) for ComponentizeJS HTTP handlers
-  - For testability, split into 3 layers: (1) pg-wire.ts (pure protocol encoding/decoding), (2) pg-client.ts (Transport DI), (3) handler-logic.ts (ClientFactory DI) — all testable without WIT
-  - The actual handler.js duplicates pg-wire logic inline because ComponentizeJS componentizes a single JS file — the TS modules exist for testing and documentation
-  - tsconfig.json `paths` mapping allows TypeScript to type-check WIT import references: `"warpgrid:shim/database-proxy@0.1.0": ["./src/warpgrid-shim.d.ts"]`
-  - Postgres Extended Query protocol requires 4 messages (Parse/Bind/Execute/Sync); Simple Query is just Q + null-terminated SQL
-  - MockTransport pattern: queue pre-built backend messages, verify sent message types — works well for testing wire protocol clients
+  - `packages/` directory is new to the workspace — first non-Rust package directory (Go packages existed in another worktree)
+  - Bun 1.3.5 `bun build --target=browser` produces 0 KB for interface-only TypeScript (all types erased) — expected and correct
+  - Pre-existing clippy failures in `warp-core` (manual_strip) prevent `cargo clippy -p warpgrid-bun -D warnings` from passing at workspace level, but warpgrid-bun itself has no clippy issues
+  - `@types/bun` v1.3.9 provides complete Bun type definitions including `Request`/`Response` web API types
 ---

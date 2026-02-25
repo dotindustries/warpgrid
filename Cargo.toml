@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
-exclude = ["demos/wastebin"]
 members = [
     "crates/warp-core",
     "crates/warp-analyzer",
@@ -23,7 +22,7 @@ members = [
     "crates/warpgrid-placement",
     "crates/warpgrid-proxy",
     "crates/warpgrid-rollout",
-    "crates/warpgrid-libpq",
+    "crates/warpgrid-bun",
 ]
 
 [workspace.package]
@@ -58,4 +57,3 @@ warp-compat = { path = "crates/warp-compat" }
 warp-runtime = { path = "crates/warp-runtime" }
 warpgrid-host = { path = "crates/warpgrid-host" }
 warpgrid-state = { path = "crates/warpgrid-state" }
-warpgrid-libpq = { path = "crates/warpgrid-libpq" }
