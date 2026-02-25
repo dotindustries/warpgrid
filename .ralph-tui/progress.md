@@ -139,6 +139,19 @@ after each iteration and it's included in prompts for context.
 - Public API for US-210/211: `__warpgrid_proxy_fd_is_proxied(fd)`, `__warpgrid_proxy_fd_get_handle(fd)`, `__warpgrid_proxy_fd_remove(fd)`
 - Return protocol matches FS shim: `-2` (not intercepted), `-1` (error), `>= 0` (success)
 
+### Bun SDK Dual-Mode Architecture (Domain 6)
+- `@warpgrid/bun-sdk/postgres` exports `createPool()` — auto-detects native vs Wasm mode
+- `NativePool` delegates to `pg` npm package (real TCP connections)
+- `WasmPool` speaks Postgres v3.0 wire protocol over `DatabaseProxyShim` (WIT database-proxy)
+- Mode detection: `typeof globalThis.Bun !== "undefined"` → native, else wasm. `__WARPGRID_WASM__` overrides to wasm.
+- `PoolConfig.mode` overrides auto-detection: `"native"`, `"wasm"`, or `"auto"` (default)
+- `PoolConfig.shim` allows injecting mock `DatabaseProxyShim` for testing
+- Handler pattern: `createHandler(pool: Pool)` — dependency injection enables dual-mode testing
+- Parity testing: MockNativePool (returns JS objects) vs MockWasmShim (returns wire protocol bytes) → WasmPool parses bytes into same JS objects → handler produces identical JSON responses
+- Extended query protocol (Parse+Bind+Execute+Sync) used for parameterized queries ($1, $2)
+- `containsReadyForQuery()` scans from end of buffer for 'Z' (0x5A) + Int32(5) + status byte
+- `file:` protocol in package.json resolves local SDK without publishing
+
 ### ComponentizeJS Build Pipeline (Domain 4)
 - ComponentizeJS 0.19.3 cloned into `vendor/componentize-js/` for future patching (US-403+)
 - Build toolchain: `@bytecodealliance/jco` 1.16.1 + `@bytecodealliance/componentize-js` 0.18.4
@@ -151,16 +164,6 @@ after each iteration and it's included in prompts for context.
 - `--disable stdio,clocks,random` reduces imports for minimal HTTP-only components
 - `jco serve` for verification (Node.js based, supports WASI 0.2.3); `wasmtime serve` requires Wasmtime 41+
 - Idempotency via stamp file: `build/componentize-js/.build-stamp` records `tag:jco_version:mode`
-
-### Bun Pack Pipeline (warp-pack)
-- Pipeline: `bun build --target browser --format esm` → `jco componentize` → `wasm-tools component wit` validate
-- jco resolution: `$WARPGRID_JCO_PATH` > `build/componentize-js/node_modules/.bin/jco` > `$PATH`
-- WIT resolution: project-local `wit/` > shared `tests/fixtures/js-http-handler/wit/`
-- Output: `target/wasm/<module-name>.wasm` (consistent with other language targets)
-- `find_project_root()` walks up from project path, falls back to CWD for tempdir compatibility
-- Bun handlers use same `addEventListener("fetch", ...)` pattern as ComponentizeJS (Domain 4)
-- jco error messages include hint about unsupported APIs and native bindings
-- Entry point validated before toolchain resolution for better error UX
 
 ---
 
@@ -679,24 +682,35 @@ after each iteration and it's included in prompts for context.
   - Test total: 351 tests (319 unit + 10 Postgres + 5 FS + 11 MySQL + 11 Redis + 6 Go-HTTP-Postgres integration)
 ---
 
-## 2026-02-25 - warpgrid-agm.70
-- **What was implemented:** US-603 — `warp pack --lang bun` compilation pipeline
-  - 3-stage pipeline: `bun build` (bundle) → `jco componentize` (Wasm) → `wasm-tools component wit` (validate)
-  - Added `"bun"` case to `warp_pack::pack()` language dispatcher
-  - Tool resolution: jco via `$WARPGRID_JCO_PATH` > project-local `build/componentize-js/` > `$PATH`
-  - WIT resolution: project `wit/` > shared fixture `tests/fixtures/js-http-handler/wit/`
-  - Output to `target/wasm/<module-name>.wasm` with SHA-256 hash
-  - Error messages include stderr/stdout from failed tools, exit codes, and hints about unsupported APIs
-  - 12 tests: 6 unit (dispatch, entry point, build section, jco env, WIT resolution) + 3 bun-only + 3 full pipeline integration
-- **Files changed:**
-  - `crates/warp-pack/src/lib.rs` — added `mod bun`, `#[derive(Debug)]` on `PackResult`, `sha256_file()` helper
-  - `crates/warp-pack/src/bun.rs` — NEW: full Bun compilation pipeline module (270 lines production + 270 lines tests)
-  - `crates/warp-pack/Cargo.toml` — added `tempfile` dev-dependency
+## 2026-02-25 - warpgrid-agm.76
+### US-609: E2E Bun handler queries Postgres in native and Wasm modes
+- **Status:** COMPLETED
+- **Files created:**
+  - `packages/warpgrid-bun-sdk/package.json` — @warpgrid/bun-sdk npm package config
+  - `packages/warpgrid-bun-sdk/tsconfig.json` — TypeScript config for SDK
+  - `packages/warpgrid-bun-sdk/src/index.ts` — SDK entry point (re-exports)
+  - `packages/warpgrid-bun-sdk/src/errors.ts` — WarpGridError, WarpGridDatabaseError classes
+  - `packages/warpgrid-bun-sdk/src/postgres.ts` — Dual-mode Pool factory (createPool, detectMode)
+  - `packages/warpgrid-bun-sdk/src/postgres-native.ts` — NativePool (delegates to `pg` npm package)
+  - `packages/warpgrid-bun-sdk/src/postgres-wasm.ts` — WasmPool (Postgres wire protocol over database-proxy shim)
+  - `packages/warpgrid-bun-sdk/src/postgres-protocol.ts` — Postgres v3.0 wire protocol helpers
+  - `tests/fixtures/bun-postgres-handler/package.json` — Test fixture package
+  - `tests/fixtures/bun-postgres-handler/tsconfig.json` — TypeScript config
+  - `tests/fixtures/bun-postgres-handler/src/handler.ts` — Dual-mode HTTP handler (POST /users, GET /users/:id)
+  - `tests/fixtures/bun-postgres-handler/src/mock-native-pool.ts` — MockNativePool with canned responses
+  - `tests/fixtures/bun-postgres-handler/src/mock-wasm-shim.ts` — MockWasmShim speaking Postgres wire protocol
+  - `tests/fixtures/bun-postgres-handler/src/handler.test.ts` — 20 tests across 4 test suites
+- **Test coverage (20 tests):**
+  - Native mode (7 tests): POST 201, GET 200, GET 404, POST+GET lifecycle, missing fields 400, invalid JSON 400, unknown route 404
+  - Wasm mode (6 tests): Same as native but through WasmPool + mock wire protocol shim
+  - Dual-mode parity (5 tests): GET existing, GET 404, POST, POST+GET lifecycle, validation errors — all byte-identical
+  - createPool integration (2 tests): Factory creates WasmPool, handler works with factory-produced pool
+- **Quality gates:** `bun run typecheck` passes, `bun test` passes (20/20), `cargo check -p warpgrid-host` still clean
 - **Learnings:**
-  - Rust 2024 edition makes `std::env::set_var` and `std::env::remove_var` unsafe (data race protection)
-  - `find_project_root()` must fall back to CWD-based search when project_path is a tempdir (common in tests)
-  - Clippy in Rust 2024 aggressively enforces `collapsible_if` with `let` chains (edition 2024 feature)
-  - `bun build --target browser --format esm` produces a WASI-compatible bundle (no Node.js polyfills injected)
-  - jco componentize reuses the same WIT definitions as TypeScript/Node.js — Bun handlers use the same `addEventListener("fetch", ...)` pattern
-  - Validate user inputs (entry point) before checking toolchain availability — better UX for common errors
+  - **Dependency injection is key for dual-mode testing.** The handler accepts a `Pool` interface, not a concrete implementation. This allows the same handler code to be tested with both MockNativePool (simulating `pg`) and WasmPool (simulating database-proxy shim), making parity assertions straightforward.
+  - **MockWasmShim must speak Postgres wire protocol.** Unlike the native mock (which returns JS objects), the Wasm mock must build actual Postgres wire protocol messages (RowDescription, DataRow, CommandComplete, ReadyForQuery) because WasmPool parses raw bytes. This means the mock is significantly more complex but validates the full protocol path.
+  - **Extended query protocol for parameterized queries.** The handler uses `$1, $2` params, which routes through the extended query protocol (Parse+Bind+Execute+Sync) instead of simple query ('Q'). The mock shim must handle both paths — detecting message type to route responses correctly.
+  - **Bind message parameter extraction requires careful offset tracking.** The Bind message has portal name, statement name, format codes, and then params — all with variable-length null-terminated strings. Off-by-one errors in offset tracking are the most common source of bugs.
+  - **`Record<string, unknown>` to interface cast needs double-cast.** TypeScript strict mode rejects `result.rows[0] as User` because the types don't overlap. Must use `result.rows[0] as unknown as User` or assign to the interface type with runtime validation.
+  - **Bun's file: protocol dependency resolution works well.** Using `"@warpgrid/bun-sdk": "file:../../../packages/warpgrid-bun-sdk"` in package.json correctly resolves the SDK from the monorepo without publishing.
 ---

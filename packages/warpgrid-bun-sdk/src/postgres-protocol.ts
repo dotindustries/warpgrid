@@ -86,7 +86,7 @@ export function buildStartupMessage(
   const length = 4 + 4 + params.length;
   const buf = new ArrayBuffer(length);
   const view = new DataView(buf);
-  view.setInt32(0, length); // Length includes self
+  view.setInt32(0, length);
   view.setInt32(4, 196608); // Protocol version 3.0
   new Uint8Array(buf).set(params, 8);
   return new Uint8Array(buf);
@@ -171,7 +171,6 @@ export function buildTerminateMessage(): Uint8Array {
 
 function buildParseMessage(sql: string, paramCount: number): Uint8Array {
   const sqlBytes = TEXT_ENCODER.encode(sql + "\0");
-  // unnamed statement: empty string + null terminator = 1 byte
   const length = 4 + 1 + sqlBytes.length + 2 + paramCount * 4;
   const buf = new ArrayBuffer(1 + length);
   const view = new DataView(buf);
@@ -186,7 +185,6 @@ function buildParseMessage(sql: string, paramCount: number): Uint8Array {
   offset += sqlBytes.length;
   view.setInt16(offset, paramCount);
   offset += 2;
-  // All param types = 0 (let server infer)
   for (let i = 0; i < paramCount; i++) {
     view.setInt32(offset, 0);
     offset += 4;
@@ -195,7 +193,6 @@ function buildParseMessage(sql: string, paramCount: number): Uint8Array {
 }
 
 function buildBindMessage(params: unknown[]): Uint8Array {
-  // Serialize all params as text
   const serialized: (Uint8Array | null)[] = params.map((p) => {
     if (p === null || p === undefined) return null;
     if (p instanceof Uint8Array) return p;
@@ -203,7 +200,6 @@ function buildBindMessage(params: unknown[]): Uint8Array {
     return TEXT_ENCODER.encode(str);
   });
 
-  // Calculate length
   let bodyLen =
     1 + // portal name (empty, null-terminated)
     1 + // statement name (empty, null-terminated)
@@ -211,10 +207,10 @@ function buildBindMessage(params: unknown[]): Uint8Array {
     2; // param count
 
   for (const s of serialized) {
-    bodyLen += 4; // length field
+    bodyLen += 4;
     if (s !== null) bodyLen += s.length;
   }
-  bodyLen += 2; // result format codes count (0 = all text)
+  bodyLen += 2; // result format codes count
 
   const length = 4 + bodyLen;
   const buf = new ArrayBuffer(1 + length);
@@ -229,14 +225,14 @@ function buildBindMessage(params: unknown[]): Uint8Array {
   offset += 1;
   view.setUint8(offset, 0); // statement name
   offset += 1;
-  view.setInt16(offset, 0); // format codes count (all text)
+  view.setInt16(offset, 0); // format codes count
   offset += 2;
   view.setInt16(offset, serialized.length);
   offset += 2;
 
   for (const s of serialized) {
     if (s === null) {
-      view.setInt32(offset, -1); // NULL
+      view.setInt32(offset, -1);
       offset += 4;
     } else {
       view.setInt32(offset, s.length);
@@ -246,7 +242,7 @@ function buildBindMessage(params: unknown[]): Uint8Array {
     }
   }
 
-  view.setInt16(offset, 0); // result format codes (all text)
+  view.setInt16(offset, 0); // result format codes
   return new Uint8Array(buf);
 }
 
@@ -254,9 +250,9 @@ function buildExecuteMessage(): Uint8Array {
   const buf = new ArrayBuffer(1 + 4 + 1 + 4);
   const view = new DataView(buf);
   view.setUint8(0, MSG.EXECUTE);
-  view.setInt32(1, 4 + 1 + 4); // length
-  view.setUint8(5, 0); // portal name (empty, null-terminated)
-  view.setInt32(6, 0); // max rows (0 = all)
+  view.setInt32(1, 4 + 1 + 4);
+  view.setUint8(5, 0);
+  view.setInt32(6, 0);
   return new Uint8Array(buf);
 }
 
@@ -280,7 +276,7 @@ export function parseMessages(data: Uint8Array): PgMessage[] {
     const view = new DataView(data.buffer, data.byteOffset + offset + 1, 4);
     const length = view.getInt32(0);
 
-    if (offset + 1 + length > data.length) break; // incomplete message
+    if (offset + 1 + length > data.length) break;
 
     const payload = data.slice(offset + 5, offset + 1 + length);
     messages.push({ type, length, payload });
@@ -307,7 +303,9 @@ export function parseAuthResponse(payload: Uint8Array): AuthResult {
 }
 
 /** Parse a RowDescription payload into field metadata. */
-export function parseRowDescription(payload: Uint8Array): RowDescriptionField[] {
+export function parseRowDescription(
+  payload: Uint8Array,
+): RowDescriptionField[] {
   const view = new DataView(
     payload.buffer,
     payload.byteOffset,
@@ -318,11 +316,10 @@ export function parseRowDescription(payload: Uint8Array): RowDescriptionField[] 
   let offset = 2;
 
   for (let i = 0; i < fieldCount; i++) {
-    // Read null-terminated field name
     let nameEnd = offset;
     while (nameEnd < payload.length && payload[nameEnd] !== 0) nameEnd++;
     const name = TEXT_DECODER.decode(payload.slice(offset, nameEnd));
-    offset = nameEnd + 1; // skip null
+    offset = nameEnd + 1;
 
     const fieldView = new DataView(
       payload.buffer,
@@ -378,7 +375,7 @@ export function parseErrorResponse(payload: Uint8Array): PgError {
 
   while (offset < payload.length) {
     const fieldType = payload[offset];
-    if (fieldType === 0) break; // terminator
+    if (fieldType === 0) break;
     offset += 1;
 
     let valueEnd = offset;
@@ -402,7 +399,6 @@ export function parseErrorResponse(payload: Uint8Array): PgError {
 /** Parse a CommandComplete tag to extract row count. */
 export function parseCommandComplete(payload: Uint8Array): number {
   const tag = TEXT_DECODER.decode(payload).replace(/\0$/, "");
-  // Formats: "SELECT 5", "INSERT 0 3", "UPDATE 2", "DELETE 1"
   const parts = tag.split(" ");
   const last = parts[parts.length - 1];
   const count = parseInt(last, 10);
@@ -412,8 +408,11 @@ export function parseCommandComplete(payload: Uint8Array): number {
 // ── Utility ───────────────────────────────────────────────────────────
 
 async function md5hex(data: Uint8Array): Promise<string> {
-  // WebCrypto does not support MD5. Use Node.js-compatible createHash
-  // which is available in both Bun and Node.js runtimes.
-  const { createHash } = await import("node:crypto");
-  return createHash("md5").update(data).digest("hex");
+  const buf = new ArrayBuffer(data.byteLength);
+  new Uint8Array(buf).set(data);
+  const hashBuffer = await crypto.subtle.digest("MD5", buf);
+  const hashArray = new Uint8Array(hashBuffer);
+  return Array.from(hashArray)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

@@ -79,11 +79,9 @@ export class WasmPool implements Pool {
     try {
       return await this.executeQuery(conn, sql, params);
     } catch (err) {
-      // On error, remove the connection (it may be in a bad state)
       this.removeConnection(conn);
       throw err;
     } finally {
-      // Return to idle if still tracked
       if (this.connections.includes(conn)) {
         conn.idle = true;
       }
@@ -94,7 +92,6 @@ export class WasmPool implements Pool {
     this.closed = true;
     for (const conn of this.connections) {
       try {
-        // Send Terminate message before closing
         this.shim.send(conn.handle, buildTerminateMessage());
       } catch {
         // Ignore send errors during shutdown
@@ -119,19 +116,16 @@ export class WasmPool implements Pool {
   // ── Connection Management ─────────────────────────────────────────
 
   private async checkout(): Promise<ManagedConnection> {
-    // Try to find an idle connection
     const idle = this.connections.find((c) => c.idle);
     if (idle) {
       idle.idle = false;
       return idle;
     }
 
-    // Create a new connection if pool not full
     if (this.connections.length < this.config.maxConnections) {
       return this.createConnection();
     }
 
-    // Pool exhausted
     throw new WarpGridDatabaseError(
       `Connection pool exhausted (max: ${this.config.maxConnections})`,
     );
@@ -186,14 +180,12 @@ export class WasmPool implements Pool {
   private async performStartupHandshake(
     conn: ManagedConnection,
   ): Promise<void> {
-    // Send startup message
     const startup = buildStartupMessage(
       this.config.user,
       this.config.database,
     );
     this.shimSend(conn, startup);
 
-    // Read server response until ReadyForQuery
     const data = this.recvUntilReady(conn);
     const messages = parseMessages(data);
 
@@ -207,7 +199,6 @@ export class WasmPool implements Pool {
           { cause: new Error(`SQLSTATE ${pgErr.code}: ${pgErr.message}`) },
         );
       }
-      // Skip ParameterStatus, BackendKeyData, etc.
     }
   }
 
@@ -218,7 +209,7 @@ export class WasmPool implements Pool {
     const auth = parseAuthResponse(payload);
 
     if (auth.type === AUTH_OK) {
-      return; // No auth needed
+      return;
     }
 
     if (auth.type === AUTH_CLEARTEXT) {
@@ -229,7 +220,6 @@ export class WasmPool implements Pool {
       }
       const msg = buildCleartextPasswordMessage(this.config.password);
       this.shimSend(conn, msg);
-      // Server will send AuthOk or ErrorResponse — handled in the message loop
       return;
     }
 
@@ -302,21 +292,16 @@ export class WasmPool implements Pool {
         }
         case MSG.ERROR_RESPONSE: {
           const pgErr = parseErrorResponse(msg.payload);
-          throw new WarpGridDatabaseError(
-            `Query failed: ${pgErr.message}`,
-            {
-              cause: new Error(
-                `SQLSTATE ${pgErr.code}: ${pgErr.message}` +
-                  (pgErr.detail ? ` — ${pgErr.detail}` : ""),
-              ),
-            },
-          );
+          throw new WarpGridDatabaseError(`Query failed: ${pgErr.message}`, {
+            cause: new Error(
+              `SQLSTATE ${pgErr.code}: ${pgErr.message}` +
+                (pgErr.detail ? ` — ${pgErr.detail}` : ""),
+            ),
+          });
         }
-        // ParseComplete, BindComplete, NoData, ReadyForQuery: skip
       }
     }
 
-    // For SELECT, rowCount = rows returned
     if (rows.length > 0 && rowCount === 0) {
       rowCount = rows.length;
     }
@@ -356,7 +341,6 @@ export class WasmPool implements Pool {
       }
 
       if (chunk.length === 0) {
-        // Connection closed or no more data
         if (buffer.length > 0) break;
         attempts++;
         continue;
@@ -367,7 +351,6 @@ export class WasmPool implements Pool {
       combined.set(chunk, buffer.length);
       buffer = combined;
 
-      // Check if we've received a ReadyForQuery message
       if (containsReadyForQuery(buffer)) break;
       attempts++;
     }
@@ -381,10 +364,8 @@ export class WasmPool implements Pool {
  * ReadyForQuery = 'Z' (0x5A) + Int32(5) + Byte(status)
  */
 function containsReadyForQuery(data: Uint8Array): boolean {
-  // Scan from the end for efficiency — ReadyForQuery is usually last
   for (let i = data.length - 6; i >= 0; i--) {
     if (data[i] === 0x5a) {
-      // Check length field = 5
       const view = new DataView(data.buffer, data.byteOffset + i + 1, 4);
       if (view.getInt32(0) === 5) return true;
     }

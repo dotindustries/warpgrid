@@ -23,27 +23,3 @@ export class WarpGridDatabaseError extends WarpGridError {
     this.name = "WarpGridDatabaseError";
   }
 }
-
-/**
- * Thrown when Postgres returns an ErrorResponse in the wire protocol.
- * Carries structured error fields (`code`, `message`, `detail`, `severity`)
- * directly on the error object for pg.Client compatibility.
- */
-export class PostgresError extends WarpGridDatabaseError {
-  readonly code: string;
-  readonly detail?: string;
-  readonly severity: string;
-
-  constructor(info: {
-    severity: string;
-    code: string;
-    message: string;
-    detail?: string;
-  }) {
-    super(info.message);
-    this.name = "PostgresError";
-    this.code = info.code;
-    this.detail = info.detail;
-    this.severity = info.severity;
-  }
-}

@@ -98,11 +98,12 @@ export interface DatabaseProxyShim {
 import { NativePool } from "./postgres-native.ts";
 import { WasmPool } from "./postgres-wasm.ts";
 
+export { WasmPool } from "./postgres-wasm.ts";
+export { NativePool } from "./postgres-native.ts";
+
 /** Detect whether we're running in native Bun or WASI/Wasm mode. */
 export function detectMode(): "native" | "wasm" {
-  // In Wasm/WASI, the Bun global is absent; in Bun it exists
   if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
-    // Check for explicit Wasm marker (set by ComponentizeJS polyfills)
     if (
       (globalThis as Record<string, unknown>).__WARPGRID_WASM__ !== undefined
     ) {
@@ -132,9 +133,8 @@ function resolveShim(config?: PoolConfig): DatabaseProxyShim | undefined {
  * Auto-detects native (Bun) vs Wasm mode, or override with `config.mode`.
  */
 export function createPool(config?: PoolConfig): Pool {
-  const mode = config?.mode === "auto" || !config?.mode
-    ? detectMode()
-    : config.mode;
+  const mode =
+    config?.mode === "auto" || !config?.mode ? detectMode() : config.mode;
 
   if (mode === "native") {
     return new NativePool(config);
@@ -144,7 +144,7 @@ export function createPool(config?: PoolConfig): Pool {
   if (!shim) {
     throw new Error(
       "Wasm mode requires a DatabaseProxyShim. " +
-      "Provide config.shim or ensure globalThis.warpgrid.database is set.",
+        "Provide config.shim or ensure globalThis.warpgrid.database is set.",
     );
   }
   return new WasmPool(config, shim);
