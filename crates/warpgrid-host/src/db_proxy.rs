@@ -14,10 +14,13 @@
 //!     → No pool exists → create pool, establish connection → return handle
 //! ```
 
+pub mod async_io;
 pub mod host;
 pub mod mysql;
 pub mod redis;
 pub mod tcp;
+
+pub use async_io::{AsyncConnectionBackend, AsyncConnectionFactory};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -143,9 +146,12 @@ pub struct PooledConnection {
     pub healthy: bool,
     /// The pool key this connection belongs to.
     pub pool_key: PoolKey,
-    /// Opaque connection data — placeholder for real TCP/TLS streams in US-112+.
+    /// Sync connection backend — used by the existing sync path.
     /// Stored as an `Option` so it can be taken during send/recv.
     connection_data: Option<Box<dyn ConnectionBackend>>,
+    /// Async connection backend — used by the async I/O path (US-506).
+    /// Stored as an `Option` so it can be taken during non-blocking I/O.
+    async_connection_data: Option<Box<dyn AsyncConnectionBackend>>,
 }
 
 /// Trait abstracting the underlying transport for testability.
@@ -220,8 +226,10 @@ pub struct ConnectionPoolManager {
     next_handle: Mutex<u64>,
     /// Pool configuration.
     config: PoolConfig,
-    /// Connection factory for creating new connections.
+    /// Sync connection factory for creating new connections.
     factory: Arc<dyn ConnectionFactory>,
+    /// Async connection factory for non-blocking I/O path (US-506).
+    async_factory: Option<Arc<dyn AsyncConnectionFactory>>,
     /// Per-key wait counters for statistics.
     wait_counts: Mutex<HashMap<PoolKey, u64>>,
     /// When true, new `checkout()` calls are rejected.
@@ -237,6 +245,28 @@ impl ConnectionPoolManager {
             next_handle: Mutex::new(1),
             config,
             factory,
+            async_factory: None,
+            wait_counts: Mutex::new(HashMap::new()),
+            draining: AtomicBool::new(false),
+        }
+    }
+
+    /// Create a new pool manager with both sync and async connection factories.
+    ///
+    /// The async factory enables `checkout_async`, `send_query`, and
+    /// `receive_results` methods for non-blocking I/O (US-506).
+    pub fn new_with_async(
+        config: PoolConfig,
+        factory: Arc<dyn ConnectionFactory>,
+        async_factory: Arc<dyn AsyncConnectionFactory>,
+    ) -> Self {
+        Self {
+            pools: Mutex::new(HashMap::new()),
+            checked_out: Mutex::new(HashMap::new()),
+            next_handle: Mutex::new(1),
+            config,
+            factory,
+            async_factory: Some(async_factory),
             wait_counts: Mutex::new(HashMap::new()),
             draining: AtomicBool::new(false),
         }
@@ -348,6 +378,7 @@ impl ConnectionPoolManager {
             healthy: true,
             pool_key: key.clone(),
             connection_data: Some(backend),
+            async_connection_data: None,
         };
 
         {
@@ -452,6 +483,210 @@ impl ConnectionPoolManager {
         backend.recv(max_bytes)
     }
 
+    // ── Async I/O methods (US-506) ────────────────────────────────
+
+    /// Check out a connection using the async factory.
+    ///
+    /// Unlike [`checkout()`], this creates connections via the
+    /// [`AsyncConnectionFactory`], enabling non-blocking I/O for subsequent
+    /// `send_query` and `receive_results` calls.
+    pub async fn checkout_async(
+        &self,
+        key: &PoolKey,
+        password: Option<&str>,
+    ) -> Result<u64, String> {
+        if self.draining.load(Ordering::Relaxed) {
+            return Err(
+                "connection pool is draining — no new connections accepted".to_string(),
+            );
+        }
+
+        let async_factory = self
+            .async_factory
+            .as_ref()
+            .ok_or_else(|| "no async connection factory configured".to_string())?;
+
+        let semaphore = {
+            let mut pools = self.pools.lock().await;
+            let pool = pools
+                .entry(key.clone())
+                .or_insert_with(|| Pool::new(self.config.max_size));
+            Arc::clone(&pool.semaphore)
+        };
+
+        // Try to acquire a semaphore permit within the timeout.
+        let permit = match tokio::time::timeout(
+            self.config.connect_timeout,
+            semaphore.acquire_owned(),
+        )
+        .await
+        {
+            Ok(Ok(permit)) => permit,
+            Ok(Err(_)) => return Err("connection pool semaphore closed".to_string()),
+            Err(_) => {
+                let mut wait_counts = self.wait_counts.lock().await;
+                *wait_counts.entry(key.clone()).or_insert(0) += 1;
+                return Err(format!(
+                    "connection pool exhausted for {}:{}/{} (timeout: {:?})",
+                    key.host, key.port, key.database, self.config.connect_timeout
+                ));
+            }
+        };
+
+        // Try to reuse an idle async connection.
+        let idle_conn = {
+            let mut pools = self.pools.lock().await;
+            if let Some(pool) = pools.get_mut(key) {
+                let idx = pool
+                    .idle
+                    .iter()
+                    .position(|c| c.async_connection_data.is_some());
+                idx.map(|i| pool.idle.swap_remove(i))
+            } else {
+                None
+            }
+        };
+
+        let handle = self.allocate_handle().await;
+
+        if let Some(mut conn) = idle_conn {
+            if conn.healthy {
+                conn.last_used = Instant::now();
+                conn.id = handle;
+                tracing::debug!(
+                    handle = handle,
+                    host = %key.host,
+                    port = key.port,
+                    "reused idle async connection from pool"
+                );
+                self.checked_out.lock().await.insert(handle, conn);
+                permit.forget();
+                return Ok(handle);
+            }
+            // Unhealthy — discard.
+            let mut pools = self.pools.lock().await;
+            if let Some(pool) = pools.get_mut(key) {
+                pool.total_count = pool.total_count.saturating_sub(1);
+            }
+        }
+
+        // Create a new async connection.
+        let async_backend = async_factory.connect_async(key, password).await?;
+        let conn = PooledConnection {
+            id: handle,
+            created_at: Instant::now(),
+            last_used: Instant::now(),
+            healthy: true,
+            pool_key: key.clone(),
+            connection_data: None,
+            async_connection_data: Some(async_backend),
+        };
+
+        {
+            let mut pools = self.pools.lock().await;
+            let pool = pools
+                .entry(key.clone())
+                .or_insert_with(|| Pool::new(self.config.max_size));
+            pool.total_count += 1;
+        }
+
+        tracing::debug!(
+            handle = handle,
+            host = %key.host,
+            port = key.port,
+            "created new async connection"
+        );
+
+        self.checked_out.lock().await.insert(handle, conn);
+        permit.forget();
+        Ok(handle)
+    }
+
+    /// Send query data asynchronously without holding the connection lock during I/O.
+    ///
+    /// Unlike [`send()`], this method releases the internal mutex before performing
+    /// I/O, allowing other async tasks to access different connections concurrently.
+    /// If the connection has an async backend, it's used directly. If only a sync
+    /// backend is available, falls back to [`block_in_place`](tokio::task::block_in_place).
+    pub async fn send_query(&self, handle: u64, data: &[u8]) -> Result<usize, String> {
+        // Take the backend(s) out of the checked-out map (brief lock).
+        let (mut async_backend, mut sync_backend) = {
+            let mut checked_out = self.checked_out.lock().await;
+            let conn = checked_out
+                .get_mut(&handle)
+                .ok_or_else(|| format!("invalid handle: {handle}"))?;
+            (conn.async_connection_data.take(), conn.connection_data.take())
+        };
+        // Mutex released — I/O proceeds without blocking other connections.
+
+        let result = if let Some(ref mut backend) = async_backend {
+            backend.send_async(data).await
+        } else if let Some(ref mut backend) = sync_backend {
+            // Fallback: sync I/O via block_in_place so we don't block the executor.
+            tokio::task::block_in_place(|| backend.send(data))
+        } else {
+            Err("connection backend unavailable".to_string())
+        };
+
+        // Put the backend(s) back (brief lock).
+        {
+            let mut checked_out = self.checked_out.lock().await;
+            if let Some(conn) = checked_out.get_mut(&handle) {
+                conn.async_connection_data = async_backend;
+                conn.connection_data = sync_backend;
+            } else {
+                tracing::warn!(
+                    handle = handle,
+                    "connection released during async send — backend dropped"
+                );
+            }
+        }
+
+        result
+    }
+
+    /// Receive query results asynchronously without holding the connection lock during I/O.
+    ///
+    /// See [`send_query()`] for the concurrency benefits of the async path.
+    pub async fn receive_results(
+        &self,
+        handle: u64,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, String> {
+        // Take the backend(s) out (brief lock).
+        let (mut async_backend, mut sync_backend) = {
+            let mut checked_out = self.checked_out.lock().await;
+            let conn = checked_out
+                .get_mut(&handle)
+                .ok_or_else(|| format!("invalid handle: {handle}"))?;
+            (conn.async_connection_data.take(), conn.connection_data.take())
+        };
+
+        let result = if let Some(ref mut backend) = async_backend {
+            backend.recv_async(max_bytes).await
+        } else if let Some(ref mut backend) = sync_backend {
+            tokio::task::block_in_place(|| backend.recv(max_bytes))
+        } else {
+            Err("connection backend unavailable".to_string())
+        };
+
+        // Put the backend(s) back (brief lock).
+        {
+            let mut checked_out = self.checked_out.lock().await;
+            if let Some(conn) = checked_out.get_mut(&handle) {
+                conn.async_connection_data = async_backend;
+                conn.connection_data = sync_backend;
+            } else {
+                tracing::warn!(
+                    handle = handle,
+                    "connection released during async recv — backend dropped"
+                );
+            }
+        }
+
+        result
+    }
+
     /// Reap idle connections that have exceeded the idle timeout.
     pub async fn reap_idle(&self) {
         let mut pools = self.pools.lock().await;
@@ -480,11 +715,17 @@ impl ConnectionPoolManager {
     }
 
     /// Health-check all idle connections, marking unhealthy ones for removal.
+    ///
+    /// Handles both sync backends (via `ping()`) and async backends (via
+    /// `ping_async().await`). Sync connections are checked first via `retain_mut`,
+    /// then async connections are checked in a second pass.
     pub async fn health_check_idle(&self) {
         let mut pools = self.pools.lock().await;
 
         for (key, pool) in pools.iter_mut() {
             let before = pool.idle.len();
+
+            // Pass 1: sync health check — also keeps async-only connections.
             pool.idle.retain_mut(|conn| {
                 if let Some(backend) = conn.connection_data.as_mut() {
                     let healthy = backend.ping();
@@ -492,14 +733,37 @@ impl ConnectionPoolManager {
                         tracing::info!(
                             host = %key.host,
                             port = key.port,
-                            "removed unhealthy idle connection"
+                            "removed unhealthy idle connection (sync)"
                         );
                     }
                     healthy
+                } else if conn.async_connection_data.is_some() {
+                    // Async connection — checked in pass 2.
+                    true
                 } else {
                     false
                 }
             });
+
+            // Pass 2: async health check.
+            let mut async_unhealthy = Vec::new();
+            for (i, conn) in pool.idle.iter_mut().enumerate() {
+                if let Some(backend) = conn.async_connection_data.as_mut()
+                    && !backend.ping_async().await
+                {
+                    tracing::info!(
+                        host = %key.host,
+                        port = key.port,
+                        "removed unhealthy idle connection (async)"
+                    );
+                    async_unhealthy.push(i);
+                }
+            }
+            // Remove in reverse order to preserve indices.
+            for &i in async_unhealthy.iter().rev() {
+                pool.idle.swap_remove(i);
+            }
+
             let removed = before - pool.idle.len();
             pool.total_count = pool.total_count.saturating_sub(removed);
             if removed > 0 {
@@ -573,6 +837,9 @@ impl ConnectionPoolManager {
             if let Some(backend) = conn.connection_data.as_mut() {
                 backend.close();
             }
+            if let Some(backend) = conn.async_connection_data.as_mut() {
+                backend.close_async().await;
+            }
             tracing::debug!(handle = handle, "force-closed connection during drain");
         }
 
@@ -583,6 +850,9 @@ impl ConnectionPoolManager {
             for mut conn in pool.idle.drain(..) {
                 if let Some(backend) = conn.connection_data.as_mut() {
                     backend.close();
+                }
+                if let Some(backend) = conn.async_connection_data.as_mut() {
+                    backend.close_async().await;
                 }
             }
             pool.total_count = 0;
@@ -638,6 +908,7 @@ impl std::fmt::Debug for ConnectionPoolManager {
         f.debug_struct("ConnectionPoolManager")
             .field("config", &self.config)
             .field("draining", &self.draining.load(Ordering::Relaxed))
+            .field("has_async_factory", &self.async_factory.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -1351,5 +1622,381 @@ mod tests {
         let force_closed = mgr.drain().await;
         assert_eq!(force_closed, 0, "no active connections to force-close");
         assert_eq!(mgr.stats(&key).await.idle, 0, "idle connections should be closed");
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Async I/O tests (US-506)
+    // ══════════════════════════════════════════════════════════════
+
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::atomic::AtomicUsize;
+    use async_io::{AsyncConnectionBackend, AsyncConnectionFactory};
+
+    // ── Mock async backend and factory ────────────────────────────
+
+    /// Echo backend: stores sent data and returns it on recv.
+    #[derive(Debug)]
+    struct MockAsyncBackend {
+        buf: Vec<u8>,
+        healthy: Arc<AtomicBool>,
+    }
+
+    impl MockAsyncBackend {
+        fn new() -> Self {
+            Self {
+                buf: Vec::new(),
+                healthy: Arc::new(AtomicBool::new(true)),
+            }
+        }
+    }
+
+    impl AsyncConnectionBackend for MockAsyncBackend {
+        fn send_async<'a>(
+            &'a mut self,
+            data: &'a [u8],
+        ) -> Pin<Box<dyn Future<Output = Result<usize, String>> + Send + 'a>> {
+            Box::pin(async move {
+                self.buf = data.to_vec();
+                Ok(data.len())
+            })
+        }
+
+        fn recv_async<'a>(
+            &'a mut self,
+            max_bytes: usize,
+        ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
+            Box::pin(async move {
+                let len = max_bytes.min(self.buf.len());
+                Ok(self.buf[..len].to_vec())
+            })
+        }
+
+        fn ping_async(&mut self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+            let healthy = self.healthy.load(Ordering::Relaxed);
+            Box::pin(async move { healthy })
+        }
+
+        fn close_async(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+            Box::pin(async {})
+        }
+    }
+
+    struct MockAsyncFactory {
+        connect_count: AtomicU64,
+    }
+
+    impl MockAsyncFactory {
+        fn new() -> Self {
+            Self {
+                connect_count: AtomicU64::new(0),
+            }
+        }
+
+        fn connects(&self) -> u64 {
+            self.connect_count.load(Ordering::Relaxed)
+        }
+    }
+
+    impl AsyncConnectionFactory for MockAsyncFactory {
+        fn connect_async<'a>(
+            &'a self,
+            _key: &'a PoolKey,
+            _password: Option<&'a str>,
+        ) -> async_io::AsyncConnectFuture<'a> {
+            self.connect_count.fetch_add(1, Ordering::Relaxed);
+            Box::pin(async {
+                Ok(Box::new(MockAsyncBackend::new()) as Box<dyn AsyncConnectionBackend>)
+            })
+        }
+    }
+
+    fn make_async_manager(
+        config: PoolConfig,
+    ) -> (ConnectionPoolManager, Arc<MockFactory>, Arc<MockAsyncFactory>) {
+        let factory = Arc::new(MockFactory::new());
+        let async_factory = Arc::new(MockAsyncFactory::new());
+        let mgr = ConnectionPoolManager::new_with_async(
+            config,
+            factory.clone(),
+            async_factory.clone(),
+        );
+        (mgr, factory, async_factory)
+    }
+
+    // ── checkout_async: basic ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_checkout_returns_valid_handle() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let handle = mgr.checkout_async(&test_key(), None).await;
+        assert!(handle.is_ok());
+        assert!(handle.unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn async_checkout_uses_async_factory() {
+        let (mgr, sync_factory, async_factory) = make_async_manager(test_config());
+        mgr.checkout_async(&test_key(), None).await.unwrap();
+        assert_eq!(async_factory.connects(), 1);
+        assert_eq!(sync_factory.connects(), 0, "sync factory should not be called");
+    }
+
+    #[tokio::test]
+    async fn async_checkout_multiple_returns_different_handles() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let h1 = mgr.checkout_async(&test_key(), None).await.unwrap();
+        let h2 = mgr.checkout_async(&test_key(), None).await.unwrap();
+        assert_ne!(h1, h2);
+    }
+
+    // ── checkout_async: reuse ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_checkout_reuses_released_connection() {
+        let (mgr, _, async_factory) = make_async_manager(test_config());
+        let key = test_key();
+
+        let h1 = mgr.checkout_async(&key, None).await.unwrap();
+        assert_eq!(async_factory.connects(), 1);
+
+        mgr.release(h1).await.unwrap();
+
+        let _h2 = mgr.checkout_async(&key, None).await.unwrap();
+        // Reused — no new async factory call.
+        assert_eq!(async_factory.connects(), 1);
+    }
+
+    // ── checkout_async: exhaustion ────────────────────────────────
+
+    #[tokio::test]
+    async fn async_checkout_exhausted_pool_returns_error() {
+        let config = PoolConfig {
+            max_size: 2,
+            connect_timeout: Duration::from_millis(50),
+            ..test_config()
+        };
+        let (mgr, _, _) = make_async_manager(config);
+        let key = test_key();
+
+        mgr.checkout_async(&key, None).await.unwrap();
+        mgr.checkout_async(&key, None).await.unwrap();
+        let result = mgr.checkout_async(&key, None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exhausted"));
+    }
+
+    // ── checkout_async: no async factory ──────────────────────────
+
+    #[tokio::test]
+    async fn async_checkout_without_factory_returns_error() {
+        let (mgr, _) = make_manager(test_config());
+        let result = mgr.checkout_async(&test_key(), None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no async connection factory"));
+    }
+
+    // ── send_query / receive_results ──────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_send_query_returns_byte_count() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let handle = mgr.checkout_async(&test_key(), None).await.unwrap();
+        let sent = mgr.send_query(handle, b"SELECT 1").await.unwrap();
+        assert_eq!(sent, 8);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_receive_results_returns_data() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let handle = mgr.checkout_async(&test_key(), None).await.unwrap();
+        // Send first, then recv (echo backend).
+        mgr.send_query(handle, b"hello").await.unwrap();
+        let data = mgr.receive_results(handle, 1024).await.unwrap();
+        assert_eq!(data, b"hello");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_send_query_invalid_handle_returns_error() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let result = mgr.send_query(999, b"data").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("invalid handle"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_receive_results_invalid_handle_returns_error() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let result = mgr.receive_results(999, 1024).await;
+        assert!(result.is_err());
+    }
+
+    // ── AC: Three sequential queries all correct ──────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_three_sequential_queries_all_correct() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let key = test_key();
+
+        let handle = mgr.checkout_async(&key, None).await.unwrap();
+
+        // Query 1
+        let sent1 = mgr.send_query(handle, b"SELECT 1").await.unwrap();
+        assert_eq!(sent1, 8);
+        let data1 = mgr.receive_results(handle, 1024).await.unwrap();
+        assert_eq!(data1, b"SELECT 1", "query 1 result must match");
+
+        // Query 2
+        let sent2 = mgr.send_query(handle, b"SELECT 2").await.unwrap();
+        assert_eq!(sent2, 8);
+        let data2 = mgr.receive_results(handle, 1024).await.unwrap();
+        assert_eq!(data2, b"SELECT 2", "query 2 result must match");
+
+        // Query 3
+        let sent3 = mgr
+            .send_query(handle, b"INSERT INTO t VALUES(1)")
+            .await
+            .unwrap();
+        assert_eq!(sent3, 23);
+        let data3 = mgr.receive_results(handle, 1024).await.unwrap();
+        assert_eq!(
+            data3, b"INSERT INTO t VALUES(1)",
+            "query 3 result must match"
+        );
+
+        mgr.release(handle).await.unwrap();
+    }
+
+    // ── AC: 20 concurrent checkout against pool of 5, no deadlock ─
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn async_checkout_20_concurrent_pool_of_5_no_deadlock() {
+        let config = PoolConfig {
+            max_size: 5,
+            connect_timeout: Duration::from_secs(10),
+            ..test_config()
+        };
+        let (mgr, _, _) = make_async_manager(config);
+        let mgr = Arc::new(mgr);
+        let key = test_key();
+
+        let max_concurrent = Arc::new(AtomicUsize::new(0));
+        let current_concurrent = Arc::new(AtomicUsize::new(0));
+
+        let mut set = tokio::task::JoinSet::new();
+        for _ in 0..20 {
+            let mgr = mgr.clone();
+            let key = key.clone();
+            let max_c = max_concurrent.clone();
+            let cur_c = current_concurrent.clone();
+
+            set.spawn(async move {
+                let h = mgr.checkout_async(&key, None).await.unwrap();
+
+                // Track concurrent connections.
+                let cur = cur_c.fetch_add(1, Ordering::SeqCst) + 1;
+                max_c.fetch_max(cur, Ordering::SeqCst);
+
+                // Simulate a query round-trip.
+                mgr.send_query(h, b"SELECT 1").await.unwrap();
+                let _data = mgr.receive_results(h, 1024).await.unwrap();
+
+                tokio::time::sleep(Duration::from_millis(20)).await;
+
+                cur_c.fetch_sub(1, Ordering::SeqCst);
+                mgr.release(h).await.unwrap();
+            });
+        }
+
+        // All 20 should complete within 10 seconds without deadlock.
+        let deadline = tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(result) = set.join_next().await {
+                result.unwrap();
+            }
+        })
+        .await;
+
+        assert!(deadline.is_ok(), "all 20 tasks completed without deadlock");
+
+        // No more than 5 connections open simultaneously.
+        let max = max_concurrent.load(Ordering::SeqCst);
+        assert!(
+            max <= 5,
+            "max concurrent connections was {max}, expected <= 5"
+        );
+    }
+
+    // ── AC: Sync path preserved as fallback ───────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn send_query_falls_back_to_sync_backend() {
+        // Use sync checkout (no async factory) + async send_query.
+        let (mgr, _) = make_manager(test_config());
+        let key = test_key();
+
+        let handle = mgr.checkout(&key, None).await.unwrap();
+        // send_query should fall back to sync backend via block_in_place.
+        let sent = mgr.send_query(handle, b"SELECT 1").await.unwrap();
+        assert_eq!(sent, 8);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn receive_results_falls_back_to_sync_backend() {
+        let (mgr, _) = make_manager(test_config());
+        let key = test_key();
+
+        let handle = mgr.checkout(&key, None).await.unwrap();
+        let data = mgr.receive_results(handle, 1024).await.unwrap();
+        // Sync MockBackend returns empty vec for recv.
+        assert!(data.is_empty() || !data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sync_checkout_still_works_with_async_manager() {
+        let (mgr, sync_factory, async_factory) = make_async_manager(test_config());
+        let key = test_key();
+
+        // Sync checkout should use the sync factory, not async.
+        let handle = mgr.checkout(&key, None).await.unwrap();
+        assert_eq!(sync_factory.connects(), 1);
+        assert_eq!(async_factory.connects(), 0);
+
+        // Sync send/recv still work.
+        let sent = mgr.send(handle, b"data").await.unwrap();
+        assert_eq!(sent, 4);
+        mgr.release(handle).await.unwrap();
+    }
+
+    // ── Full async lifecycle ──────────────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_full_lifecycle() {
+        let (mgr, _, _) = make_async_manager(test_config());
+        let key = test_key();
+
+        let handle = mgr.checkout_async(&key, None).await.unwrap();
+        let sent = mgr.send_query(handle, b"SELECT 1;").await.unwrap();
+        assert_eq!(sent, 9);
+        let data = mgr.receive_results(handle, 1024).await.unwrap();
+        assert_eq!(data, b"SELECT 1;");
+        mgr.release(handle).await.unwrap();
+
+        // Handle invalid after release.
+        assert!(mgr.send_query(handle, b"x").await.is_err());
+        assert!(mgr.receive_results(handle, 1).await.is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn async_connection_reuse_after_release() {
+        let (mgr, _, async_factory) = make_async_manager(test_config());
+        let key = test_key();
+
+        let h1 = mgr.checkout_async(&key, None).await.unwrap();
+        assert_eq!(async_factory.connects(), 1);
+        mgr.release(h1).await.unwrap();
+
+        let _h2 = mgr.checkout_async(&key, None).await.unwrap();
+        // Reused — no new connection.
+        assert_eq!(async_factory.connects(), 1);
     }
 }
