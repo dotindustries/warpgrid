@@ -17,6 +17,8 @@ use std::sync::Arc;
 use wasmtime::component::{HasSelf, Linker};
 use wasmtime::{Config, Engine};
 
+use crate::bindings::async_handler_bindings::warpgrid::shim::http_types;
+use crate::bindings::async_handler_bindings::WarpgridAsyncHandler;
 use crate::bindings::warpgrid::shim;
 use crate::bindings::WarpgridShims;
 use crate::config::ShimConfig;
@@ -149,6 +151,11 @@ impl shim::threading::Host for HostState {
     }
 }
 
+/// The `http-types` interface defines only types (no functions), but
+/// the bindgen! macro still generates a Host trait for interface-level
+/// dispatch. This empty implementation satisfies the trait bound.
+impl http_types::Host for HostState {}
+
 // ── WarpGridEngine ─────────────────────────────────────────────────
 
 /// The top-level engine that configures Wasmtime and sets up the linker.
@@ -193,9 +200,26 @@ impl WarpGridEngine {
         &self.engine
     }
 
-    /// Get a reference to the configured `Linker`.
+    /// Get a reference to the configured `Linker` (shim-only world).
     pub fn linker(&self) -> &Linker<HostState> {
         &self.linker
+    }
+
+    /// Create a new `Linker` configured for the async handler world.
+    ///
+    /// The async handler world extends the base shim world with an exported
+    /// `handle-request` function. Components instantiated with this linker
+    /// can be invoked as HTTP request handlers.
+    pub fn async_handler_linker(&self) -> anyhow::Result<Linker<HostState>> {
+        let mut linker = Linker::new(&self.engine);
+
+        WarpgridAsyncHandler::add_to_linker::<HostState, HasSelf<HostState>>(
+            &mut linker,
+            |state: &mut HostState| state,
+        )?;
+
+        tracing::info!("async handler linker initialized");
+        Ok(linker)
     }
 
     /// Build a `HostState` from a `ShimConfig`.
@@ -353,6 +377,13 @@ mod tests {
             Some(shim::signals::SignalType::Hangup)
         );
         assert_eq!(shim::signals::Host::poll_signal(&mut state), None);
+    }
+
+    #[test]
+    fn async_handler_linker_creates_successfully() {
+        let engine = WarpGridEngine::new().unwrap();
+        let linker = engine.async_handler_linker();
+        assert!(linker.is_ok());
     }
 
     #[test]

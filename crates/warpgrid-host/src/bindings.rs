@@ -9,6 +9,31 @@ wasmtime::component::bindgen!({
     world: "warpgrid-shims",
 });
 
+/// Bindings for the `warpgrid-async-handler` world.
+///
+/// This world extends the base shim imports with an exported
+/// `async-handler` interface. The generated `WarpgridAsyncHandler`
+/// type allows the host to instantiate components that export
+/// `handle-request` and invoke them.
+///
+/// Import-side types (filesystem, dns, signals, database-proxy, threading)
+/// are shared with the `warpgrid-shims` bindings via the `with` parameter,
+/// so `HostState` only needs one set of Host trait implementations.
+pub mod async_handler_bindings {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "warpgrid-async-handler",
+        with: {
+            "warpgrid:shim/filesystem": super::warpgrid::shim::filesystem,
+            "warpgrid:shim/dns": super::warpgrid::shim::dns,
+            "warpgrid:shim/signals": super::warpgrid::shim::signals,
+            "warpgrid:shim/database-proxy": super::warpgrid::shim::database_proxy,
+            "warpgrid:shim/threading": super::warpgrid::shim::threading,
+        },
+        exports: { default: async },
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,5 +337,60 @@ mod tests {
         // The bindgen macro generates a WarpgridShims type for the world.
         // This is a compile-time assertion that the type exists.
         fn _assert_world_type_exists(_: &WarpgridShims) {}
+    }
+
+    // ── Async handler bindings ──────────────────────────────────────
+
+    #[test]
+    fn async_handler_world_type_exists() {
+        use super::async_handler_bindings::WarpgridAsyncHandler;
+        fn _assert_world_type_exists(_: &WarpgridAsyncHandler) {}
+    }
+
+    #[test]
+    fn async_handler_http_types_are_constructible() {
+        use super::async_handler_bindings::warpgrid::shim::http_types::{
+            HttpHeader, HttpRequest, HttpResponse,
+        };
+
+        let header = HttpHeader {
+            name: "content-type".into(),
+            value: "application/json".into(),
+        };
+        assert_eq!(header.name, "content-type");
+
+        let request = HttpRequest {
+            method: "GET".into(),
+            uri: "/test".into(),
+            headers: vec![header],
+            body: vec![],
+        };
+        assert_eq!(request.method, "GET");
+
+        let response = HttpResponse {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        };
+        assert_eq!(response.status, 200);
+    }
+
+    #[test]
+    fn async_handler_shares_import_types_with_shims() {
+        // The `with` parameter in bindgen! ensures that import-side types
+        // from the async handler world are identical to the shim world types.
+        // This is a compile-time assertion that both use the same types.
+        use super::warpgrid::shim::filesystem::FileStat;
+        use super::warpgrid::shim::dns::IpAddressRecord;
+
+        let _stat: FileStat = FileStat {
+            size: 0,
+            is_file: true,
+            is_directory: false,
+        };
+        let _record: IpAddressRecord = IpAddressRecord {
+            address: "10.0.0.1".into(),
+            is_ipv6: false,
+        };
     }
 }

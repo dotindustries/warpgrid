@@ -11,3 +11,19 @@ world warpgrid-shims {
     import database-proxy;
     import threading;
 }
+
+/// Async handler world for WASI 0.3 request-driven workloads.
+///
+/// Extends the base shim world with an exported `handle-request` function
+/// that the host invokes for each inbound HTTP request. The Wasmtime
+/// component-model-async runtime enables concurrent invocations without
+/// blocking.
+world warpgrid-async-handler {
+    import filesystem;
+    import dns;
+    import signals;
+    import database-proxy;
+    import threading;
+
+    export async-handler;
+}
