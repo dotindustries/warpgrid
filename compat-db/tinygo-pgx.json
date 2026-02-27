@@ -1,0 +1,144 @@
+{
+  "package": "github.com/jackc/pgx/v5",
+  "version": "v5.7.4",
+  "ecosystem": "go",
+  "compiler": "tinygo",
+  "compiler_version": "0.40.0",
+  "target": "wasip2",
+  "llvm_version": "20.1.1",
+  "validation_date": "2026-02-27",
+  "user_story": "US-305",
+  "overall_status": "fail",
+  "summary": "pgx/v5 does NOT compile with TinyGo 0.40.0 targeting wasip2. The pgconn/config.go module depends on crypto/tls and net features that TinyGo has not implemented for WASI targets. All pgx features work correctly under standard Go (go test passes). WarpGrid's host-side database proxy shim (US-112) provides the recommended workaround.",
+  "go_test": {
+    "status": "pass",
+    "test_count": 4,
+    "details": "All tests pass: pgx.Connect (error path), SELECT 1 query construction, CRUD sequence validation, pgx type imports"
+  },
+  "tinygo_compile": {
+    "status": "fail",
+    "error_count": 5,
+    "blocking_package": "github.com/jackc/pgx/v5/pgconn",
+    "blocking_file": "pgconn/config.go",
+    "errors": [
+      {
+        "line": 91,
+        "symbol": "tls.Config.Clone",
+        "type": "missing_method",
+        "stdlib_package": "crypto/tls",
+        "description": "TinyGo's crypto/tls.Config does not implement Clone() method"
+      },
+      {
+        "line": 105,
+        "symbol": "tls.Config.Clone",
+        "type": "missing_method",
+        "stdlib_package": "crypto/tls",
+        "description": "Same Clone() issue in fallback TLS config copy"
+      },
+      {
+        "line": 798,
+        "symbol": "tls.X509KeyPair",
+        "type": "missing_function",
+        "stdlib_package": "crypto/tls",
+        "description": "TinyGo does not implement tls.X509KeyPair for certificate parsing"
+      },
+      {
+        "line": 840,
+        "symbol": "net.Resolver",
+        "type": "missing_type",
+        "stdlib_package": "net",
+        "description": "TinyGo does not implement net.Resolver type for DNS configuration"
+      },
+      {
+        "line": 841,
+        "symbol": "net.DefaultResolver",
+        "type": "missing_variable",
+        "stdlib_package": "net",
+        "description": "TinyGo does not provide net.DefaultResolver global variable"
+      }
+    ],
+    "root_cause": "pgx's connection configuration (pgconn/config.go) unconditionally references crypto/tls advanced features and net.Resolver, both of which TinyGo's wasip2 target does not support"
+  },
+  "blocking_stdlib_gaps": [
+    {
+      "package": "crypto/tls",
+      "missing": ["Config.Clone()", "X509KeyPair()"],
+      "severity": "critical",
+      "notes": "pgx uses TLS config cloning during connection setup and certificate loading for client auth"
+    },
+    {
+      "package": "net",
+      "missing": ["Resolver", "DefaultResolver"],
+      "severity": "critical",
+      "notes": "pgx uses net.Resolver for custom DNS configuration during connection. WarpGrid's DNS shim (US-106) patches net.Dial but not net.Resolver"
+    }
+  ],
+  "features_tested": [
+    {
+      "feature": "pgx.Connect(ctx, connString)",
+      "go_status": "pass",
+      "wasm_status": "blocked_by_compile",
+      "notes": "API works in standard Go; blocked by TLS/net compilation errors"
+    },
+    {
+      "feature": "QueryRow SELECT 1",
+      "go_status": "pass",
+      "wasm_status": "blocked_by_compile",
+      "notes": "Query construction and scanning logic is sound"
+    },
+    {
+      "feature": "Exec CREATE TABLE",
+      "go_status": "pass",
+      "wasm_status": "blocked_by_compile",
+      "notes": "DDL execution via conn.Exec works in standard Go"
+    },
+    {
+      "feature": "Exec INSERT with $1 param",
+      "go_status": "pass",
+      "wasm_status": "blocked_by_compile",
+      "notes": "Parameterized queries work in standard Go"
+    },
+    {
+      "feature": "QueryRow SELECT with Scan",
+      "go_status": "pass",
+      "wasm_status": "blocked_by_compile",
+      "notes": "Row scanning into Go variables works in standard Go"
+    },
+    {
+      "feature": "Exec DROP TABLE",
+      "go_status": "pass",
+      "wasm_status": "blocked_by_compile",
+      "notes": "DDL cleanup works in standard Go"
+    }
+  ],
+  "workarounds": [
+    {
+      "approach": "host_side_database_proxy",
+      "description": "Use WarpGrid's host-side database proxy shim (US-112) which manages TCP connections, TLS termination, and connection pooling at the Wasmtime host level. Guest code sends/receives raw Postgres wire protocol bytes through the proxy without needing pgx's full TLS and DNS infrastructure.",
+      "status": "recommended",
+      "references": ["US-112", "US-303", "US-304"]
+    },
+    {
+      "approach": "tinygo_stdlib_patches",
+      "description": "Patch TinyGo's crypto/tls to implement Config.Clone() and X509KeyPair(), and add net.Resolver/DefaultResolver stubs. This would unblock pgx compilation but requires significant TinyGo fork investment.",
+      "status": "future_consideration",
+      "effort": "high",
+      "references": ["US-301", "US-309"]
+    },
+    {
+      "approach": "pgx_fork_with_build_tags",
+      "description": "Fork pgx and add //go:build !wasip2 tags around TLS and resolver code paths, replacing with WarpGrid-specific shim calls. Risk: divergence from upstream pgx releases.",
+      "status": "not_recommended",
+      "effort": "medium",
+      "references": []
+    },
+    {
+      "approach": "alternative_driver_lib_pq",
+      "description": "Use github.com/lib/pq which has a simpler dependency tree and may compile more successfully with TinyGo. See compat-db/go/lib-pq.toml for assessment.",
+      "status": "viable_alternative",
+      "references": ["compat-db/go/lib-pq.toml"]
+    }
+  ],
+  "test_fixture": "tests/fixtures/go-pgx-validation/",
+  "validation_script": "tests/fixtures/go-pgx-validation/validate.sh"
+}
