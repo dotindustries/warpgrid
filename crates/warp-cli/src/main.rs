@@ -26,6 +26,10 @@ enum Commands {
         /// Project directory (default: current directory)
         #[arg(short, long, default_value = ".")]
         path: String,
+
+        /// Override language (default: read from warp.toml)
+        #[arg(short, long, value_parser = ["rust", "go", "typescript", "bun"])]
+        lang: Option<String>,
     },
     // Phase 3+:
     // Deploy { ... },
@@ -72,8 +76,8 @@ fn main() -> anyhow::Result<()> {
                 commands::convert::init(&path)
             }
         },
-        Commands::Pack { path } => {
-            commands::pack::pack(&path)
+        Commands::Pack { path, lang } => {
+            commands::pack::pack(&path, lang.as_deref())
         }
     }
 }

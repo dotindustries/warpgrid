@@ -44,13 +44,13 @@ fn find_tinygo(project_path: &Path) -> Result<PathBuf> {
     }
 
     // 3. System PATH
-    if let Ok(output) = Command::new("which").arg("tinygo").output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                debug!("Found TinyGo at {} (system PATH)", path);
-                return Ok(PathBuf::from(path));
-            }
+    if let Ok(output) = Command::new("which").arg("tinygo").output()
+        && output.status.success()
+    {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            debug!("Found TinyGo at {} (system PATH)", path);
+            return Ok(PathBuf::from(path));
         }
     }
 
