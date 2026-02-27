@@ -1,0 +1,60 @@
+# Docker Compose test dependency stack for WarpGrid integration tests.
+#
+# Services:
+#   - postgres: PostgreSQL 16 with seed data
+#   - redis: Redis 7 for caching tests
+#   - mock-registry: Lightweight service discovery mock
+#
+# All data directories use tmpfs for clean state every run.
+#
+# Usage:
+#   docker compose -f test-infra/docker-compose.yml -p warpgrid-test up -d
+#   test-infra/wait-for-deps.sh
+#   # ... run tests ...
+#   docker compose -f test-infra/docker-compose.yml -p warpgrid-test down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: warpgrid
+      POSTGRES_PASSWORD: warpgrid_test
+      POSTGRES_DB: warpgrid_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U warpgrid -d warpgrid_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 2s
+
+  mock-registry:
+    build:
+      context: ./mock-registry
+      dockerfile: Dockerfile
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 2s
