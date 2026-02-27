@@ -1,0 +1,23 @@
+[package]
+name = "rust-async-handler"
+version = "0.1.0"
+edition = "2021"
+# Minimum wit-bindgen version: 0.42.0
+# Required for WarpGrid WIT package compatibility and WASI component model
+# async support via Wasmtime's component-model-async runtime.
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.42", default-features = false, features = ["macros"] }
+wit-bindgen-rt = { version = "0.42", features = ["bitflags"] }
+dlmalloc = { version = "0.2", features = ["global"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
