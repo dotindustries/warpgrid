@@ -23,6 +23,7 @@ members = [
     "crates/warpgrid-proxy",
     "crates/warpgrid-rollout",
     "crates/warpgrid-bun",
+    "crates/warpgrid-async",
 ]
 
 [workspace.package]
