@@ -1,0 +1,215 @@
+{
+  "runtime": "componentize-js",
+  "runtimeVersion": "0.18.4",
+  "shimVersion": "warpgrid-0.1.0",
+  "testedAt": "2026-02-26T00:00:00Z",
+  "description": "Compatibility with WarpGrid-extended ComponentizeJS runtime (database proxy, DNS, filesystem, process.env shims active)",
+  "shimsActive": [
+    "warpgrid:shim/database-proxy — Postgres wire protocol passthrough via WIT",
+    "warpgrid:shim/dns — Service registry + /etc/hosts + system DNS resolution",
+    "warpgrid:shim/filesystem — Virtual file map for /etc/resolv.conf, /dev/urandom, /usr/share/zoneinfo",
+    "process.env — WASI environment variable polyfill"
+  ],
+  "packages": [
+    {
+      "name": "pg",
+      "version": "8.13.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "IMPROVED: Works via warpgrid/pg database proxy shim wrapping warpgrid:shim/database-proxy WIT interface"
+    },
+    {
+      "name": "ioredis",
+      "version": "5.4.2",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires full net.Socket duplex stream API with events, reconnection, and pipeline support",
+      "workaround": "Use WarpGrid Redis proxy directly via warpgrid.database.connect() with RESP protocol bytes",
+      "notes": "Database proxy shim handles byte passthrough but ioredis needs full net.Socket EventEmitter interface"
+    },
+    {
+      "name": "express",
+      "version": "4.21.2",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires http.createServer() listener architecture incompatible with WASI request/response model",
+      "workaround": "Use hono (request/response handler model compatible with WASI and WarpGrid)",
+      "notes": "Express fundamentally requires Node.js http module server model; not shimable"
+    },
+    {
+      "name": "hono",
+      "version": "4.6.15",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Web-standard request/response model, no Node.js dependencies"
+    },
+    {
+      "name": "zod",
+      "version": "3.24.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure TypeScript schema validation, fully compatible"
+    },
+    {
+      "name": "jose",
+      "version": "5.9.6",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "IMPROVED: PEM key file loading now works via warpgrid.fs.readFile() filesystem shim"
+    },
+    {
+      "name": "uuid",
+      "version": "11.0.5",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Uses crypto.getRandomValues() which is available in StarlingMonkey"
+    },
+    {
+      "name": "lodash-es",
+      "version": "4.17.21",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript utility library, fully compatible"
+    },
+    {
+      "name": "date-fns",
+      "version": "4.1.0",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript date utilities, no Node.js dependencies"
+    },
+    {
+      "name": "nanoid",
+      "version": "5.0.9",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Uses crypto.getRandomValues() which is available in StarlingMonkey"
+    },
+    {
+      "name": "superjson",
+      "version": "2.2.2",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript serialization library, fully compatible"
+    },
+    {
+      "name": "drizzle-orm",
+      "version": "0.38.4",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "IMPROVED: Query execution now works via warpgrid/pg database proxy shim as the driver"
+    },
+    {
+      "name": "kysely",
+      "version": "0.27.6",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "IMPROVED: Query execution now works via warpgrid/pg database proxy shim as the dialect driver"
+    },
+    {
+      "name": "better-sqlite3",
+      "version": "11.7.0",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Native C++ addon requiring Node.js N-API; cannot compile to Wasm",
+      "workaround": "Use sql.js (Emscripten SQLite) or WarpGrid database proxy with Postgres",
+      "notes": "Fundamentally incompatible — native binary addon, not shimable"
+    },
+    {
+      "name": "node-fetch",
+      "version": "3.3.2",
+      "importStatus": "pass",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires Node.js http/https modules for outbound HTTP; not shimmed by WarpGrid",
+      "workaround": "Use native fetch() API (available in StarlingMonkey)",
+      "notes": "Native fetch() is the recommended approach; node-fetch is redundant in WASI"
+    },
+    {
+      "name": "axios",
+      "version": "1.7.9",
+      "importStatus": "pass",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires XMLHttpRequest or Node.js http adapter; neither available",
+      "workaround": "Use native fetch() API (available in StarlingMonkey)",
+      "notes": "Native fetch() is the recommended approach; axios adapter selection fails"
+    },
+    {
+      "name": "dotenv",
+      "version": "16.4.7",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "IMPROVED: .env file reading now works via warpgrid.fs.readFile() filesystem shim"
+    },
+    {
+      "name": "pino",
+      "version": "9.6.0",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "partial",
+      "blockingIssue": "Transport/destination features require Node.js stream infrastructure",
+      "workaround": "Use basic pino() logging; advanced transports not available",
+      "notes": "IMPROVED: Basic logging and level configuration work via process.env polyfill; transports still limited"
+    },
+    {
+      "name": "fast-json-stringify",
+      "version": "6.0.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript JSON serialization, fully compatible"
+    },
+    {
+      "name": "ajv",
+      "version": "8.17.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript schema validation, fully compatible"
+    }
+  ]
+}

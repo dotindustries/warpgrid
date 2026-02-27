@@ -61,3 +61,38 @@ export interface Connection {
   /** Close the connection, returning it to the host pool if healthy. */
   close(): void;
 }
+
+/**
+ * Low-level WIT binding functions for `warpgrid:shim/dns`.
+ *
+ * Matches the jco type mapping of the WIT interface:
+ * - hostname: string
+ * - returns: list of IP address record structs
+ */
+export interface DnsBindings {
+  resolveAddress(hostname: string): DnsRecord[];
+}
+
+/**
+ * A DNS record returned by `resolveAddress`.
+ *
+ * Matches the WIT `ip-address-record` record.
+ */
+export interface DnsRecord {
+  address: string;
+  family: "ipv4" | "ipv6";
+  ttl: number;
+}
+
+/**
+ * Low-level WIT binding functions for `warpgrid:shim/filesystem`.
+ *
+ * Matches the jco type mapping of the WIT interface:
+ * - `u64` → `bigint` (file handles)
+ * - `list<u8>` → `Uint8Array`
+ */
+export interface FilesystemBindings {
+  openVirtual(path: string): bigint;
+  readVirtual(handle: bigint, maxBytes: number): Uint8Array;
+  closeVirtual(handle: bigint): void;
+}

@@ -1,0 +1,209 @@
+{
+  "runtime": "componentize-js",
+  "runtimeVersion": "0.18.4",
+  "shimVersion": "none",
+  "testedAt": "2026-02-26T00:00:00Z",
+  "description": "Baseline compatibility for stock ComponentizeJS (StarlingMonkey) runtime without WarpGrid shims",
+  "packages": [
+    {
+      "name": "pg",
+      "version": "8.13.1",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires Node.js net module for TCP socket connections",
+      "workaround": null,
+      "notes": "Cannot establish TCP connections; net.Socket unavailable in StarlingMonkey"
+    },
+    {
+      "name": "ioredis",
+      "version": "5.4.2",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires Node.js net module with full duplex stream, events, and reconnection logic",
+      "workaround": null,
+      "notes": "Deep dependency on net.Socket, events.EventEmitter, and stream.Duplex"
+    },
+    {
+      "name": "express",
+      "version": "4.21.2",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires http.createServer for listener architecture",
+      "workaround": "Use hono (request/response handler model compatible with WASI)",
+      "notes": "Express fundamentally requires Node.js http module server model"
+    },
+    {
+      "name": "hono",
+      "version": "4.6.15",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Web-standard request/response model, no Node.js dependencies"
+    },
+    {
+      "name": "zod",
+      "version": "3.24.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure TypeScript schema validation, fully compatible"
+    },
+    {
+      "name": "jose",
+      "version": "5.9.6",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "partial",
+      "blockingIssue": "PEM key import requires fs.readFileSync for loading key files",
+      "workaround": "Use JWK format keys embedded in source or environment variables",
+      "notes": "JWS/JWE signing and verification work via SubtleCrypto; PEM file loading fails"
+    },
+    {
+      "name": "uuid",
+      "version": "11.0.5",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Uses crypto.getRandomValues() which is available in StarlingMonkey"
+    },
+    {
+      "name": "lodash-es",
+      "version": "4.17.21",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript utility library, fully compatible"
+    },
+    {
+      "name": "date-fns",
+      "version": "4.1.0",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript date utilities, no Node.js dependencies"
+    },
+    {
+      "name": "nanoid",
+      "version": "5.0.9",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Uses crypto.getRandomValues() which is available in StarlingMonkey"
+    },
+    {
+      "name": "superjson",
+      "version": "2.2.2",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript serialization library, fully compatible"
+    },
+    {
+      "name": "drizzle-orm",
+      "version": "0.38.4",
+      "importStatus": "pass",
+      "functionCallStatus": "partial",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires a database driver (pg, mysql2) to execute queries",
+      "workaround": "Use with warpgrid/pg shim when WarpGrid shims are active",
+      "notes": "Schema definition and query building work; query execution fails without driver"
+    },
+    {
+      "name": "kysely",
+      "version": "0.27.6",
+      "importStatus": "pass",
+      "functionCallStatus": "partial",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires a database dialect/driver (pg, mysql2) for query execution",
+      "workaround": "Use with warpgrid/pg shim when WarpGrid shims are active",
+      "notes": "Query builder and type system work; execution requires a connected driver"
+    },
+    {
+      "name": "better-sqlite3",
+      "version": "11.7.0",
+      "importStatus": "fail",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Native C++ addon requiring Node.js N-API; cannot compile to Wasm",
+      "workaround": "Use sql.js (Emscripten SQLite) or WarpGrid database proxy with Postgres",
+      "notes": "Fundamentally incompatible — native binary addon"
+    },
+    {
+      "name": "node-fetch",
+      "version": "3.3.2",
+      "importStatus": "pass",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires Node.js http/https modules for request execution",
+      "workaround": "Use native fetch() API (available in StarlingMonkey)",
+      "notes": "Import succeeds but actual HTTP requests fail; use native fetch instead"
+    },
+    {
+      "name": "axios",
+      "version": "1.7.9",
+      "importStatus": "pass",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires XMLHttpRequest or Node.js http module for request execution",
+      "workaround": "Use native fetch() API (available in StarlingMonkey)",
+      "notes": "Import succeeds but adapter selection fails; no compatible adapter available"
+    },
+    {
+      "name": "dotenv",
+      "version": "16.4.7",
+      "importStatus": "pass",
+      "functionCallStatus": "fail",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires fs.readFileSync to read .env files",
+      "workaround": "Use WASI environment variables directly via process.env polyfill",
+      "notes": "Import succeeds but config() fails without filesystem access"
+    },
+    {
+      "name": "pino",
+      "version": "9.6.0",
+      "importStatus": "pass",
+      "functionCallStatus": "partial",
+      "realisticUsageStatus": "fail",
+      "blockingIssue": "Requires process.stdout writable stream and process.env for configuration",
+      "workaround": "Use console.log-based logging (available in StarlingMonkey)",
+      "notes": "Basic pino() call works but transport and destination features fail"
+    },
+    {
+      "name": "fast-json-stringify",
+      "version": "6.0.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript JSON serialization, fully compatible"
+    },
+    {
+      "name": "ajv",
+      "version": "8.17.1",
+      "importStatus": "pass",
+      "functionCallStatus": "pass",
+      "realisticUsageStatus": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Pure JavaScript schema validation, fully compatible"
+    }
+  ]
+}

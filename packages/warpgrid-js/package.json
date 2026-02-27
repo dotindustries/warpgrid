@@ -13,6 +13,10 @@
     "./global": {
       "types": "./dist/global.d.ts",
       "import": "./dist/global.js"
+    },
+    "./compat": {
+      "types": "./dist/compat/audit.d.ts",
+      "import": "./dist/compat/audit.js"
     }
   },
   "scripts": {
