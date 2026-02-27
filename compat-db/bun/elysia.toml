@@ -1,0 +1,7 @@
+[[dependency]]
+ecosystem = "bun"
+name = "elysia"
+verdict = "incompatible"
+reason = "Depends on Bun.serve() for HTTP listener, which is not available in WASI."
+alternative = "Use hono instead. WarpGrid manages the HTTP listener via wasi:http/incoming-handler."
+notes = "Elysia's core is tightly coupled to Bun's native HTTP server APIs."

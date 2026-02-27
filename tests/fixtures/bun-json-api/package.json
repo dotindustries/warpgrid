@@ -1,0 +1,17 @@
+{
+  "name": "@warpgrid/test-bun-json-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "US-605 test fixture: realistic Bun JSON API handler compiled via warp pack --lang bun",
+  "type": "module",
+  "scripts": {
+    "typecheck": "bun run --bun tsc --noEmit",
+    "test": "bun test",
+    "build": "./build.sh",
+    "test:integration": "./test.sh"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}

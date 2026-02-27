@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-02-26T18:10:12Z",
+  "pipeline_version": "bun-build+jco-componentize",
+  "total": 20,
+  "pass": 19,
+  "fail": 1,
+  "results": [
+    {
+  "name": "hono",
+  "version": "4.7.4",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 7731
+},
+    {
+  "name": "elysia",
+  "version": "1.2.12",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 9607
+},
+    {
+  "name": "zod",
+  "version": "3.24.2",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 5645
+},
+    {
+  "name": "drizzle-orm",
+  "version": "0.39.3",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 8902
+},
+    {
+  "name": "jose",
+  "version": "6.0.8",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 8720
+},
+    {
+  "name": "nanoid",
+  "version": "5.1.2",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 6561
+},
+    {
+  "name": "date-fns",
+  "version": "4.1.0",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 13152
+},
+    {
+  "name": "lodash-es",
+  "version": "4.17.21",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 12971
+},
+    {
+  "name": "cheerio",
+  "version": "1.0.0",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 37479
+},
+    {
+  "name": "superjson",
+  "version": "2.2.2",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 19704
+},
+    {
+  "name": "uuid",
+  "version": "11.1.0",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 7940
+},
+    {
+  "name": "ajv",
+  "version": "8.17.1",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 7512
+},
+    {
+  "name": "itty-router",
+  "version": "5.0.18",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 8469
+},
+    {
+  "name": "cookie",
+  "version": "1.0.2",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 6995
+},
+    {
+  "name": "ms",
+  "version": "2.1.3",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 7019
+},
+    {
+  "name": "mustache",
+  "version": "4.2.0",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 7082
+},
+    {
+  "name": "marked",
+  "version": "15.0.6",
+  "status": "fail-build",
+  "bundle_ok": true,
+  "componentize_ok": false,
+  "error": "(jco componentize) Error: Failed to initialize component: Exception while evaluating top-level script bundle.js:72:27 SyntaxError: invalid class property name in regular expression: bundle.js:72:27 [\\p{L}\\p{N}] bundle.js:72:27 ...^     at componentize (file:///Users/janosveres/workspace/dot-inc/.ralph-worktrees/warpgrid/worker-w0-1/build/componentize-js/node_modules/@bytecodealliance/jco/node_modules/@bytecodealliance/componentize-js/src/componentize.js:302:11)     at async componentize (file:",
+  "error_stage": "componentize",
+  "duration_ms": 5123
+},
+    {
+  "name": "devalue",
+  "version": "5.1.1",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 8970
+},
+    {
+  "name": "@sinclair/typebox",
+  "version": "0.34.14",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 6415
+},
+    {
+  "name": "fast-json-stringify",
+  "version": "6.0.1",
+  "status": "pass",
+  "bundle_ok": true,
+  "componentize_ok": true,
+  "duration_ms": 9222
+}
+  ]
+}

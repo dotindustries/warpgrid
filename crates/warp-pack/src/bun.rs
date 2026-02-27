@@ -119,12 +119,85 @@ fn walk_up_for_workspace(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Resolve the `@warpgrid/bun-polyfills` package directory.
+///
+/// Search order:
+/// 1. `packages/warpgrid-bun-polyfills/` in the project root (monorepo layout)
+/// 2. `node_modules/@warpgrid/bun-polyfills/` in the project path
+fn resolve_polyfills_dir(project_path: &Path, project_root: &Path) -> Option<PathBuf> {
+    // Monorepo layout
+    let monorepo = project_root.join("packages/warpgrid-bun-polyfills");
+    if monorepo.join("src/index.ts").is_file() {
+        return Some(monorepo);
+    }
+
+    // Installed as npm dependency
+    let node_modules = project_path.join("node_modules/@warpgrid/bun-polyfills");
+    if node_modules.join("src/index.ts").is_file() {
+        return Some(node_modules);
+    }
+
+    None
+}
+
+/// Generate a wrapper entry file that imports polyfills before the user's handler.
+///
+/// The wrapper:
+/// 1. Imports and calls `installPolyfills()` from `@warpgrid/bun-polyfills`
+/// 2. Re-exports everything from the original entry point
+///
+/// This ensures polyfills are initialized before any handler code runs.
+fn generate_polyfill_wrapper(
+    bundle_dir: &Path,
+    polyfills_index: &Path,
+    original_entry: &Path,
+    module_name: &str,
+) -> Result<PathBuf> {
+    let wrapper_path = bundle_dir.join(format!("{module_name}-wrapper.ts"));
+
+    // Use absolute paths for reliable resolution during bun build
+    let polyfills_abs = std::fs::canonicalize(polyfills_index)
+        .context("Failed to resolve polyfills index path")?;
+    let entry_abs = std::fs::canonicalize(original_entry)
+        .context("Failed to resolve entry point path")?;
+
+    // The wrapper imports polyfills, initializes them, then imports the user
+    // entry as a side-effect (for addEventListener-based handlers) and
+    // re-exports all named exports.
+    //
+    // Note: We use `import "..."` (side-effect import) to execute the user entry
+    // which registers the fetch event listener. `export *` re-exports any named
+    // exports. We don't attempt to re-export `default` because jco componentize
+    // uses addEventListener("fetch"), not default exports.
+    let wrapper_content = format!(
+        r#"// Auto-generated polyfill wrapper for warp pack --lang bun
+import {{ installPolyfills }} from "{}";
+installPolyfills();
+export * from "{}";
+import "{}";
+"#,
+        polyfills_abs.display(),
+        entry_abs.display(),
+        entry_abs.display(),
+    );
+
+    std::fs::write(&wrapper_path, &wrapper_content)
+        .context("Failed to write polyfill wrapper")?;
+
+    debug!("Generated polyfill wrapper at {}", wrapper_path.display());
+
+    Ok(wrapper_path)
+}
+
 /// Step 1: Bundle the Bun handler with `bun build`.
 ///
 /// Produces a single-file ES module bundle suitable for jco componentize.
 fn bun_build(project_path: &Path, entry: &str, output: &Path) -> Result<()> {
-    let entry_path = project_path.join(entry);
-    info!("Bundling with bun build: {}", entry);
+    let entry_path = {
+        let p = Path::new(entry);
+        if p.is_absolute() { p.to_path_buf() } else { project_path.join(entry) }
+    };
+    info!("Bundling with bun build: {}", entry_path.display());
 
     let result = Command::new("bun")
         .arg("build")
@@ -305,8 +378,31 @@ pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> 
 
     let wasm_output = output_dir.join(format!("{module_name}.wasm"));
 
-    // Step 1: Bundle with bun build
-    bun_build(project_path, entry, &bundled_js)?;
+    // Step 0 (optional): Generate polyfill wrapper if @warpgrid/bun-polyfills is available
+    let effective_entry = match resolve_polyfills_dir(project_path, &project_root) {
+        Some(polyfills_dir) => {
+            let polyfills_index = polyfills_dir.join("src/index.ts");
+            info!("Injecting Bun polyfills from {}", polyfills_dir.display());
+            let wrapper = generate_polyfill_wrapper(
+                &bundle_dir,
+                &polyfills_index,
+                &entry_path,
+                module_name,
+            )?;
+            wrapper.to_string_lossy().to_string()
+        }
+        None => {
+            debug!("No @warpgrid/bun-polyfills found; bundling without polyfills");
+            entry_path.to_string_lossy().to_string()
+        }
+    };
+
+    // Step 1: Bundle with bun build (using wrapper entry if polyfills available)
+    bun_build(
+        project_path,
+        &effective_entry,
+        &bundled_js,
+    )?;
 
     // Step 2: Componentize with jco
     jco_componentize(&jco_bin, &bundled_js, &wit_dir, &wasm_output)?;
@@ -670,6 +766,115 @@ entry = "src/index.ts"
             );
         }
         // If jco somehow succeeds with garbage input, that's fine too
+    }
+
+    // ── Polyfill injection tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_polyfills_dir_monorepo() {
+        let project_root = find_project_root(Path::new("."));
+        let result = resolve_polyfills_dir(Path::new("."), &project_root);
+        // Should find packages/warpgrid-bun-polyfills/ in our monorepo
+        assert!(
+            result.is_some(),
+            "Should find polyfills package in monorepo"
+        );
+        let dir = result.unwrap();
+        assert!(
+            dir.join("src/index.ts").is_file(),
+            "Polyfills index.ts should exist at: {}/src/index.ts",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn test_resolve_polyfills_dir_not_found() {
+        let result = resolve_polyfills_dir(
+            Path::new("/nonexistent"),
+            Path::new("/nonexistent"),
+        );
+        assert!(result.is_none(), "Should return None when polyfills not found");
+    }
+
+    #[test]
+    fn test_generate_polyfill_wrapper() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_dir = dir.path().join("target/bun-bundle");
+        fs::create_dir_all(&bundle_dir).unwrap();
+
+        // Create mock polyfills index
+        let polyfills_dir = dir.path().join("polyfills");
+        fs::create_dir_all(&polyfills_dir).unwrap();
+        fs::write(polyfills_dir.join("index.ts"), "export function installPolyfills() {}").unwrap();
+
+        // Create mock entry
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(src_dir.join("index.ts"), "export default { fetch() { return new Response('ok') } }").unwrap();
+
+        let wrapper = generate_polyfill_wrapper(
+            &bundle_dir,
+            &polyfills_dir.join("index.ts"),
+            &src_dir.join("index.ts"),
+            "test-app",
+        ).unwrap();
+
+        assert!(wrapper.exists(), "Wrapper file should be created");
+        let content = fs::read_to_string(&wrapper).unwrap();
+        assert!(content.contains("installPolyfills"), "Wrapper should import installPolyfills");
+        assert!(content.contains("export *"), "Wrapper should re-export user module named exports");
+        assert!(content.contains("import \""), "Wrapper should side-effect import user entry");
+    }
+
+    #[test]
+    fn test_bun_build_with_polyfill_wrapper() {
+        if !has_bun() {
+            eprintln!("Skipping: bun not available");
+            return;
+        }
+
+        let project_root = find_project_root(Path::new("."));
+        let polyfills_dir = match resolve_polyfills_dir(Path::new("."), &project_root) {
+            Some(dir) => dir,
+            None => {
+                eprintln!("Skipping: polyfills package not found");
+                return;
+            }
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let handler = r#"addEventListener("fetch", (event) =>
+  event.respondWith(new Response("polyfilled"))
+);"#;
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(src_dir.join("index.ts"), handler).unwrap();
+
+        let bundle_dir = dir.path().join("target/bun-bundle");
+        fs::create_dir_all(&bundle_dir).unwrap();
+
+        // Generate wrapper
+        let wrapper = generate_polyfill_wrapper(
+            &bundle_dir,
+            &polyfills_dir.join("src/index.ts"),
+            &src_dir.join("index.ts"),
+            "test-polyfill",
+        ).unwrap();
+
+        // Bundle with the wrapper as entry
+        let output = dir.path().join("bundle.js");
+        let result = bun_build(
+            dir.path(),
+            &wrapper.to_string_lossy(),
+            &output,
+        );
+        assert!(result.is_ok(), "bun build with polyfill wrapper failed: {:?}", result.err());
+
+        let content = fs::read_to_string(&output).unwrap();
+        assert!(
+            content.contains("installPolyfills"),
+            "Bundle should contain polyfill initialization"
+        );
     }
 
     // ── Test helpers ────────────────────────────────────────────────────────

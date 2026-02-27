@@ -1,0 +1,7 @@
+[[dependency]]
+ecosystem = "bun"
+name = "hono"
+version = "4.7.x"
+verdict = "compatible"
+reason = "Pure JavaScript HTTP framework with no native bindings."
+notes = "Fully compatible with jco componentize. Used in T5 integration test."

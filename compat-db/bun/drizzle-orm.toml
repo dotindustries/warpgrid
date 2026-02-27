@@ -1,0 +1,7 @@
+[[dependency]]
+ecosystem = "bun"
+name = "drizzle-orm"
+verdict = "shim_compatible"
+reason = "ORM layer is pure TypeScript but requires a database driver underneath."
+shim = "database_proxy"
+notes = "Works when paired with @warpgrid/bun-sdk/postgres for the connection layer."

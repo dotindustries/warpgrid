@@ -1,0 +1,6 @@
+[[dependency]]
+ecosystem = "bun"
+name = "jose"
+verdict = "compatible"
+reason = "Pure JavaScript JWT/JWE/JWS library using Web Crypto API."
+notes = "Uses standard Web Crypto APIs available in the WASI JS runtime."

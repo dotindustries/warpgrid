@@ -1,0 +1,6 @@
+[[dependency]]
+ecosystem = "bun"
+name = "zod"
+verdict = "compatible"
+reason = "Pure TypeScript schema validation library with no native dependencies."
+notes = "Works out of the box in both native Bun and Wasm modes."
