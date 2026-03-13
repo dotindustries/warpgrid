@@ -14,11 +14,10 @@ Usage:
     python3 scripts/schedule-next-implementation.py --dry-run    # Preview without scheduling
     python3 scripts/schedule-next-implementation.py --list-ready # List all ready issues
 
-Environment variables (set automatically in tervezo sandboxes):
-    TERVEZO_API_URL        Base URL for the tervezo API
-    TERVEZO_API_KEY        JWT or API key for authentication
-    TERVEZO_WORKSPACE_ID   Workspace ID
-    TERVEZO_PROJECT_ID     Project identifier
+Environment variables:
+    TERVEZO_API_KEY        API key for authentication (tzv_... format)
+    TERVEZO_WORKSPACE_SLUG Workspace slug (used to resolve workspace ID)
+    TERVEZO_API_URL        Base URL override (default: https://app.tervezo.ai)
     GITHUB_TOKEN           (optional) GitHub token for issue state queries
 """
 
@@ -221,24 +220,31 @@ def topological_sort(issues):
 
 
 # ---------------------------------------------------------------------------
-# Tervezo API client
+# Tervezo public API v1 client
 # ---------------------------------------------------------------------------
 
-def tervezo_api_call(method, path, body=None):
-    """
-    Make a tervezo API call.
-
-    Supports both tRPC (POST to /api/trpc/<procedure>) and REST patterns.
-    Authentication is via the TERVEZO_API_KEY env var.
-    """
-    api_url = os.environ.get("TERVEZO_API_URL", "https://app.tervezo.ai/api")
+def _get_api_key():
+    """Return the API key or exit with an error."""
     api_key = os.environ.get("TERVEZO_API_KEY")
-
     if not api_key:
         print("ERROR: TERVEZO_API_KEY environment variable is not set")
         sys.exit(1)
+    return api_key
 
-    url = f"{api_url}/{path.lstrip('/')}"
+
+def tervezo_api(method, path, body=None):
+    """
+    Call the Tervezo public REST API (v1).
+
+    All endpoints are under /api/v1/. Authentication is via Bearer token
+    using the TERVEZO_API_KEY env var.
+    """
+    base_url = os.environ.get(
+        "TERVEZO_API_URL", "https://app.tervezo.ai"
+    ).rstrip("/")
+    api_key = _get_api_key()
+
+    url = f"{base_url}/api/v1/{path.lstrip('/')}"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -263,82 +269,131 @@ def tervezo_api_call(method, path, body=None):
         return {"error": str(e), "status": 0}
 
 
-def trpc_mutation(procedure, input_data):
-    """Call a tRPC mutation (POST)."""
-    return tervezo_api_call("POST", f"trpc/{procedure}", {"json": input_data})
-
-
-def trpc_query(procedure, input_data=None):
-    """Call a tRPC query (GET with input parameter)."""
-    import urllib.parse
-    path = f"trpc/{procedure}"
-    if input_data is not None:
-        encoded = urllib.parse.quote(json.dumps({"json": input_data}))
-        path += f"?input={encoded}"
-    return tervezo_api_call("GET", path)
-
-
-def schedule_implementation(gh_issue_number, gh_issue_title, beads_id):
+def resolve_workspace_id(slug):
     """
-    Schedule a new implementation for the given GitHub issue via the
-    tervezo API.
+    Resolve a workspace slug to its ID via GET /workspaces.
 
-    Creates a brief with the issue details, which triggers an
-    implementation pipeline in tervezo.
+    Fetches the list of accessible workspaces and matches by slug.
+    Returns the workspace ID string, or exits with an error if not found.
     """
-    workspace_id = os.environ.get("TERVEZO_WORKSPACE_ID")
-    project_id = os.environ.get("TERVEZO_PROJECT_ID")
+    print(f"  Resolving workspace slug '{slug}'...")
+    result = tervezo_api("GET", "workspaces")
+
+    if "error" in result:
+        print(f"ERROR: Failed to fetch workspaces: {result['error']}")
+        sys.exit(1)
+
+    workspaces = result if isinstance(result, list) else result.get("items", result.get("data", []))
+    if not isinstance(workspaces, list):
+        print(f"ERROR: Unexpected workspaces response: {json.dumps(result)[:300]}")
+        sys.exit(1)
+
+    for ws in workspaces:
+        if ws.get("slug") == slug:
+            print(f"  Resolved workspace: {ws['name']} ({ws['id']})")
+            return ws["id"]
+
+    available = ", ".join(ws.get("slug", "?") for ws in workspaces)
+    print(f"ERROR: Workspace slug '{slug}' not found. Available: {available}")
+    sys.exit(1)
+
+
+def find_active_implementation(gh_issue_number):
+    """
+    Check if there is already an active implementation for a GitHub issue.
+
+    Queries GET /implementations for non-terminal statuses and matches
+    by issue number in the title or branch name.
+    """
+    active_statuses = ["pending", "queued", "running"]
+    issue_marker = f"issue-{gh_issue_number}"
+    issue_hash = f"#{gh_issue_number}"
+
+    for status in active_statuses:
+        result = tervezo_api("GET", f"implementations?status={status}&limit=100")
+        if "error" in result:
+            continue
+
+        items = result.get("items", [])
+        for impl in items:
+            title = impl.get("title") or ""
+            branch = impl.get("branch") or ""
+            if issue_marker in branch or issue_hash in title:
+                return impl
+
+    return None
+
+
+def schedule_implementation(gh_issue_number, gh_issue_title, beads_id,
+                            workspace_id, mode="feature", base_branch="main"):
+    """
+    Schedule a new implementation via POST /api/v1/implementations.
+
+    Checks for an existing active implementation first to avoid duplicates.
+    Creates a feature (or bugfix) implementation with the GitHub issue
+    details as the prompt.
+    """
     issue_url = f"https://github.com/{REPO}/issues/{gh_issue_number}"
 
-    print(f"\n  Scheduling implementation for #{gh_issue_number}: {gh_issue_title}")
+    prompt = (
+        f"Implement GitHub issue #{gh_issue_number}: {gh_issue_title}\n\n"
+        f"Issue URL: {issue_url}\n"
+        f"Beads ID: {beads_id}\n\n"
+        f"Please read the full issue description from the URL above and "
+        f"implement all acceptance criteria."
+    )
+
+    print(f"  Scheduling implementation for #{gh_issue_number}: {gh_issue_title}")
     print(f"  Issue URL: {issue_url}")
     print(f"  Beads ID: {beads_id}")
-    print(f"  Workspace: {workspace_id}")
-    print(f"  Project: {project_id}")
+    print(f"  Mode: {mode}")
+    print(f"  Base branch: {base_branch}")
 
-    # Create a brief via tRPC — this triggers the implementation pipeline.
-    # The brief includes the GitHub issue URL so tervezo can link them.
-    brief_input = {
-        "issueUrl": issue_url,
-        "title": gh_issue_title,
+    body = {
+        "prompt": prompt,
+        "mode": mode,
+        "workspaceId": workspace_id,
+        "repositoryName": REPO,
+        "baseBranch": base_branch,
     }
-    if workspace_id:
-        brief_input["workspaceId"] = workspace_id
-    if project_id:
-        brief_input["project"] = project_id
 
-    result = trpc_mutation("briefs.create", brief_input)
+    result = tervezo_api("POST", "implementations", body)
 
     if "error" in result:
         error = result["error"]
         status_code = result.get("status", "unknown")
 
-        # If briefs.create fails with UNAUTHORIZED, the sandbox token
-        # doesn't have permission. Fall back to providing clear
-        # instructions for manual scheduling.
         if isinstance(error, dict):
-            error_msg = error.get("json", {}).get("message", str(error))
+            error_msg = error.get("message", str(error))
         else:
             error_msg = str(error)
 
         print(f"\n  API returned {status_code}: {error_msg}")
 
         if status_code == 401:
-            print("\n  The sandbox API key does not have permission to")
-            print("  create briefs directly. To schedule this issue,")
-            print("  use the tervezo dashboard or a workspace-scoped API key.")
+            print("\n  Your API key does not have permission to create")
+            print("  implementations. Check your TERVEZO_API_KEY.")
             print(f"\n  Next issue to implement: {issue_url}")
-            return {"scheduled": False, "issue_url": issue_url, "error": error_msg}
 
         return {"scheduled": False, "issue_url": issue_url, "error": error_msg}
 
-    brief_id = result.get("result", {}).get("data", {}).get("json", {}).get("id")
-    if brief_id:
-        print(f"  Brief created: {brief_id}")
-    else:
-        print(f"  Response: {json.dumps(result, indent=2)[:500]}")
+    impl_id = result.get("id")
+    impl_url = result.get("url")
+    impl_branch = result.get("branch")
 
-    return {"scheduled": True, "issue_url": issue_url, "brief_id": brief_id}
+    print(f"  Implementation created: {impl_id}")
+    if impl_url:
+        print(f"  URL: {impl_url}")
+    if impl_branch:
+        print(f"  Branch: {impl_branch}")
+
+    return {
+        "scheduled": True,
+        "issue_url": issue_url,
+        "implementation_id": impl_id,
+        "implementation_url": impl_url,
+        "branch": impl_branch,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +402,7 @@ def schedule_implementation(gh_issue_number, gh_issue_title, beads_id):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Schedule the next implementation via the tervezo API"
+        description="Schedule the next implementation via the tervezo public API (v1)"
     )
     parser.add_argument(
         "--dry-run",
@@ -363,6 +418,30 @@ def main():
         "--issue",
         type=str,
         help="Schedule a specific beads issue ID (e.g. warpgrid-agm.10)",
+    )
+    parser.add_argument(
+        "--workspace",
+        type=str,
+        default=os.environ.get("TERVEZO_WORKSPACE_SLUG"),
+        help="Workspace slug (or set TERVEZO_WORKSPACE_SLUG env var)",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["feature", "bugfix"],
+        default="feature",
+        help="Implementation mode (default: feature)",
+    )
+    parser.add_argument(
+        "--base-branch",
+        type=str,
+        default="main",
+        help="Base branch for the implementation (default: main)",
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="Number of new implementations to schedule (skips don't count)",
     )
     args = parser.parse_args()
 
@@ -430,7 +509,7 @@ def main():
             print(f"        {title}")
         return
 
-    # --issue: schedule a specific issue
+    # Build candidate list
     if args.issue:
         target_beads_id = args.issue
         if target_beads_id not in issues:
@@ -441,75 +520,112 @@ def main():
             sys.exit(1)
         gh_num = mapping[target_beads_id]
         title = issues[target_beads_id]["title"]
-        target = (target_beads_id, gh_num, title)
+        candidates = [(target_beads_id, gh_num, title)]
     else:
-        # Pick the first ready issue (highest topological priority)
-        target = ready[0]
+        candidates = ready
 
-    beads_id, gh_num, title = target
-    issue = issues[beads_id]
-    priority = issue.get("priority", 0)
-    milestone = extract_milestone(issue.get("description", ""))
+    # Resolve workspace ID (needed for scheduling, not dry-run)
+    workspace_id = None
+    if not args.dry_run:
+        if not args.workspace:
+            print("ERROR: --workspace slug or TERVEZO_WORKSPACE_SLUG env var required")
+            sys.exit(1)
+        workspace_id = resolve_workspace_id(args.workspace)
 
-    print(f"\nNext implementation:")
-    print(f"  GitHub: #{gh_num}")
-    print(f"  Beads:  {beads_id}")
-    print(f"  Title:  {title}")
-    print(f"  Priority: P{priority}")
-    if milestone:
-        print(f"  Milestone: {milestone}")
+    # Schedule up to --count new implementations (skips don't count)
+    scheduled_count = 0
+    skipped_count = 0
+    failed_count = 0
+    results = []
 
-    # Show blockers that are satisfied
-    blockers = get_blocking_deps(issue, set(issues.keys()))
-    if blockers:
-        print(f"  Blocking deps (all satisfied):")
-        for b in sorted(blockers):
-            b_num = mapping.get(b, "?")
-            print(f"    #{b_num} ({b})")
+    for beads_id, gh_num, title in candidates:
+        if scheduled_count >= args.count:
+            break
 
-    if args.dry_run:
-        issue_url = f"https://github.com/{REPO}/issues/{gh_num}"
-        print(f"\n[DRY RUN] Would schedule implementation for: {issue_url}")
+        issue = issues[beads_id]
+        priority = issue.get("priority", 0)
+        milestone = extract_milestone(issue.get("description", ""))
 
-        # Output machine-readable result for piping
-        result = {
-            "dry_run": True,
+        print(f"\n--- [{scheduled_count + 1}/{args.count}] ---")
+        print(f"  GitHub: #{gh_num}")
+        print(f"  Beads:  {beads_id}")
+        print(f"  Title:  {title}")
+        print(f"  Priority: P{priority}")
+        if milestone:
+            print(f"  Milestone: {milestone}")
+
+        # Show blockers that are satisfied
+        blockers = get_blocking_deps(issue, set(issues.keys()))
+        if blockers:
+            print(f"  Blocking deps (all satisfied):")
+            for b in sorted(blockers):
+                b_num = mapping.get(b, "?")
+                print(f"    #{b_num} ({b})")
+
+        # Check for existing active implementation (both dry-run and real)
+        existing = find_active_implementation(gh_num)
+        if existing:
+            print(f"  SKIPPED: already in progress ({existing.get('status')})")
+            skipped_count += 1
+            continue
+
+        if args.dry_run:
+            issue_url = f"https://github.com/{REPO}/issues/{gh_num}"
+            print(f"  [DRY RUN] Would schedule {args.mode}: {issue_url}")
+            scheduled_count += 1
+            results.append({
+                "dry_run": True,
+                "beads_id": beads_id,
+                "github_issue": gh_num,
+                "issue_url": issue_url,
+                "title": title,
+                "mode": args.mode,
+            })
+            continue
+
+        result = schedule_implementation(
+            gh_num, title, beads_id,
+            workspace_id=workspace_id,
+            mode=args.mode,
+            base_branch=args.base_branch,
+        )
+
+        if result.get("scheduled"):
+            print(f"  SUCCESS: scheduled")
+            scheduled_count += 1
+        else:
+            print(f"  FAILED: {result.get('error', 'unknown error')}")
+            failed_count += 1
+            # Count failures toward the target to avoid infinite attempts
+            scheduled_count += 1
+
+        entry = {
             "beads_id": beads_id,
             "github_issue": gh_num,
-            "issue_url": issue_url,
+            "issue_url": f"https://github.com/{REPO}/issues/{gh_num}",
             "title": title,
-            "ready_count": len(ready),
+            "mode": args.mode,
+            "scheduled": result.get("scheduled", False),
         }
-        print(f"\n{json.dumps(result, indent=2)}")
-        return
+        if result.get("implementation_id"):
+            entry["implementation_id"] = result["implementation_id"]
+        if result.get("implementation_url"):
+            entry["implementation_url"] = result["implementation_url"]
+        if result.get("branch"):
+            entry["branch"] = result["branch"]
+        if result.get("error"):
+            entry["error"] = result["error"]
+        results.append(entry)
 
-    # Schedule the implementation
-    result = schedule_implementation(gh_num, title, beads_id)
-
-    # Output summary
+    # Summary
     print("\n" + "=" * 60)
-    if result.get("scheduled"):
-        print("SUCCESS: Implementation scheduled")
-    else:
-        print("NOTICE: Could not auto-schedule via API")
-        print(f"Next issue URL: {result.get('issue_url')}")
+    print(f"Scheduled: {scheduled_count - failed_count}  "
+          f"Skipped: {skipped_count}  "
+          f"Failed: {failed_count}  "
+          f"Ready: {len(candidates)}")
     print("=" * 60)
 
-    # Output machine-readable result
-    output = {
-        "beads_id": beads_id,
-        "github_issue": gh_num,
-        "issue_url": f"https://github.com/{REPO}/issues/{gh_num}",
-        "title": title,
-        "scheduled": result.get("scheduled", False),
-        "ready_count": len(ready),
-    }
-    if result.get("brief_id"):
-        output["brief_id"] = result["brief_id"]
-    if result.get("error"):
-        output["error"] = result["error"]
-
-    print(f"\n{json.dumps(output, indent=2)}")
+    print(f"\n{json.dumps(results, indent=2)}")
 
 
 def extract_milestone(description):
