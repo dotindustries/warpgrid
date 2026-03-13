@@ -1,0 +1,17 @@
+package warpgrid:test@0.1.0;
+
+world rust-sqlx-postgres-test {
+    import warpgrid:shim/database-proxy@0.1.0;
+
+    /// Full DDL lifecycle: CREATE TABLE, INSERT rows, SELECT, DROP TABLE.
+    /// Returns the raw SELECT response bytes for host-side verification.
+    export test-create-insert-select-drop: func(host: string, port: u16, database: string, user: string) -> result<list<u8>, string>;
+
+    /// Multiple queries on the same connection handle to verify connection reuse.
+    /// Returns concatenated response data for host-side verification.
+    export test-connection-reuse: func(host: string, port: u16, database: string, user: string) -> result<list<u8>, string>;
+
+    /// Close and reconnect to verify pooled connection reuse.
+    /// Returns both query responses for host-side verification.
+    export test-reconnect-after-close: func(host: string, port: u16, database: string, user: string) -> result<list<u8>, string>;
+}

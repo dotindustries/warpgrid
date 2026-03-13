@@ -1,0 +1,18 @@
+package warpgrid:shim@0.1.0;
+
+interface database-proxy {
+    type connection-handle = u64;
+
+    record connect-config {
+        host: string,
+        port: u16,
+        database: string,
+        user: string,
+        password: option<string>,
+    }
+
+    connect: func(config: connect-config) -> result<connection-handle, string>;
+    send: func(handle: connection-handle, data: list<u8>) -> result<u32, string>;
+    recv: func(handle: connection-handle, max-bytes: u32) -> result<list<u8>, string>;
+    close: func(handle: connection-handle) -> result<_, string>;
+}
