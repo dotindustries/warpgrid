@@ -49,7 +49,12 @@ MILESTONE_DOMAIN_MAP = {
 
 def run_gh(args, check=True):
     cmd = ["gh"] + args
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        if check:
+            print("  ERROR: gh CLI not found")
+        return None
     if check and result.returncode != 0:
         print(f"  ERROR: {result.stderr.strip()[:200]}")
         return None

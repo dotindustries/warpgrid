@@ -78,7 +78,10 @@ def get_blocking_deps(issue, all_ids):
 def run_gh(args, check=True):
     """Run a gh CLI command and return output."""
     cmd = ["gh"] + args
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return None
     if check and result.returncode != 0:
         return None
     return result.stdout.strip()
