@@ -145,7 +145,22 @@ impl shim::threading::Host for HostState {
         &mut self,
         model: shim::threading::ThreadingModel,
     ) -> Result<(), String> {
-        tracing::info!(?model, "guest declared threading model");
+        if self.threading_model.is_some() {
+            return Err("threading model already declared".to_string());
+        }
+
+        match model {
+            shim::threading::ThreadingModel::ParallelRequired => {
+                tracing::warn!(
+                    ?model,
+                    "parallel threading requested but not supported; execution will use cooperative mode"
+                );
+            }
+            shim::threading::ThreadingModel::Cooperative => {
+                tracing::info!(?model, "cooperative threading model declared");
+            }
+        }
+
         self.threading_model = Some(model);
         Ok(())
     }
@@ -403,6 +418,60 @@ mod tests {
         )
         .unwrap();
 
+        assert!(matches!(
+            state.threading_model,
+            Some(shim::threading::ThreadingModel::Cooperative)
+        ));
+    }
+
+    #[test]
+    fn threading_model_parallel_required_succeeds() {
+        let mut state = HostState {
+            filesystem: None,
+            dns: None,
+            db_proxy: None,
+            signal_queue: Vec::new(),
+            threading_model: None,
+            limiter: None,
+        };
+
+        shim::threading::Host::declare_threading_model(
+            &mut state,
+            shim::threading::ThreadingModel::ParallelRequired,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            state.threading_model,
+            Some(shim::threading::ThreadingModel::ParallelRequired)
+        ));
+    }
+
+    #[test]
+    fn threading_model_double_declaration_errors() {
+        let mut state = HostState {
+            filesystem: None,
+            dns: None,
+            db_proxy: None,
+            signal_queue: Vec::new(),
+            threading_model: None,
+            limiter: None,
+        };
+
+        shim::threading::Host::declare_threading_model(
+            &mut state,
+            shim::threading::ThreadingModel::Cooperative,
+        )
+        .unwrap();
+
+        let result = shim::threading::Host::declare_threading_model(
+            &mut state,
+            shim::threading::ThreadingModel::ParallelRequired,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already declared"));
+
+        // Original model is preserved
         assert!(matches!(
             state.threading_model,
             Some(shim::threading::ThreadingModel::Cooperative)
