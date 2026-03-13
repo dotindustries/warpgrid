@@ -298,7 +298,7 @@ fn test_host_state(pool_manager: Arc<ConnectionPoolManager>) -> HostState {
         filesystem: None,
         dns: None,
         db_proxy: Some(DbProxyHost::new(pool_manager, runtime_handle)),
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     }
