@@ -3433,6 +3433,7 @@ dependencies = [
  "anyhow",
  "clap",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "warp-analyzer",
@@ -3536,6 +3537,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "warpgrid-async"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-util",
+ "tokio",
+]
+
+[[package]]
 name = "warpgrid-autoscale"
 version = "0.1.0"
 dependencies = [
@@ -3622,14 +3633,8 @@ dependencies = [
  "warp-core",
  "wasmtime",
  "wasmtime-wasi",
+ "wat",
  "webpki-roots 0.26.11",
-]
-
-[[package]]
-name = "warpgrid-libpq"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.18",
 ]
 
 [[package]]

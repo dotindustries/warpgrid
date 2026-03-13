@@ -23,7 +23,13 @@
     "**/*.kts",
     "**/*.dart",
     "**/*.svelte",
-    "**/*.liquid"
+    "**/*.liquid",
+    "**/*.pas",
+    "**/*.dpr",
+    "**/*.dpk",
+    "**/*.lpr",
+    "**/*.dfm",
+    "**/*.fmx"
   ],
   "exclude": [
     "**/.git/**",
@@ -101,6 +107,9 @@
     "**/xcuserdata/**",
     "**/Carthage/Build/**",
     "**/SourcePackages/**",
+    "**/__history/**",
+    "**/__recovery/**",
+    "**/*.dcu",
     "**/.composer/**",
     "**/storage/framework/**",
     "**/bootstrap/cache/**",
