@@ -17,6 +17,9 @@ getrandom = "0.2"
 rustls = { version = "0.23", features = ["ring"] }
 webpki-roots = "0.26"
 
+[features]
+integration = []
+
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "rt-multi-thread", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

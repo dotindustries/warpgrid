@@ -1,0 +1,27 @@
+package warpgrid:test-mysql-redis@0.1.0;
+
+/// Test world for MySQL + Redis integration tests (US-117).
+///
+/// Guest component imports DNS and database-proxy shims and exports test
+/// functions that exercise MySQL wire protocol CRUD and Redis RESP CRUD
+/// through WarpGrid's protocol-agnostic database proxy.
+world mysql-redis-integration-test {
+    import warpgrid:shim/dns@0.1.0;
+    import warpgrid:shim/database-proxy@0.1.0;
+
+    /// MySQL CRUD: CREATE TABLE → INSERT → SELECT → DROP TABLE.
+    /// Returns the selected row data as a string.
+    export test-mysql-crud: func(mysql-port: u16) -> result<string, string>;
+
+    /// Redis CRUD: SET key → GET key → DEL key.
+    /// Returns the GET result as a string.
+    export test-redis-crud: func(redis-port: u16) -> result<string, string>;
+
+    /// MySQL pool reuse: connect → handshake → query → close → reconnect → query (no handshake) → close.
+    /// On reuse the connection is already authenticated, proving pool reuse works.
+    export test-mysql-pool-reuse: func(mysql-port: u16) -> result<string, string>;
+
+    /// Redis pool reuse: connect → SET → close → reconnect → GET (verify value) → close.
+    /// Reports success if the GET returns the previously SET value.
+    export test-redis-pool-reuse: func(redis-port: u16) -> result<string, string>;
+}

@@ -1,0 +1,30 @@
+package warpgrid:test-redis-postgres@0.1.0;
+
+/// Test world for Rust HTTP + Redis cache-aside + Postgres integration tests (T2).
+///
+/// Guest component imports DNS and database-proxy shims and exports test
+/// functions that exercise the cache-aside pattern:
+///   - Cold cache: Redis GET miss → Postgres query → Redis SET
+///   - Warm cache: Redis GET hit → return cached (skip Postgres)
+///   - Cache flush: Redis DEL → re-query Postgres
+///   - Pool metrics: verify exactly 1 PG + 1 Redis connection
+world rust-http-redis-postgres-test {
+    import warpgrid:shim/dns@0.1.0;
+    import warpgrid:shim/database-proxy@0.1.0;
+
+    /// Cold cache test: Redis GET returns nil, query Postgres, cache via Redis SET.
+    /// Returns the raw Postgres response bytes.
+    export test-cold-cache: func(pg-port: u16, redis-port: u16) -> result<list<u8>, string>;
+
+    /// Warm cache test: pre-populate Redis, GET returns cached data without Postgres.
+    /// Returns the cached value bytes.
+    export test-warm-cache: func(pg-port: u16, redis-port: u16) -> result<list<u8>, string>;
+
+    /// Cache flush test: populate cache, DEL it, verify GET is nil, re-query Postgres.
+    /// Returns the fresh Postgres response bytes.
+    export test-cache-flush-requery: func(pg-port: u16, redis-port: u16) -> result<list<u8>, string>;
+
+    /// Pool connections test: open 1 PG + 1 Redis, minimal ops, close both.
+    /// Returns connection count report as a string.
+    export test-pool-connections: func(pg-port: u16, redis-port: u16) -> result<string, string>;
+}
