@@ -128,7 +128,7 @@ fn host_state_with_dns() -> HostState {
         filesystem: Some(FilesystemHost::new(Arc::new(file_map))),
         dns: Some(dns),
         db_proxy: None,
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     }

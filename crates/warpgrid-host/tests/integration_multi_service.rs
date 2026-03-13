@@ -290,7 +290,7 @@ fn gateway_host_state(runtime_handle: &tokio::runtime::Handle) -> HostState {
         filesystem: Some(FilesystemHost::new(Arc::new(file_map))),
         dns: Some(DnsHost::new(cached, runtime_handle.clone())),
         db_proxy: None,
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     }
@@ -318,7 +318,7 @@ fn postgres_host_state(
         filesystem: Some(FilesystemHost::new(Arc::new(file_map))),
         dns: None,
         db_proxy: Some(DbProxyHost::new(pool_manager, runtime_handle.clone())),
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     }
@@ -346,7 +346,7 @@ fn redis_host_state(
         filesystem: Some(FilesystemHost::new(Arc::new(file_map))),
         dns: None,
         db_proxy: Some(DbProxyHost::new(pool_manager, runtime_handle.clone())),
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     }
@@ -735,7 +735,7 @@ async fn service_error_includes_source_service_header() {
         filesystem: Some(FilesystemHost::new(Arc::new(file_map))),
         dns: Some(DnsHost::new(cached, runtime_handle.clone())),
         db_proxy: None,
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     };
@@ -795,7 +795,7 @@ async fn dns_failure_populates_error_source() {
         filesystem: Some(FilesystemHost::new(Arc::new(file_map))),
         dns: Some(DnsHost::new(cached, runtime_handle.clone())),
         db_proxy: None,
-        signal_queue: Vec::new(),
+        signals: warpgrid_host::signals::host::SignalsHost::new(),
         threading_model: None,
         limiter: None,
     };

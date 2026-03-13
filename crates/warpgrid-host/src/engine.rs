@@ -29,6 +29,7 @@ use crate::dns::host::DnsHost;
 use crate::dns::DnsResolver;
 use crate::filesystem::host::FilesystemHost;
 use crate::filesystem::VirtualFileMap;
+use crate::signals::host::SignalsHost;
 
 /// Per-instance host state.
 ///
@@ -39,8 +40,8 @@ pub struct HostState {
     pub filesystem: Option<FilesystemHost>,
     pub dns: Option<DnsHost>,
     pub db_proxy: Option<DbProxyHost>,
-    /// Pending signal queue (FIFO).
-    pub signal_queue: Vec<shim::signals::SignalType>,
+    /// Signal handling: interest registration, bounded queue, and filtering.
+    pub signals: SignalsHost,
     /// Declared threading model (set by guest).
     pub threading_model: Option<shim::threading::ThreadingModel>,
     /// Optional resource limiter for memory/table enforcement.
@@ -94,16 +95,11 @@ impl shim::dns::Host for HostState {
 
 impl shim::signals::Host for HostState {
     fn on_signal(&mut self, signal: shim::signals::SignalType) -> Result<(), String> {
-        self.signal_queue.push(signal);
-        Ok(())
+        self.signals.on_signal(signal)
     }
 
     fn poll_signal(&mut self) -> Option<shim::signals::SignalType> {
-        if self.signal_queue.is_empty() {
-            None
-        } else {
-            Some(self.signal_queue.remove(0))
-        }
+        self.signals.poll_signal()
     }
 }
 
@@ -273,7 +269,7 @@ impl WarpGridEngine {
             filesystem,
             dns,
             db_proxy,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         }
@@ -341,7 +337,7 @@ mod tests {
             filesystem: None,
             dns: None,
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         };
@@ -355,19 +351,25 @@ mod tests {
     }
 
     #[test]
-    fn signal_queue_fifo() {
+    fn signal_fifo() {
         let mut state = HostState {
             filesystem: None,
             dns: None,
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         };
 
+        // Register interest in both signal types via the Host trait
         shim::signals::Host::on_signal(&mut state, shim::signals::SignalType::Terminate).unwrap();
         shim::signals::Host::on_signal(&mut state, shim::signals::SignalType::Hangup).unwrap();
 
+        // Deliver signals via the host-side API
+        state.signals.deliver_signal(shim::signals::SignalType::Terminate);
+        state.signals.deliver_signal(shim::signals::SignalType::Hangup);
+
+        // Poll via the Host trait — should return FIFO order
         assert_eq!(
             shim::signals::Host::poll_signal(&mut state),
             Some(shim::signals::SignalType::Terminate)
@@ -392,7 +394,7 @@ mod tests {
             filesystem: None,
             dns: None,
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         };

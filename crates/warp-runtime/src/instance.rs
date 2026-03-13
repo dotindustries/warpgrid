@@ -170,7 +170,7 @@ mod tests {
             filesystem: None,
             dns: None,
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: warpgrid_host::signals::host::SignalsHost::new(),
             threading_model: None,
             limiter: Some(limits),
         };
