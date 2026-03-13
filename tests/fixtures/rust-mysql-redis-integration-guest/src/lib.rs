@@ -533,11 +533,14 @@ impl Guest for Component {
         Ok(result)
     }
 
-    /// MySQL pool reuse: connect, handshake, query, close, reconnect, handshake, query, close.
+    /// MySQL pool reuse: connect, handshake, query, close, reconnect, query (no handshake), close.
+    /// On pool reuse the TCP connection is already authenticated, so the second
+    /// connect skips the handshake and sends a query directly — proving the
+    /// pooled connection is still usable.
     fn test_mysql_pool_reuse(mysql_port: u16) -> Result<String, String> {
         let ip = resolve_ip(MYSQL_HOST)?;
 
-        // First connection
+        // First connection: full handshake + query
         let h1 = connect_mysql(&ip, mysql_port)?;
         mysql_handshake(h1)?;
         let resp1 = mysql_query(h1, "SELECT 1")?;
@@ -547,9 +550,10 @@ impl Guest for Component {
         }
         database_proxy::close(h1)?;
 
-        // Second connection (should reuse pool)
+        // Second connection (pool reuse): skip handshake, send query directly.
+        // The pooled TCP connection is still in the server's command loop,
+        // so we can issue queries without re-authenticating.
         let h2 = connect_mysql(&ip, mysql_port)?;
-        mysql_handshake(h2)?;
         let resp2 = mysql_query(h2, "SELECT 2")?;
         if is_mysql_err(&resp2) {
             database_proxy::close(h2)?;

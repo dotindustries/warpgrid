@@ -17,8 +17,8 @@ world mysql-redis-integration-test {
     /// Returns the GET result as a string.
     export test-redis-crud: func(redis-port: u16) -> result<string, string>;
 
-    /// MySQL pool reuse: connect → handshake → query → close → reconnect → handshake → query → close.
-    /// Reports success if both connections work.
+    /// MySQL pool reuse: connect → handshake → query → close → reconnect → query (no handshake) → close.
+    /// On reuse the connection is already authenticated, proving pool reuse works.
     export test-mysql-pool-reuse: func(mysql-port: u16) -> result<string, string>;
 
     /// Redis pool reuse: connect → SET → close → reconnect → GET (verify value) → close.
