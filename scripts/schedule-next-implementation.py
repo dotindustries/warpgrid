@@ -242,6 +242,9 @@ def tervezo_api(method, path, body=None):
     base_url = os.environ.get(
         "TERVEZO_API_URL", "https://app.tervezo.ai"
     ).rstrip("/")
+    # Strip trailing /api if present — we add /api/v1/ ourselves
+    if base_url.endswith("/api"):
+        base_url = base_url[:-4]
     api_key = _get_api_key()
 
     url = f"{base_url}/api/v1/{path.lstrip('/')}"
@@ -257,7 +260,13 @@ def tervezo_api(method, path, body=None):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             resp_body = resp.read().decode("utf-8")
-            return json.loads(resp_body) if resp_body else {}
+            resp_body = resp_body.strip()
+            if not resp_body:
+                return {}
+            try:
+                return json.loads(resp_body)
+            except json.JSONDecodeError:
+                return {}
     except urllib.error.HTTPError as e:
         resp_body = e.read().decode("utf-8", errors="replace")
         try:
