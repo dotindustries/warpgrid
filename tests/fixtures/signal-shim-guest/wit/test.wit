@@ -1,0 +1,22 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for signal shim integration tests.
+///
+/// Guest component imports the signals shim and exports test functions
+/// that exercise signal registration, delivery, and polling.
+world signal-shim-test {
+    import warpgrid:shim/signals@0.1.0;
+
+    /// Register interest in the terminate signal type.
+    export register-terminate: func() -> result<_, string>;
+
+    /// Register interest in the hangup signal type.
+    export register-hangup: func() -> result<_, string>;
+
+    /// Register interest in the interrupt signal type.
+    export register-interrupt: func() -> result<_, string>;
+
+    /// Poll the signal queue and return the signal name as a string.
+    /// Returns "terminate", "hangup", "interrupt", or "none".
+    export poll: func() -> result<string, string>;
+}
