@@ -379,12 +379,7 @@ impl StatefulMockRedisServer {
 
     /// Find position of \r\n starting from `start`.
     fn find_crlf(data: &[u8], start: usize) -> Option<usize> {
-        for i in start..data.len().saturating_sub(1) {
-            if data[i] == b'\r' && data[i + 1] == b'\n' {
-                return Some(i);
-            }
-        }
-        None
+        (start..data.len().saturating_sub(1)).find(|&i| data[i] == b'\r' && data[i + 1] == b'\n')
     }
 }
 
