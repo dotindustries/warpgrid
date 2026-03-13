@@ -1,0 +1,25 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for DNS shim integration tests.
+///
+/// Guest component imports the DNS shim and exports test functions
+/// that exercise the DNS resolution chain: service registry,
+/// virtual /etc/hosts, and system DNS fallback.
+world dns-shim-test {
+    import warpgrid:shim/dns@0.1.0;
+
+    /// Resolve a service registry hostname and return the address.
+    export test-resolve-registry: func() -> result<string, string>;
+
+    /// Resolve a hostname from virtual /etc/hosts and return the address.
+    export test-resolve-etc-hosts: func() -> result<string, string>;
+
+    /// Resolve "localhost" via system DNS and return the address.
+    export test-resolve-system-dns: func() -> result<string, string>;
+
+    /// Call resolve-address 3x for a multi-address hostname, return comma-joined addresses.
+    export test-resolve-round-robin: func() -> result<string, string>;
+
+    /// Resolve a nonexistent hostname and return the error message.
+    export test-resolve-nonexistent: func() -> result<string, string>;
+}

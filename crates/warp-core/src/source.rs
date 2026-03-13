@@ -27,8 +27,7 @@ pub enum SourceError {
 
 impl SourceUri {
     pub fn parse(uri: &str) -> Result<Self, SourceError> {
-        if uri.starts_with("oci://") {
-            let rest = &uri[6..];
+        if let Some(rest) = uri.strip_prefix("oci://") {
             let (repo_path, tag) = rest.rsplit_once(':')
                 .unwrap_or((rest, "latest"));
             let (registry, repository) = repo_path.split_once('/')
@@ -40,8 +39,7 @@ impl SourceUri {
             })
         } else if uri.starts_with("https://") || uri.starts_with("http://") {
             Ok(SourceUri::Https { url: uri.to_string() })
-        } else if uri.starts_with("s3://") {
-            let rest = &uri[5..];
+        } else if let Some(rest) = uri.strip_prefix("s3://") {
             let (bucket, key) = rest.split_once('/')
                 .ok_or_else(|| SourceError::InvalidUri(uri.to_string()))?;
             Ok(SourceUri::S3 {
@@ -55,8 +53,8 @@ impl SourceUri {
                 url: url.to_string(),
                 reference: reference.to_string(),
             })
-        } else if uri.starts_with("file://") {
-            Ok(SourceUri::File { path: uri[7..].to_string() })
+        } else if let Some(path) = uri.strip_prefix("file://") {
+            Ok(SourceUri::File { path: path.to_string() })
         } else if uri.starts_with("./") || uri.starts_with('/') || uri.ends_with(".wasm") {
             Ok(SourceUri::File { path: uri.to_string() })
         } else {
