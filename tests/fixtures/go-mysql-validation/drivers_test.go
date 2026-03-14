@@ -59,14 +59,21 @@ type driverEntry struct {
 	FeaturesTested    []featureTested `json:"featuresTested"`
 }
 
+// overlayAssessment represents the database/sql overlay assessment.
+type overlayAssessment struct {
+	Needed bool   `json:"needed"`
+	Reason string `json:"reason"`
+}
+
 // driversReport represents the top-level schema of tinygo-drivers.json.
 type driversReport struct {
-	Compiler       string        `json:"compiler"`
-	Target         string        `json:"target"`
-	UserStory      string        `json:"userStory"`
-	ValidationDate string        `json:"validationDate"`
-	DriverCount    int           `json:"driverCount"`
-	Drivers        []driverEntry `json:"drivers"`
+	Compiler            string            `json:"compiler"`
+	Target              string            `json:"target"`
+	UserStory           string            `json:"userStory"`
+	ValidationDate      string            `json:"validationDate"`
+	DriverCount         int               `json:"driverCount"`
+	DatabaseSqlOverlay  overlayAssessment `json:"databaseSqlOverlay"`
+	Drivers             []driverEntry     `json:"drivers"`
 }
 
 // driversProjectRoot returns the workspace root (three levels up from fixture dir).
@@ -238,5 +245,36 @@ func TestNoDuplicateDrivers(t *testing.T) {
 			t.Errorf("duplicate driver entry for %q", driver.ImportPath)
 		}
 		seen[driver.ImportPath] = true
+	}
+}
+
+// TestDatabaseSqlOverlayAssessment verifies that the databaseSqlOverlay field
+// is present and documents the overlay decision (US-308 Phase 5 deliverable).
+func TestDatabaseSqlOverlayAssessment(t *testing.T) {
+	report := loadDriversJSON(t)
+
+	if report.DatabaseSqlOverlay.Reason == "" {
+		t.Error("databaseSqlOverlay.reason is empty; the overlay decision must be documented")
+	}
+	// Per US-308 assessment: overlay is NOT needed because database/sql compiles fine;
+	// the blocking issues are in driver crypto/tls deps.
+	if report.DatabaseSqlOverlay.Needed {
+		t.Error("databaseSqlOverlay.needed should be false per US-308 assessment")
+	}
+}
+
+// TestGoTestCountMatchesActualTests verifies that each driver's goTestCount
+// field is consistent with the reported goTestStatus. A driver with goTestStatus
+// "pass" must have goTestCount > 0.
+func TestGoTestCountMatchesActualTests(t *testing.T) {
+	report := loadDriversJSON(t)
+
+	for _, driver := range report.Drivers {
+		t.Run(driver.Name, func(t *testing.T) {
+			if driver.GoTestStatus == "pass" && driver.GoTestCount <= 0 {
+				t.Errorf("goTestStatus is %q but goTestCount is %d; expected > 0",
+					driver.GoTestStatus, driver.GoTestCount)
+			}
+		})
 	}
 }

@@ -53,7 +53,7 @@ fn builtin_rules() -> HashMap<String, CompatEntry> {
         ("github.com/lib/pq", "shim_compatible", Some("Raw TCP via net.Dial"), None, Some("database_proxy")),
         ("github.com/jackc/pgx", "shim_compatible", Some("TCP sockets"), None, Some("database_proxy")),
         ("github.com/go-sql-driver/mysql", "shim_compatible", Some("TCP sockets via net.Dial"), None, Some("database_proxy")),
-        ("github.com/go-redis/redis", "shim_compatible", Some("TCP sockets"), None, Some("database_proxy")),
+        ("github.com/redis/go-redis/v9", "shim_compatible", Some("TCP sockets via net.Dial"), None, Some("database_proxy")),
     ];
     for (name, verdict, reason, alt, shim) in go_rules {
         rules.insert(name.to_string(), CompatEntry {
