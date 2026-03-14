@@ -58,6 +58,22 @@ describe("validateCompatEntry", () => {
     );
   });
 
+  it("rejects an entry with empty version", () => {
+    const entry = {
+      name: "test",
+      version: "",
+      importStatus: "pass",
+      functionCallStatus: "pass",
+      realisticUsageStatus: "pass",
+      blockingIssue: null,
+      workaround: null,
+      notes: "",
+    };
+    expect(() => validateCompatEntry(entry as unknown as PackageCompatEntry)).toThrow(
+      /version/
+    );
+  });
+
   it("accepts entries with null blocking issue and workaround", () => {
     const entry: PackageCompatEntry = {
       name: "lodash-es",
@@ -292,6 +308,27 @@ describe("compareWithBaseline", () => {
       packages: [],
     };
     const improved = compareWithBaseline(emptyBaseline, warpgrid);
+    expect(improved.length).toBe(0);
+  });
+
+  it("excludes packages that regressed from baseline to warpgrid", () => {
+    const regressed: CompatResults = {
+      ...warpgrid,
+      packages: [
+        {
+          name: "pg",
+          version: "8.13.1",
+          importStatus: "fail",
+          functionCallStatus: "fail",
+          realisticUsageStatus: "fail",
+          blockingIssue: "Hypothetical regression",
+          workaround: null,
+          notes: "Regressed",
+        },
+      ],
+    };
+    const improved = compareWithBaseline(baseline, regressed);
+    expect(improved.map((p) => p.name)).not.toContain("pg");
     expect(improved.length).toBe(0);
   });
 });
@@ -620,6 +657,33 @@ describe("generateCompatTable", () => {
     const table = generateCompatTable(results, []);
     expect(table).not.toContain("Core Node.js APIs");
   });
+
+  it("truncates notes longer than 60 characters in the table", () => {
+    const longNote = "A".repeat(80);
+    const results: CompatResults = {
+      runtime: "componentize-js",
+      runtimeVersion: "0.18.4",
+      shimVersion: "none",
+      testedAt: "2026-02-26T00:00:00Z",
+      packages: [
+        {
+          name: "test-pkg",
+          version: "1.0.0",
+          importStatus: "pass",
+          functionCallStatus: "pass",
+          realisticUsageStatus: "pass",
+          blockingIssue: null,
+          workaround: null,
+          notes: longNote,
+        },
+      ],
+    };
+    const table = generateCompatTable(results, []);
+    expect(table).not.toContain(longNote);
+    expect(table).toContain("...");
+    // Truncated to 57 chars + "..." = 60 chars
+    expect(table).toContain("A".repeat(57) + "...");
+  });
 });
 
 describe("loadCompatResults", () => {
@@ -726,5 +790,46 @@ describe("loadCompatResults", () => {
       ],
     });
     expect(() => loadCompatResults(json)).toThrow(/status/i);
+  });
+
+  it("defaults missing metadata fields to 'unknown'", () => {
+    const json = JSON.stringify({
+      packages: [
+        {
+          name: "zod",
+          version: "3.22.4",
+          importStatus: "pass",
+          functionCallStatus: "pass",
+          realisticUsageStatus: "pass",
+          notes: "",
+        },
+      ],
+    });
+    const results = loadCompatResults(json);
+    expect(results.runtime).toBe("unknown");
+    expect(results.runtimeVersion).toBe("unknown");
+    expect(results.shimVersion).toBe("unknown");
+  });
+
+  it("defaults missing blockingIssue and workaround to null", () => {
+    const json = JSON.stringify({
+      runtime: "componentize-js",
+      runtimeVersion: "0.18.4",
+      shimVersion: "none",
+      testedAt: "2026-02-26T00:00:00Z",
+      packages: [
+        {
+          name: "test",
+          version: "1.0.0",
+          importStatus: "pass",
+          functionCallStatus: "pass",
+          realisticUsageStatus: "pass",
+        },
+      ],
+    });
+    const results = loadCompatResults(json);
+    expect(results.packages[0]?.blockingIssue).toBeNull();
+    expect(results.packages[0]?.workaround).toBeNull();
+    expect(results.packages[0]?.notes).toBe("");
   });
 });
