@@ -165,95 +165,59 @@ run_build() {
       fi
     fi
 
-    # Extract error details
-    local errors_json="[]"
-    local error_count=0
-    local missing_symbols_json="[]"
-    local notes=""
-
-    if [ "${compile_status}" != "pass" ] && [ -n "${compile_output}" ]; then
-      # Count error lines
-      error_count=$(echo "${compile_output}" | grep -c 'error:\|Error\|cannot\|undefined\|not declared\|missing' 2>/dev/null || echo "0")
-
-      # Collect individual error messages (first 20 lines)
-      local error_lines=""
-      while IFS= read -r line; do
-        if [ -n "${line}" ]; then
-          local escaped
-          escaped=$(echo "${line}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/ /g')
-          if [ -n "${error_lines}" ]; then
-            error_lines="${error_lines}, "
-          fi
-          error_lines="${error_lines}\"${escaped}\""
-        fi
-      done < <(echo "${compile_output}" | head -20)
-      if [ -n "${error_lines}" ]; then
-        errors_json="[${error_lines}]"
-      fi
-
-      # Extract missing/undefined symbols
-      local symbols=""
-      while IFS= read -r sym; do
-        if [ -n "${sym}" ]; then
-          local escaped_sym
-          escaped_sym=$(echo "${sym}" | sed 's/\\/\\\\/g; s/"/\\"/g')
-          if [ -n "${symbols}" ]; then
-            symbols="${symbols}, "
-          fi
-          symbols="${symbols}\"${escaped_sym}\""
-        fi
-      done < <(echo "${compile_output}" | grep -oP 'undefined: \K[a-zA-Z0-9_.]+' 2>/dev/null || true)
-      if [ -n "${symbols}" ]; then
-        missing_symbols_json="[${symbols}]"
-      fi
-
-      notes="TinyGo wasip2 compilation failed with ${error_count} error(s)"
-    else
-      notes="Compiles successfully with TinyGo wasip2"
-    fi
-
-    # Build JSON entry
+    # Build JSON entry for this package using jq for safe escaping
     local entry
-    entry=$(cat <<ENTRYEOF
-    {
-      "name": "${pkg_name}",
-      "importPath": "${import_path}",
-      "compileStatus": "${compile_status}",
-      "errors": ${errors_json},
-      "errorCount": ${error_count},
-      "missingSymbols": ${missing_symbols_json},
-      "notes": "${notes}"
-    }
-ENTRYEOF
-    )
+    if [ "${compile_status}" != "pass" ] && [ -n "${compile_output}" ]; then
+      local error_count
+      error_count=$(echo "${compile_output}" | grep -c 'error:\|Error\|cannot\|undefined\|not declared\|missing' || true)
+      error_count=${error_count:-0}
 
-    if [ -n "${packages_json}" ]; then
-      packages_json="${packages_json},
-${entry}"
+      # Use jq to safely construct JSON with proper escaping
+      local errors_array
+      errors_array=$(echo "${compile_output}" | head -20 | jq -R -s 'split("\n") | map(select(length > 0))')
+
+      local missing_array
+      missing_array=$(echo "${compile_output}" | grep -oP 'undefined: \K[a-zA-Z0-9_.]+' 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' || echo "[]")
+
+      local notes="TinyGo wasip2 compilation failed with ${error_count} error(s)"
+
+      entry=$(jq -n \
+        --arg name "${pkg_name}" \
+        --arg importPath "${import_path}" \
+        --arg status "${compile_status}" \
+        --argjson errors "${errors_array}" \
+        --argjson errorCount "${error_count}" \
+        --argjson missing "${missing_array}" \
+        --arg notes "${notes}" \
+        '{name: $name, importPath: $importPath, compileStatus: $status, errors: $errors, errorCount: $errorCount, missingSymbols: $missing, notes: $notes}')
     else
-      packages_json="${entry}"
+      entry=$(jq -n \
+        --arg name "${pkg_name}" \
+        --arg importPath "${import_path}" \
+        --arg status "${compile_status}" \
+        '{name: $name, importPath: $importPath, compileStatus: $status, errors: [], errorCount: 0, missingSymbols: [], notes: "Compiles successfully with TinyGo wasip2"}')
     fi
+
+    # Accumulate entries into a temp file
+    echo "${entry}" >> "${TMP_DIR}/results.jsonl"
   done
 
   # Extract compiler version number
   local compiler_version
   compiler_version=$(echo "${tinygo_version}" | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "unknown")
 
-  # Write final JSON
-  cat > "${JSON_OUTPUT}" <<JSONEOF
-{
-  "compiler": "tinygo",
-  "compilerVersion": "${compiler_version}",
-  "target": "wasip2",
-  "testedAt": "${tested_at}",
-  "goVersion": "${go_version}",
-  "userStory": "US-302",
-  "packageCount": ${pkg_count},
-  "packages": [
-${packages_json}
-  ]
-}
-JSONEOF
+  # Assemble final JSON from collected entries using jq
+  jq -n \
+    --arg compiler "tinygo" \
+    --arg compilerVersion "${compiler_version}" \
+    --arg target "wasip2" \
+    --arg testedAt "${tested_at}" \
+    --arg goVersion "${go_version}" \
+    --arg userStory "US-302" \
+    --argjson packageCount "${pkg_count}" \
+    --slurpfile packages "${TMP_DIR}/results.jsonl" \
+    '{compiler: $compiler, compilerVersion: $compilerVersion, target: $target, testedAt: $testedAt, goVersion: $goVersion, userStory: $userStory, packageCount: $packageCount, packages: $packages}' \
+    > "${JSON_OUTPUT}"
 
   echo ""
   log "Results written to ${JSON_OUTPUT}"

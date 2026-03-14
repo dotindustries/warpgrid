@@ -1,0 +1,197 @@
+{
+  "compiler": "tinygo",
+  "compilerVersion": "0.40.0",
+  "target": "wasip2",
+  "testedAt": "2026-03-14T09:46:47Z",
+  "goVersion": "1.25.1",
+  "userStory": "US-302",
+  "packageCount": 20,
+  "packages": [
+    {
+      "name": "bytes",
+      "importPath": "bytes",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "context",
+      "importPath": "context",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "crypto/sha256",
+      "importPath": "crypto/sha256",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "crypto/tls",
+      "importPath": "crypto/tls",
+      "compileStatus": "fail",
+      "errors": [
+        "# command-line-arguments",
+        "tests/fixtures/go-stdlib-compat/pkg_crypto_tls/main.go:18:16: cfg.Clone undefined (type *tls.Config has no field or method Clone)",
+        "tests/fixtures/go-stdlib-compat/pkg_crypto_tls/main.go:39:16: undefined: tls.X509KeyPair"
+      ],
+      "errorCount": 2,
+      "missingSymbols": [
+        "tls.X509KeyPair"
+      ],
+      "notes": "TinyGo wasip2 compilation failed with 2 error(s)"
+    },
+    {
+      "name": "database/sql",
+      "importPath": "database/sql",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "encoding/base64",
+      "importPath": "encoding/base64",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "encoding/json",
+      "importPath": "encoding/json",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "fmt",
+      "importPath": "fmt",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "io",
+      "importPath": "io",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "log",
+      "importPath": "log",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "math",
+      "importPath": "math",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "net",
+      "importPath": "net",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "net/http",
+      "importPath": "net/http",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "os",
+      "importPath": "os",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "regexp",
+      "importPath": "regexp",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "sort",
+      "importPath": "sort",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "strconv",
+      "importPath": "strconv",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "strings",
+      "importPath": "strings",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "sync",
+      "importPath": "sync",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    },
+    {
+      "name": "time",
+      "importPath": "time",
+      "compileStatus": "pass",
+      "errors": [],
+      "errorCount": 0,
+      "missingSymbols": [],
+      "notes": "Compiles successfully with TinyGo wasip2"
+    }
+  ]
+}
