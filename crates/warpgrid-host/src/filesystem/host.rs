@@ -626,4 +626,83 @@ mod tests {
         assert!(String::from_utf8_lossy(&full).contains("localhost"));
         host.close_virtual(handle).unwrap();
     }
+
+    // ── US-208 Edge Cases ───────────────────────────────────────────
+
+    #[test]
+    fn stress_1000_open_close_cycles_no_leak() {
+        let mut host = default_host();
+
+        for _ in 0..1000 {
+            let handle = host.open_virtual("/etc/hosts".into()).unwrap();
+            let data = host.read_virtual(handle, 8).unwrap();
+            assert!(!data.is_empty());
+            host.close_virtual(handle).unwrap();
+        }
+
+        // All handles closed — open_files map should be empty.
+        assert!(host.open_files.is_empty(), "fd leak: open_files not empty after 1000 cycles");
+
+        // 1001st open should still work.
+        let handle = host.open_virtual("/etc/hosts".into()).unwrap();
+        let data = host.read_virtual(handle, 4096).unwrap();
+        assert!(String::from_utf8_lossy(&data).contains("localhost"));
+        host.close_virtual(handle).unwrap();
+    }
+
+    #[test]
+    fn partial_reads_16_byte_chunks() {
+        // Content > 16 bytes to exercise multiple partial reads.
+        let content = "0123456789ABCDEF0123456789abcdef_end";
+        let map = VirtualFileMap::builder()
+            .with_resolv_conf(content)
+            .build();
+        let mut host = host_with_map(map);
+        let handle = host.open_virtual("/etc/resolv.conf".into()).unwrap();
+
+        let mut reassembled = Vec::new();
+        loop {
+            let chunk = host.read_virtual(handle, 16).unwrap();
+            if chunk.is_empty() {
+                break;
+            }
+            assert!(chunk.len() <= 16);
+            reassembled.extend_from_slice(&chunk);
+        }
+
+        assert_eq!(
+            String::from_utf8_lossy(&reassembled),
+            content,
+            "reassembled content mismatch after 16-byte reads"
+        );
+        host.close_virtual(handle).unwrap();
+    }
+
+    #[test]
+    fn partial_reads_1_byte_stress() {
+        let content = "Hello, WarpGrid virtual filesystem!";
+        let map = VirtualFileMap::builder()
+            .with_etc_hosts(content)
+            .build();
+        let mut host = host_with_map(map);
+        let handle = host.open_virtual("/etc/hosts".into()).unwrap();
+
+        let mut reassembled = Vec::new();
+        for _ in 0..content.len() {
+            let chunk = host.read_virtual(handle, 1).unwrap();
+            assert_eq!(chunk.len(), 1);
+            reassembled.push(chunk[0]);
+        }
+
+        // Next read should be EOF.
+        let eof = host.read_virtual(handle, 1).unwrap();
+        assert!(eof.is_empty());
+
+        assert_eq!(
+            String::from_utf8_lossy(&reassembled),
+            content,
+            "byte-by-byte reassembly mismatch"
+        );
+        host.close_virtual(handle).unwrap();
+    }
 }
