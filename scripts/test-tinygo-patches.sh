@@ -355,6 +355,116 @@ test_unknown_flag_errors() {
     fi
 }
 
+test_update_without_tag_errors() {
+    if "${REBASE_SCRIPT}" --update 2>/dev/null; then
+        fail "--update without tag errors" "should have failed without tag argument"
+    else
+        pass "--update without tag errors correctly"
+    fi
+}
+
+test_src_flag_accepted() {
+    # --src with --validate (no network needed) should work
+    if "${REBASE_SCRIPT}" --validate --src /tmp >/dev/null 2>&1; then
+        pass "--src flag is accepted"
+    else
+        fail "--src flag is accepted" "unexpected error with --src flag"
+    fi
+}
+
+# ─── Test: --validate edge cases ─────────────────────────────────────────────
+
+test_validate_detects_non_numeric_prefix() {
+    local bad_patch="${PATCHES_DIR}/no-number-prefix.patch"
+    cat > "${bad_patch}" <<'BADPATCH'
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Test <test@test.com>
+Date: Mon, 1 Jan 2024 00:00:00 +0000
+Subject: [PATCH] patch without numeric prefix
+
+---
+diff --git a/test.txt b/test.txt
+new file mode 100644
+--- /dev/null
++++ b/test.txt
+@@ -0,0 +1 @@
++test
+BADPATCH
+
+    if "${REBASE_SCRIPT}" --validate >/dev/null 2>&1; then
+        rm -f "${bad_patch}"
+        fail "--validate detects non-numeric prefix" "should have failed on patch without number"
+    else
+        rm -f "${bad_patch}"
+        pass "--validate detects non-numeric prefix"
+    fi
+}
+
+# ─── Test: --export without source checkout ──────────────────────────────────
+
+test_export_without_checkout_errors() {
+    local nonexistent="/tmp/test-tinygo-nonexistent-$$"
+    rm -rf "${nonexistent}"
+
+    local output
+    output=$(WARPGRID_TINYGO_SRC="${nonexistent}" "${REBASE_SCRIPT}" --export 2>&1 || true)
+
+    if echo "${output}" | grep -qi "not found\|error" 2>/dev/null; then
+        pass "--export without source checkout errors clearly"
+    else
+        fail "--export without source checkout errors clearly" "no clear error message"
+    fi
+}
+
+# ─── Test: malformed UPSTREAM_REF ────────────────────────────────────────────
+
+test_malformed_upstream_ref_missing_tag() {
+    # Temporarily replace UPSTREAM_REF with one missing TAG
+    local backup
+    backup=$(mktemp)
+    cp "${UPSTREAM_REF_FILE}" "${backup}"
+
+    echo "COMMIT=abc123" > "${UPSTREAM_REF_FILE}"
+
+    if "${REBASE_SCRIPT}" --validate >/dev/null 2>&1; then
+        # --validate doesn't call parse_upstream_ref, so try --apply instead
+        local output
+        output=$(WARPGRID_TINYGO_SRC="/tmp/test-$$" "${REBASE_SCRIPT}" --apply 2>&1 || true)
+        cp "${backup}" "${UPSTREAM_REF_FILE}"
+        rm -f "${backup}"
+
+        if echo "${output}" | grep -qi "error\|must contain" 2>/dev/null; then
+            pass "malformed UPSTREAM_REF (missing TAG) detected"
+        else
+            fail "malformed UPSTREAM_REF (missing TAG) detected" "no error on missing TAG"
+        fi
+    else
+        cp "${backup}" "${UPSTREAM_REF_FILE}"
+        rm -f "${backup}"
+        pass "malformed UPSTREAM_REF (missing TAG) detected"
+    fi
+}
+
+test_malformed_upstream_ref_missing_commit() {
+    local backup
+    backup=$(mktemp)
+    cp "${UPSTREAM_REF_FILE}" "${backup}"
+
+    echo "TAG=v0.40.0" > "${UPSTREAM_REF_FILE}"
+
+    local output
+    output=$(WARPGRID_TINYGO_SRC="/tmp/test-$$" "${REBASE_SCRIPT}" --apply 2>&1 || true)
+
+    cp "${backup}" "${UPSTREAM_REF_FILE}"
+    rm -f "${backup}"
+
+    if echo "${output}" | grep -qi "error\|must contain" 2>/dev/null; then
+        pass "malformed UPSTREAM_REF (missing COMMIT) detected"
+    else
+        fail "malformed UPSTREAM_REF (missing COMMIT) detected" "no error on missing COMMIT"
+    fi
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
@@ -388,6 +498,8 @@ main() {
     test_help_flag
     test_no_args_shows_usage
     test_unknown_flag_errors
+    test_update_without_tag_errors
+    test_src_flag_accepted
     echo
 
     # Validate mode tests
@@ -395,6 +507,14 @@ main() {
     test_validate_succeeds
     test_validate_detects_bad_numbering
     test_validate_detects_non_patch
+    test_validate_detects_non_numeric_prefix
+    echo
+
+    # Error handling tests
+    echo "--- Error handling ---"
+    test_export_without_checkout_errors
+    test_malformed_upstream_ref_missing_tag
+    test_malformed_upstream_ref_missing_commit
     echo
 
     # Apply mode tests (require network for git clone)

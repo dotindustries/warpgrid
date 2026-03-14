@@ -73,8 +73,8 @@ parse_upstream_ref() {
         err "UPSTREAM_REF file not found at ${UPSTREAM_REF_FILE}"
     fi
 
-    UPSTREAM_TAG=$(grep '^TAG=' "${UPSTREAM_REF_FILE}" | cut -d= -f2)
-    UPSTREAM_COMMIT=$(grep '^COMMIT=' "${UPSTREAM_REF_FILE}" | cut -d= -f2)
+    UPSTREAM_TAG=$(grep '^TAG=' "${UPSTREAM_REF_FILE}" | cut -d= -f2 || true)
+    UPSTREAM_COMMIT=$(grep '^COMMIT=' "${UPSTREAM_REF_FILE}" | cut -d= -f2 || true)
 
     if [[ -z "${UPSTREAM_TAG}" || -z "${UPSTREAM_COMMIT}" ]]; then
         err "UPSTREAM_REF must contain TAG=<tag> and COMMIT=<hash>"
