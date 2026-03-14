@@ -788,6 +788,57 @@ mod tests {
         assert_eq!(extract_posix_footer(&data), "GMT0BST,M3.5.0/1,M10.5.0");
     }
 
+    #[test]
+    fn london_tzif_2024_bst_start_timestamp() {
+        // Last Sunday in March 2024 = March 31. BST starts at 01:00 UTC.
+        // Timestamp = days_from_civil(2024, 3, 31) * 86400 + 3600
+        let data = generate_tzif(&london_spec());
+        let (ttisutcnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt) = parse_v1_header(&data);
+        let v1_skip = v1_data_size(ttisutcnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt);
+        let v2_start = 44 + v1_skip;
+        let ((_, _, _, v2_timecnt, _, _), v2_data) = parse_v2_header(&data, v2_start);
+
+        // 2024-03-31 01:00 UTC
+        let expected_ts: i64 = days_from_civil(2024, 3, 31) * 86400 + 3600;
+
+        let mut found = false;
+        for i in 0..v2_timecnt as usize {
+            let ts = read_be_i64(&data, v2_data + i * 8);
+            if ts == expected_ts {
+                let idx_offset = v2_data + (v2_timecnt as usize) * 8 + i;
+                assert_eq!(data[idx_offset], 1, "BST start should switch to DST (type 1)");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "2024 BST start timestamp ({expected_ts}) not found in transitions");
+    }
+
+    #[test]
+    fn london_tzif_2024_bst_end_timestamp() {
+        // Last Sunday in October 2024 = October 27. BST ends at 01:00 UTC.
+        let data = generate_tzif(&london_spec());
+        let (ttisutcnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt) = parse_v1_header(&data);
+        let v1_skip = v1_data_size(ttisutcnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt);
+        let v2_start = 44 + v1_skip;
+        let ((_, _, _, v2_timecnt, _, _), v2_data) = parse_v2_header(&data, v2_start);
+
+        // 2024-10-27 01:00 UTC
+        let expected_ts: i64 = days_from_civil(2024, 10, 27) * 86400 + 3600;
+
+        let mut found = false;
+        for i in 0..v2_timecnt as usize {
+            let ts = read_be_i64(&data, v2_data + i * 8);
+            if ts == expected_ts {
+                let idx_offset = v2_data + (v2_timecnt as usize) * 8 + i;
+                assert_eq!(data[idx_offset], 0, "BST end should switch to GMT (type 0)");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "2024 BST end timestamp ({expected_ts}) not found in transitions");
+    }
+
     // ── Asia/Tokyo ──────────────────────────────────────────────────────
 
     #[test]
@@ -885,6 +936,36 @@ mod tests {
     }
 
     // ── Transitions are sorted ──────────────────────────────────────────
+
+    #[test]
+    fn transition_year_boundaries() {
+        let data = generate_tzif(&new_york_spec());
+        let (ttisutcnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt) = parse_v1_header(&data);
+        let v1_skip = v1_data_size(ttisutcnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt);
+        let v2_start = 44 + v1_skip;
+        let ((_, _, _, v2_timecnt, _, _), v2_data) = parse_v2_header(&data, v2_start);
+
+        assert!(v2_timecnt > 0, "should have transitions");
+
+        let first_ts = read_be_i64(&data, v2_data);
+        let last_ts = read_be_i64(&data, v2_data + ((v2_timecnt as usize) - 1) * 8);
+
+        // First transition should be in 2020 (after 2020-01-01 00:00 UTC = 1577836800)
+        let start_2020 = days_from_civil(2020, 1, 1) * 86400;
+        let end_2020 = days_from_civil(2021, 1, 1) * 86400;
+        assert!(
+            first_ts >= start_2020 && first_ts < end_2020,
+            "first transition ({first_ts}) should be in 2020"
+        );
+
+        // Last transition should be in 2038
+        let start_2038 = days_from_civil(2038, 1, 1) * 86400;
+        let end_2038 = days_from_civil(2039, 1, 1) * 86400;
+        assert!(
+            last_ts >= start_2038 && last_ts < end_2038,
+            "last transition ({last_ts}) should be in 2038"
+        );
+    }
 
     #[test]
     fn transitions_are_monotonically_increasing() {

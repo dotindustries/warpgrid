@@ -380,6 +380,61 @@ static void test_tz_switch(void) {
     PASS();
 }
 
+/*
+ * Test 10: Unknown timezone falls back to UTC without crashing.
+ * AC #3: "Unknown timezone falls back to UTC without crashing."
+ */
+static void test_unknown_timezone_fallback(void) {
+    TEST("TZ=Mars/Olympus → falls back to UTC without crashing");
+
+    setenv("TZ", "Mars/Olympus", 1);
+
+    time_t t = 1700000000;
+    struct tm tm;
+    struct tm *r = localtime_r(&t, &tm);
+    ASSERT(r != NULL, "localtime_r returned NULL for unknown timezone");
+
+    /* With no TZif file found and no valid POSIX string, musl falls back
+     * to UTC (s = __utc). Verify UTC offset behavior. */
+    ASSERT_EQ_INT(tm.tm_hour, 22, "hour should be 22 (UTC fallback)");
+    ASSERT_EQ_INT(tm.tm_isdst, 0, "isdst should be 0 (UTC fallback)");
+
+    PASS();
+}
+
+/*
+ * Test 11: Europe/London strftime %Z shows GMT in winter and BST in summer.
+ * AC #2: "strftime %Z outputs correct timezone abbreviation for Europe/London."
+ * Note: This test uses POSIX TZ string since our shim doesn't embed London
+ * TZif data. The POSIX string exercises the same do_tzset() code path.
+ */
+static void test_london_strftime_zone_name(void) {
+    TEST("TZ=GMT0BST → strftime %%Z shows GMT/BST");
+
+    setenv("TZ", "GMT0BST,M3.5.0/1,M10.5.0", 1);
+
+    /* Winter (November) → GMT */
+    time_t t = 1700000000; /* 2023-11-14 22:13:20 UTC */
+    struct tm tm;
+    localtime_r(&t, &tm);
+
+    char buf[64];
+    size_t n = strftime(buf, sizeof(buf), "%Z", &tm);
+    ASSERT(n > 0, "strftime returned 0 for winter");
+    ASSERT(strcmp(buf, "GMT") == 0, "expected GMT in winter");
+    ASSERT_EQ_INT(tm.tm_hour, 22, "hour should be 22 (GMT, same as UTC)");
+
+    /* Summer (July) → BST (+1) */
+    t = 1690027200; /* 2023-07-22 12:00:00 UTC → 13:00 BST */
+    localtime_r(&t, &tm);
+    n = strftime(buf, sizeof(buf), "%Z", &tm);
+    ASSERT(n > 0, "strftime returned 0 for summer");
+    ASSERT(strcmp(buf, "BST") == 0, "expected BST in summer");
+    ASSERT_EQ_INT(tm.tm_hour, 13, "hour should be 13 (BST, UTC+1)");
+
+    PASS();
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -394,6 +449,8 @@ int main(void) {
     test_tzif_file_new_york_summer();
     test_mktime_roundtrip();
     test_tz_switch();
+    test_unknown_timezone_fallback();
+    test_london_strftime_zone_name();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

@@ -581,6 +581,41 @@ mod tests {
     }
 
     #[test]
+    fn timezone_read_returns_complete_valid_tzif() {
+        let mut host = default_host();
+        let handle = host
+            .open_virtual("/usr/share/zoneinfo/America/New_York".into())
+            .unwrap();
+        let data = host.read_virtual(handle, 8192).unwrap();
+        host.close_virtual(handle).unwrap();
+
+        // Must be valid TZif v2 with both v1 and v2 headers.
+        assert!(data.starts_with(b"TZif"), "missing TZif magic");
+        assert_eq!(data[4], b'2', "expected TZif version 2");
+
+        // Must contain EST and EDT abbreviations.
+        assert!(data.windows(3).any(|w| w == b"EST"), "missing EST abbreviation");
+        assert!(data.windows(3).any(|w| w == b"EDT"), "missing EDT abbreviation");
+
+        // Footer must contain the POSIX TZ string.
+        assert_eq!(data[data.len() - 1], b'\n', "footer must end with newline");
+        let footer_end = data.len() - 1;
+        let mut footer_start = footer_end - 1;
+        while data[footer_start] != b'\n' {
+            footer_start -= 1;
+        }
+        let footer = std::str::from_utf8(&data[footer_start + 1..footer_end]).unwrap();
+        assert_eq!(footer, "EST5EDT,M3.2.0,M11.1.0");
+
+        // Content must match what tzdata::default_timezone_data produces.
+        let zones = crate::tzdata::default_timezone_data();
+        assert_eq!(
+            data, zones["America/New_York"],
+            "host-served TZif data must match tzdata::default_timezone_data()"
+        );
+    }
+
+    #[test]
     fn read_zero_bytes_returns_empty() {
         let mut host = default_host();
         let handle = host.open_virtual("/etc/hosts".into()).unwrap();
