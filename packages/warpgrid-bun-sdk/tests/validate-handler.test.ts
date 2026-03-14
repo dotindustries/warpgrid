@@ -72,6 +72,14 @@ describe("validateHandler", () => {
         WarpGridHandlerValidationError,
       );
     });
+
+    test("throws WarpGridHandlerValidationError for primitive inputs", () => {
+      for (const value of [42, "string", true, Symbol("s")]) {
+        expect(() => validateHandler(value)).toThrow(
+          WarpGridHandlerValidationError,
+        );
+      }
+    });
   });
 
   describe("error messages", () => {
