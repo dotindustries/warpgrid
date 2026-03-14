@@ -4,6 +4,10 @@
   "userStory": "US-308",
   "validationDate": "2026-03-14",
   "driverCount": 2,
+  "databaseSqlOverlay": {
+    "needed": false,
+    "reason": "database/sql itself compiles successfully with TinyGo wasip2 (confirmed in tinygo-stdlib.json). The blocking issues are in the driver libraries' crypto/tls dependencies, not in database/sql. The WarpGrid database proxy shim (US-112) handles connections at the host level, bypassing driver compilation entirely."
+  },
   "drivers": [
     {
       "name": "go-sql-driver/mysql",
