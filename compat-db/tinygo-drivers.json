@@ -1,0 +1,159 @@
+{
+  "compiler": "tinygo",
+  "target": "wasip2",
+  "userStory": "US-308",
+  "validationDate": "2026-03-14",
+  "driverCount": 2,
+  "drivers": [
+    {
+      "name": "go-sql-driver/mysql",
+      "importPath": "github.com/go-sql-driver/mysql",
+      "version": "v1.9.2",
+      "ecosystem": "go",
+      "compileStatus": "fail",
+      "goTestStatus": "pass",
+      "goTestCount": 5,
+      "goTestDetails": "All 5 tests pass: sql.Open, Ping error path, SELECT 1 query construction, CRUD sequence, MySQL placeholder syntax, driver registration, type imports",
+      "errors": [
+        {
+          "symbol": "tls.Config.Clone",
+          "type": "missing_method",
+          "stdlibPackage": "crypto/tls",
+          "description": "TinyGo's crypto/tls.Config does not implement Clone() method"
+        },
+        {
+          "symbol": "tls.X509KeyPair",
+          "type": "missing_function",
+          "stdlibPackage": "crypto/tls",
+          "description": "TinyGo does not implement tls.X509KeyPair for certificate parsing"
+        }
+      ],
+      "blockingStdlibDeps": [
+        {
+          "package": "crypto/tls",
+          "missing": ["Config.Clone()", "X509KeyPair()"],
+          "severity": "critical",
+          "notes": "go-sql-driver/mysql uses TLS config cloning and certificate loading for secure connections"
+        }
+      ],
+      "workarounds": [
+        {
+          "approach": "host_side_database_proxy",
+          "description": "Use WarpGrid's host-side database proxy shim (US-112) which manages TCP connections and TLS termination at the Wasmtime host level. Guest code sends/receives raw MySQL wire protocol bytes through the proxy.",
+          "status": "recommended",
+          "references": ["US-112"]
+        }
+      ],
+      "featuresTested": [
+        {
+          "feature": "sql.Open(\"mysql\", dsn)",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "Driver registration and sql.Open work in standard Go"
+        },
+        {
+          "feature": "SELECT 1 query",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "Simple query via db.QueryRow + Scan"
+        },
+        {
+          "feature": "CREATE TABLE (DDL)",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "DDL execution via db.Exec with AUTO_INCREMENT"
+        },
+        {
+          "feature": "INSERT with ? param",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "Parameterized INSERT using MySQL ? placeholder"
+        },
+        {
+          "feature": "SELECT with Scan",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "Row scanning into Go variables"
+        },
+        {
+          "feature": "DROP TABLE (DDL)",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "DDL cleanup via db.Exec"
+        }
+      ]
+    },
+    {
+      "name": "go-redis/redis",
+      "importPath": "github.com/redis/go-redis/v9",
+      "version": "v9.7.3",
+      "ecosystem": "go",
+      "compileStatus": "fail",
+      "goTestStatus": "pass",
+      "goTestCount": 5,
+      "goTestDetails": "All 5 tests pass: NewClient, Ping error path, Options configuration, PING/SET/GET command construction, type imports",
+      "errors": [
+        {
+          "symbol": "tls.Config.Clone",
+          "type": "missing_method",
+          "stdlibPackage": "crypto/tls",
+          "description": "TinyGo's crypto/tls.Config does not implement Clone() method"
+        },
+        {
+          "symbol": "net.Resolver",
+          "type": "missing_type",
+          "stdlibPackage": "net",
+          "description": "TinyGo does not implement net.Resolver type"
+        }
+      ],
+      "blockingStdlibDeps": [
+        {
+          "package": "crypto/tls",
+          "missing": ["Config.Clone()"],
+          "severity": "critical",
+          "notes": "go-redis uses TLS config cloning for secure connections"
+        },
+        {
+          "package": "net",
+          "missing": ["Resolver"],
+          "severity": "moderate",
+          "notes": "go-redis optionally uses net.Resolver for custom DNS; not required for basic operation"
+        }
+      ],
+      "workarounds": [
+        {
+          "approach": "host_side_database_proxy",
+          "description": "Use WarpGrid's host-side database proxy shim (US-112) which manages TCP connections and TLS termination at the Wasmtime host level. Guest code sends/receives raw Redis RESP protocol bytes through the proxy.",
+          "status": "recommended",
+          "references": ["US-112"]
+        }
+      ],
+      "featuresTested": [
+        {
+          "feature": "redis.NewClient(opts)",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "Client creation with redis.Options works in standard Go"
+        },
+        {
+          "feature": "PING command",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "StatusCmd construction and name validation"
+        },
+        {
+          "feature": "SET key value",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "StatusCmd construction for SET"
+        },
+        {
+          "feature": "GET key",
+          "goStatus": "pass",
+          "wasmStatus": "blocked_by_compile",
+          "notes": "StringCmd construction for GET"
+        }
+      ]
+    }
+  ]
+}
