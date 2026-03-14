@@ -1,3 +1,4 @@
+pub mod bun;
 pub mod rust;
 pub mod go;
 pub mod typescript;
