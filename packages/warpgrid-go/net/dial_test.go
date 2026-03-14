@@ -386,3 +386,90 @@ func TestDial_DNSErrorContainsHostname(t *testing.T) {
 		t.Fatalf("error should contain hostname, got: %s", errStr)
 	}
 }
+
+// ── ConnectTimeout tests ────────────────────────────────────────────
+
+func TestDial_ConnectTimeoutIsApplied(t *testing.T) {
+	// Dial an unreachable address with a short timeout.
+	// If ConnectTimeout is not applied, this would hang or take the default OS timeout (minutes).
+	backend := mockResolverFunc(func(hostname string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("192.0.2.1")}, nil // RFC 5737 TEST-NET — unreachable
+	})
+	resolver := wgdns.NewResolver(backend)
+	dialer := wgnet.NewDialer(resolver)
+	dialer.ConnectTimeout = 200 * time.Millisecond
+
+	start := time.Now()
+	_, err := dialer.Dial("tcp", "unreachable-host:65535")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error dialing unreachable address")
+	}
+	// The dial should complete within ~1s (200ms timeout + some margin).
+	// Without the timeout, it would take 30s+ on most systems.
+	if elapsed > 5*time.Second {
+		t.Fatalf("ConnectTimeout not respected: dial took %v (expected <5s with 200ms timeout)", elapsed)
+	}
+}
+
+// ── DNS error wrapping detail tests ─────────────────────────────────
+
+func TestDial_DNSFailureWrapsInnerDNSError(t *testing.T) {
+	backend := mockResolverFunc(func(hostname string) ([]net.IP, error) {
+		return nil, errors.New("HostNotFound: db.production")
+	})
+	resolver := wgdns.NewResolver(backend)
+	dialer := wgnet.NewDialer(resolver)
+
+	_, err := dialer.Dial("tcp", "db.production:5432")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		t.Fatalf("expected *net.OpError, got %T: %v", err, err)
+	}
+
+	// The inner error should be *net.DNSError with correct fields
+	var dnsErr *net.DNSError
+	if !errors.As(opErr.Err, &dnsErr) {
+		t.Fatalf("expected inner *net.DNSError, got %T: %v", opErr.Err, opErr.Err)
+	}
+	if dnsErr.Name != "db.production" {
+		t.Fatalf("DNSError.Name = %q, want %q", dnsErr.Name, "db.production")
+	}
+	if !dnsErr.IsNotFound {
+		t.Fatal("DNSError.IsNotFound should be true for resolution failure")
+	}
+}
+
+func TestDial_DNSEmptyResultWrapsInnerDNSError(t *testing.T) {
+	backend := mockResolverFunc(func(hostname string) ([]net.IP, error) {
+		return []net.IP{}, nil // empty result, no error
+	})
+	resolver := wgdns.NewResolver(backend)
+	dialer := wgnet.NewDialer(resolver)
+
+	_, err := dialer.Dial("tcp", "no-records.warp.local:5432")
+	if err == nil {
+		t.Fatal("expected error for empty DNS result")
+	}
+
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		t.Fatalf("expected *net.OpError, got %T: %v", err, err)
+	}
+
+	var dnsErr *net.DNSError
+	if !errors.As(opErr.Err, &dnsErr) {
+		t.Fatalf("expected inner *net.DNSError, got %T: %v", opErr.Err, opErr.Err)
+	}
+	if dnsErr.Name != "no-records.warp.local" {
+		t.Fatalf("DNSError.Name = %q, want %q", dnsErr.Name, "no-records.warp.local")
+	}
+	if !strings.Contains(dnsErr.Err, "no addresses found") {
+		t.Fatalf("DNSError.Err = %q, want substring %q", dnsErr.Err, "no addresses found")
+	}
+}
