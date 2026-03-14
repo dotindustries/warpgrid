@@ -1,0 +1,168 @@
+From d55e154c96a4cb660174c9aa80ddb709f039e74b Mon Sep 17 00:00:00 2001
+From: WarpGrid SDK <sdk@warpgrid.dev>
+Date: Sat, 14 Mar 2026 11:01:08 +0000
+Subject: [PATCH 1/1] internal/warpgrid: add DNS resolution via WarpGrid shim
+ for wasip2
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add internal/warpgrid package providing hostname resolution through
+the WarpGrid DNS shim host function (warpgrid:shim/dns@0.1.0) for
+wasip2 target builds.
+
+Provides:
+- DnsResolve: raw //go:wasmimport binding for warpgrid_shim dns_resolve
+- Resolve(hostname) -> ([]net.IP, error): high-level DNS resolution
+- DialWithDNS(network, host, port) -> (net.Conn, error): resolve+dial
+
+The package lives in internal/warpgrid/ rather than net/ because TinyGo's
+overlay system uses all-or-nothing directory merging — adding any file to
+src/net/ would exclude the entire Go stdlib net package.
+
+ABI: 17 bytes per record (1 byte family + 16 bytes address), matching
+the libc-patches DNS shim.
+
+Depends on: US-303 (net.Dial TCP via wasi-sockets)
+Depends on: US-106 (WarpGrid DNS host functions)
+Requires WIT: warpgrid:shim/dns@0.1.0
+---
+ src/internal/warpgrid/dns_wasip2.go | 126 ++++++++++++++++++++++++++++
+ 1 file changed, 126 insertions(+)
+ create mode 100644 src/internal/warpgrid/dns_wasip2.go
+
+diff --git a/src/internal/warpgrid/dns_wasip2.go b/src/internal/warpgrid/dns_wasip2.go
+new file mode 100644
+index 0000000..b56d881
+--- /dev/null
++++ b/src/internal/warpgrid/dns_wasip2.go
+@@ -0,0 +1,126 @@
++// WARPGRID PATCH — US-304: DNS resolution via WarpGrid shim
++//
++// Provides hostname resolution through the WarpGrid DNS shim host function
++// (warpgrid:shim/dns.resolve-address) for wasip2 builds.
++//
++// This package lives in internal/warpgrid/ rather than net/ because TinyGo's
++// overlay system (loader/goroot.go) uses all-or-nothing merging per directory:
++// adding any file to src/net/ would exclude the entire Go stdlib net package.
++//
++// Usage: import from the WarpGrid Go SDK (packages/warpgrid-go) or application
++// code compiled with TinyGo for the wasip2 target.
++//
++// Depends on: US-106 (WarpGrid DNS host functions)
++// Requires WIT: warpgrid:shim/dns@0.1.0
++
++//go:build wasip2
++
++package warpgrid
++
++import (
++	"net"
++	"unsafe"
++)
++
++// DnsResolve is the host-imported DNS resolution function.
++// ABI matches __warpgrid_dns_resolve from warpgrid-host/wit/dns.wit:
++//
++//	Input:  hostname (ptr, len), family (0=any), out_buf (ptr), out_buf_cap
++//	Output: count of records, each 17 bytes (1 byte family + 16 bytes addr)
++//
++//go:wasmimport warpgrid_shim dns_resolve
++func DnsResolve(
++	hostnamePtr unsafe.Pointer,
++	hostnameLen uint32,
++	family uint32,
++	outBufPtr unsafe.Pointer,
++	outBufCap uint32,
++) uint32
++
++const (
++	DnsFamilyAny  = 0
++	DnsFamilyIPv4 = 4
++	DnsFamilyIPv6 = 6
++	DnsRecordSize = 17
++	DnsMaxRecords = 32
++)
++
++// Resolve resolves a hostname via the WarpGrid DNS shim.
++// Returns the resolved IP addresses or an error if resolution fails.
++func Resolve(hostname string) ([]net.IP, error) {
++	if hostname == "" {
++		return nil, &net.DNSError{Err: "empty hostname", Name: hostname}
++	}
++
++	buf := make([]byte, DnsMaxRecords*DnsRecordSize)
++	hostnameBytes := []byte(hostname)
++
++	count := DnsResolve(
++		unsafe.Pointer(&hostnameBytes[0]),
++		uint32(len(hostnameBytes)),
++		DnsFamilyAny,
++		unsafe.Pointer(&buf[0]),
++		uint32(len(buf)),
++	)
++
++	if count == 0 {
++		return nil, &net.DNSError{
++			Err:        "no addresses found",
++			Name:       hostname,
++			IsNotFound: true,
++		}
++	}
++
++	ips := make([]net.IP, 0, count)
++	for i := uint32(0); i < count; i++ {
++		offset := i * DnsRecordSize
++		family := buf[offset]
++		addrBytes := buf[offset+1 : offset+DnsRecordSize]
++
++		switch family {
++		case DnsFamilyIPv4:
++			ip := make(net.IP, 4)
++			copy(ip, addrBytes[:4])
++			ips = append(ips, ip)
++		case DnsFamilyIPv6:
++			ip := make(net.IP, 16)
++			copy(ip, addrBytes[:16])
++			ips = append(ips, ip)
++		}
++	}
++
++	if len(ips) == 0 {
++		return nil, &net.DNSError{
++			Err:        "no valid addresses in response",
++			Name:       hostname,
++			IsNotFound: true,
++		}
++	}
++
++	return ips, nil
++}
++
++// DialWithDNS resolves hostname via WarpGrid shim, then tries each address
++// in order. Returns the first successful connection.
++func DialWithDNS(network, host, port string) (net.Conn, error) {
++	ips, err := Resolve(host)
++	if err != nil {
++		return nil, &net.OpError{Op: "dial", Net: network, Err: err}
++	}
++
++	var lastErr error
++	for _, ip := range ips {
++		addr := net.JoinHostPort(ip.String(), port)
++		conn, err := net.Dial(network, addr)
++		if err == nil {
++			return conn, nil
++		}
++		lastErr = err
++	}
++
++	return nil, &net.OpError{
++		Op:  "dial",
++		Net: network,
++		Err: lastErr,
++	}
++}
+-- 
+2.48.1
+
