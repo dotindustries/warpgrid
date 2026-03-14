@@ -29,6 +29,7 @@ pub fn init(template: &str, path: Option<&str>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
     fn test_unknown_template() {
@@ -96,5 +97,121 @@ mod tests {
         assert!(target.join("wit/handler.wit").exists());
         assert!(target.join("wit/deps/http/types.wit").exists());
         assert!(target.join("wit/deps/shim/dns.wit").exists());
+    }
+
+    // ── Template ↔ Fixture consistency tests ─────────────────────
+    //
+    // These tests ensure the embedded template content stays in sync with
+    // the fixture directories that integration tests build. A drift between
+    // template and fixture means integration tests validate stale code.
+
+    /// Collect all relative file paths under `dir`, excluding build artifacts.
+    fn collect_files(dir: &std::path::Path) -> BTreeSet<String> {
+        let mut files = BTreeSet::new();
+        for entry in walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let rel = entry
+                .path()
+                .strip_prefix(dir)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            // Skip build artifacts that aren't part of the template
+            if rel.starts_with("target/") || rel == "Cargo.lock" {
+                continue;
+            }
+            files.insert(rel);
+        }
+        files
+    }
+
+    /// Normalize fixture content so it can be compared to template output.
+    ///
+    /// Fixtures use their directory name as the project name (e.g.
+    /// "async-rust-template") whereas templates use the placeholder
+    /// "my-async-handler". The Go fixture also has a local `replace`
+    /// directive needed for workspace builds that the template omits.
+    fn normalize_fixture_content(
+        content: &str,
+        fixture_name: &str,
+    ) -> String {
+        content
+            .replace(fixture_name, "my-async-handler")
+            // Go fixture has a local replace directive for workspace builds
+            .replace(
+                "\nreplace github.com/anthropics/warpgrid/packages/warpgrid-go => ../../../packages/warpgrid-go\n",
+                "",
+            )
+    }
+
+    /// Scaffold a template and compare every generated file against the
+    /// corresponding fixture file. Fails if content differs or if the
+    /// fixture has files the template doesn't produce (or vice versa).
+    ///
+    /// Known differences (project name, local replace directives) are
+    /// normalized before comparison.
+    fn assert_template_matches_fixture(template_name: &str, fixture_subdir: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let scaffolded = dir.path().join("project");
+        crate::templates::scaffold(template_name, &scaffolded).unwrap();
+
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("tests/fixtures")
+            .join(fixture_subdir);
+
+        let scaffolded_files = collect_files(&scaffolded);
+        let fixture_files = collect_files(&fixture_dir);
+
+        // Check for files in fixture but missing from template
+        let missing_from_template: BTreeSet<_> =
+            fixture_files.difference(&scaffolded_files).collect();
+        assert!(
+            missing_from_template.is_empty(),
+            "Fixture '{fixture_subdir}' has files not produced by template '{template_name}': {missing_from_template:?}"
+        );
+
+        // Check for files in template but missing from fixture
+        let missing_from_fixture: BTreeSet<_> =
+            scaffolded_files.difference(&fixture_files).collect();
+        assert!(
+            missing_from_fixture.is_empty(),
+            "Template '{template_name}' produces files not in fixture '{fixture_subdir}': {missing_from_fixture:?}"
+        );
+
+        // Compare content of every file (normalizing known differences)
+        for file in &scaffolded_files {
+            let scaffolded_content =
+                std::fs::read_to_string(scaffolded.join(file)).unwrap();
+            let fixture_content =
+                std::fs::read_to_string(fixture_dir.join(file)).unwrap();
+            let normalized_fixture =
+                normalize_fixture_content(&fixture_content, fixture_subdir);
+            assert_eq!(
+                scaffolded_content, normalized_fixture,
+                "Content mismatch in '{file}' between template '{template_name}' and fixture '{fixture_subdir}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_async_rust_template_matches_fixture() {
+        assert_template_matches_fixture("async-rust", "async-rust-template");
+    }
+
+    #[test]
+    fn test_async_go_template_matches_fixture() {
+        assert_template_matches_fixture("async-go", "async-go-template");
+    }
+
+    #[test]
+    fn test_async_ts_template_matches_fixture() {
+        assert_template_matches_fixture("async-ts", "async-ts-template");
     }
 }
