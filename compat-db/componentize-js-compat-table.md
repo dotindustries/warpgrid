@@ -6,9 +6,10 @@
 
 ## Summary
 
-- **Fully compatible**: 14/20 packages
-- **Improved by WarpGrid shims**: 6 packages
-- **Permanently incompatible**: 5 packages
+- **Fully compatible**: 14/20
+- **Improved by shims**: 6
+- **Core APIs available**: 6/11
+- **Core APIs improved by shims**: 3
 
 ## Compatibility Table
 
@@ -35,41 +36,78 @@
 | fast-json-stringify | 6.0.1 | pass | pass | pass | pass | Pure JavaScript JSON serialization, fully compatible |
 | ajv | 8.17.1 | pass | pass | pass | pass | Pure JavaScript schema validation, fully compatible |
 
+## Core Node.js APIs
+
+| API | Available | Functional Level | Status | Notes |
+|-----|-----------|-----------------|--------|-------|
+| Buffer | pass | pass | pass | Polyfilled by StarlingMonkey; Buffer.from(), Buffer.alloc... |
+| TextEncoder/TextDecoder | pass | pass | pass | Web standard API, natively available in StarlingMonkey |
+| crypto | partial | partial | partial | crypto.getRandomValues() and SubtleCrypto available; Node... |
+| URL | pass | pass | pass | Web standard API, natively available in StarlingMonkey |
+| console | pass | pass | pass | console.log/warn/error available in StarlingMonkey |
+| setTimeout | partial | partial | partial | setTimeout exists but WASI request model has no persisten... |
+| process.env | pass | pass | pass IMPROVED | IMPROVED: WASI environment variable polyfill provides pro... |
+| fs | partial | partial | partial IMPROVED | IMPROVED: Virtual filesystem shim for specific paths; gen... |
+| net | fail | fail | fail | WarpGrid bypasses net module via WIT interface for databa... |
+| dns | pass | pass | pass IMPROVED | IMPROVED: WarpGrid DNS shim provides service registry + /... |
+| http | fail | fail | fail | Node.js http module server/client model incompatible with... |
+
 ## Packages Improved by WarpGrid Shims
 
 ### pg
 
-- **Before** (baseline): fail
-- **After** (WarpGrid): pass
+- **Before**: fail
+- **After**: pass
 - **Details**: IMPROVED: Works via warpgrid/pg database proxy shim wrapping warpgrid:shim/database-proxy WIT interface
 
 ### jose
 
-- **Before** (baseline): partial
-- **After** (WarpGrid): pass
+- **Before**: partial
+- **After**: pass
 - **Details**: IMPROVED: PEM key file loading now works via warpgrid.fs.readFile() filesystem shim
 
 ### drizzle-orm
 
-- **Before** (baseline): fail
-- **After** (WarpGrid): pass
+- **Before**: fail
+- **After**: pass
 - **Details**: IMPROVED: Query execution now works via warpgrid/pg database proxy shim as the driver
 
 ### kysely
 
-- **Before** (baseline): fail
-- **After** (WarpGrid): pass
+- **Before**: fail
+- **After**: pass
 - **Details**: IMPROVED: Query execution now works via warpgrid/pg database proxy shim as the dialect driver
 
 ### dotenv
 
-- **Before** (baseline): fail
-- **After** (WarpGrid): pass
+- **Before**: fail
+- **After**: pass
 - **Details**: IMPROVED: .env file reading now works via warpgrid.fs.readFile() filesystem shim
 
 ### pino
 
-- **Before** (baseline): fail
-- **After** (WarpGrid): partial
+- **Before**: fail
+- **After**: partial
 - **Details**: IMPROVED: Basic logging and level configuration work via process.env polyfill; transports still limited
+
+
+## Core APIs Improved by WarpGrid Shims
+
+### process.env
+
+- **Before**: fail
+- **After**: pass
+- **Details**: IMPROVED: WASI environment variable polyfill provides process.env access
+
+### fs
+
+- **Before**: fail
+- **After**: partial
+- **Details**: IMPROVED: Virtual filesystem shim for specific paths; general fs operations still unavailable
+
+### dns
+
+- **Before**: fail
+- **After**: pass
+- **Details**: IMPROVED: WarpGrid DNS shim provides service registry + /etc/hosts + system DNS resolution
 
