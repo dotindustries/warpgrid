@@ -1,12 +1,8 @@
 # Implementation Plan: US-602 — Define and validate WarpGridHandler Bun interface
 
-## Overview
-
-The core implementation already exists on `main`. What's missing: runtime tests for `validateHandler()` and `WarpGridHandlerValidationError` tests in `errors.test.ts`.
-
 ## Task List
 
-- [ ] **Write `validateHandler()` runtime tests** — Create `packages/warpgrid-bun-sdk/tests/validate-handler.test.ts` (in progress)
-- [ ] **Add `WarpGridHandlerValidationError` tests to `errors.test.ts`**
-- [ ] **Run `bun test` and `bun run typecheck` to verify all tests pass**
-- [ ] **Create PR referencing issue #71**
+- [x] **Write `validateHandler()` runtime tests** — Created `packages/warpgrid-bun-sdk/tests/validate-handler.test.ts` (14 tests)
+- [x] **Add `WarpGridHandlerValidationError` tests to `errors.test.ts`** (3 tests)
+- [x] **Run `bun test` and `bun run typecheck` to verify all tests pass** — 184 tests pass, typecheck clean
+- [x] **Create PR referencing issue #71** — PR #122
