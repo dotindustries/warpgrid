@@ -16,12 +16,14 @@
  *   3. getaddrinfo fallthrough: no crash/hang for unknown host
  *   4. gethostbyname returns NULL for unknown host (no shim)
  *   5. gethostbyname(NULL) returns NULL
- *   6. getnameinfo with NI_NUMERICHOST formats IPv4 correctly
- *   7. getnameinfo with NI_NUMERICHOST formats IPv6 correctly
- *   8. getnameinfo with NI_NUMERICSERV formats port correctly
- *   9. getnameinfo fallthrough: returns numeric IP for unknown addr
- *  10. getnameinfo with bad family returns EAI_FAMILY
- *  11. All three functions used together in realistic sequence
+ *   6. gethostbyname("") returns NULL or implementation-defined
+ *   7. getnameinfo with NI_NUMERICHOST formats IPv4 correctly
+ *   8. getnameinfo with NI_NUMERICHOST formats IPv6 correctly
+ *   9. getnameinfo with NI_NUMERICSERV formats port correctly
+ *  10. getnameinfo with zero-length service buffer: no crash
+ *  11. getnameinfo bad family returns EAI_FAMILY
+ *  12. getnameinfo fallthrough: returns numeric IP for unknown addr
+ *  13. All three functions used together in realistic sequence
  */
 
 #include <stdio.h>
@@ -155,7 +157,23 @@ static int test_gethostbyname_null(void) {
     return 1;
 }
 
-/* ---- Test 6: getnameinfo NI_NUMERICHOST IPv4 ---------------------------- */
+/* ---- Test 6: gethostbyname("") returns NULL ----------------------------- */
+
+static int test_gethostbyname_empty(void) {
+    struct hostent *he = gethostbyname("");
+
+    if (he == NULL) {
+        printf("  PASS: gethostbyname(\"\") returns NULL\n");
+        return 0;
+    }
+
+    /* Some implementations may resolve empty string to localhost */
+    printf("  PASS: gethostbyname(\"\") resolved (implementation-defined): %s\n",
+           he->h_name ? he->h_name : "(null)");
+    return 0;
+}
+
+/* ---- Test 7: getnameinfo NI_NUMERICHOST IPv4 ---------------------------- */
 
 static int test_getnameinfo_numerichost_ipv4(void) {
     struct sockaddr_in sa;
@@ -183,7 +201,7 @@ static int test_getnameinfo_numerichost_ipv4(void) {
     return 0;
 }
 
-/* ---- Test 7: getnameinfo NI_NUMERICHOST IPv6 ---------------------------- */
+/* ---- Test 8: getnameinfo NI_NUMERICHOST IPv6 ---------------------------- */
 
 static int test_getnameinfo_numerichost_ipv6(void) {
     struct sockaddr_in6 sa6;
@@ -211,7 +229,7 @@ static int test_getnameinfo_numerichost_ipv6(void) {
     return 0;
 }
 
-/* ---- Test 8: getnameinfo NI_NUMERICSERV --------------------------------- */
+/* ---- Test 9: getnameinfo NI_NUMERICSERV --------------------------------- */
 
 static int test_getnameinfo_numericserv(void) {
     struct sockaddr_in sa;
@@ -239,7 +257,7 @@ static int test_getnameinfo_numericserv(void) {
     return 0;
 }
 
-/* ---- Test 9: getnameinfo fallthrough — returns numeric for unknown ------ */
+/* ---- Test 10: getnameinfo fallthrough — returns numeric for unknown ----- */
 
 static int test_getnameinfo_fallthrough(void) {
     struct sockaddr_in sa;
@@ -271,7 +289,33 @@ static int test_getnameinfo_fallthrough(void) {
     return 0;
 }
 
-/* ---- Test 10: getnameinfo bad family returns EAI_FAMILY ----------------- */
+/* ---- Test 11: getnameinfo with zero-length service buffer --------------- */
+
+static int test_getnameinfo_zero_servlen(void) {
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(80);
+    inet_pton(AF_INET, "10.0.0.1", &sa.sin_addr);
+
+    char host[NI_MAXHOST];
+    /* serv buffer is non-NULL but servlen is 0 — must not crash */
+    char serv[1];
+    int ret = getnameinfo((struct sockaddr *)&sa, sizeof(sa),
+                          host, sizeof(host), serv, 0,
+                          NI_NUMERICHOST | NI_NUMERICSERV);
+
+    if (ret != 0) {
+        /* Some implementations may reject zero servlen */
+        printf("  PASS: getnameinfo zero servlen returned %d (no crash)\n", ret);
+        return 0;
+    }
+
+    printf("  PASS: getnameinfo zero servlen succeeded, host='%s'\n", host);
+    return 0;
+}
+
+/* ---- Test 12: getnameinfo bad family returns EAI_FAMILY ----------------- */
 
 static int test_getnameinfo_bad_family(void) {
     struct sockaddr sa;
@@ -291,7 +335,7 @@ static int test_getnameinfo_bad_family(void) {
     return 1;
 }
 
-/* ---- Test 11: Realistic sequence using all three functions -------------- */
+/* ---- Test 13: Realistic sequence using all three functions -------------- */
 
 static int test_combined_realistic_sequence(void) {
     int ok = 1;
@@ -370,9 +414,11 @@ int main(void) {
     failures += test_getaddrinfo_fallthrough();
     failures += test_gethostbyname_unknown();
     failures += test_gethostbyname_null();
+    failures += test_gethostbyname_empty();
     failures += test_getnameinfo_numerichost_ipv4();
     failures += test_getnameinfo_numerichost_ipv6();
     failures += test_getnameinfo_numericserv();
+    failures += test_getnameinfo_zero_servlen();
     failures += test_getnameinfo_fallthrough();
     failures += test_getnameinfo_bad_family();
     failures += test_combined_realistic_sequence();
@@ -382,6 +428,6 @@ int main(void) {
         return 1;
     }
 
-    printf("\nAll 11 tests passed\n");
+    printf("\nAll 13 tests passed\n");
     return 0;
 }
