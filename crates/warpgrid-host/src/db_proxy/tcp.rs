@@ -25,7 +25,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::async_io::AsyncConnectionBackend;
+use super::async_io::{AsyncConnectFuture, AsyncConnectionBackend, AsyncConnectionFactory};
 use super::{ConnectionBackend, ConnectionFactory, PoolKey};
 
 // ── Transport ────────────────────────────────────────────────────────
@@ -434,6 +434,57 @@ impl AsyncConnectionBackend for AsyncTcpBackend {
             if let Some(stream) = self.stream.take() {
                 drop(stream);
             }
+        })
+    }
+}
+
+// ── AsyncTcpConnectionFactory ────────────────────────────────────────
+
+/// Factory creating async TCP connections to database servers.
+///
+/// The async counterpart of [`TcpConnectionFactory`]. Uses
+/// `tokio::net::TcpStream::connect` with a timeout for non-blocking
+/// connection establishment.
+pub struct AsyncTcpConnectionFactory {
+    /// Timeout for establishing TCP connections.
+    connect_timeout: Duration,
+}
+
+impl AsyncTcpConnectionFactory {
+    /// Create a factory for plain async TCP connections.
+    pub fn new(connect_timeout: Duration) -> Self {
+        Self { connect_timeout }
+    }
+}
+
+impl AsyncConnectionFactory for AsyncTcpConnectionFactory {
+    fn connect_async<'a>(
+        &'a self,
+        key: &'a PoolKey,
+        _password: Option<&'a str>,
+    ) -> AsyncConnectFuture<'a> {
+        Box::pin(async move {
+            let addr_str = format!("{}:{}", key.host, key.port);
+
+            // Resolve DNS and connect with timeout.
+            let stream = tokio::time::timeout(
+                self.connect_timeout,
+                tokio::net::TcpStream::connect(&addr_str),
+            )
+            .await
+            .map_err(|_| format!("async tcp connect timeout for {addr_str}"))?
+            .map_err(|e| format!("async tcp connect to {addr_str}: {e}"))?;
+
+            // Disable Nagle's algorithm for low-latency wire protocol exchange.
+            let _ = stream.set_nodelay(true);
+
+            tracing::debug!(
+                host = %key.host,
+                port = key.port,
+                "established async tcp connection"
+            );
+
+            Ok(Box::new(AsyncTcpBackend::new(stream)) as Box<dyn AsyncConnectionBackend>)
         })
     }
 }
@@ -1074,5 +1125,54 @@ mod tests {
         backend.close_async().await;
         let debug = format!("{backend:?}");
         assert!(debug.contains("connected: false"));
+    }
+
+    // ── AsyncTcpConnectionFactory ────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_factory_creates_working_connection() {
+        let addr = start_async_echo_server().await;
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_secs(2));
+        let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
+
+        let mut backend = factory.connect_async(&key, None).await.unwrap();
+
+        let sent = backend.send_async(b"test").await.unwrap();
+        assert_eq!(sent, 4);
+
+        let data = backend.recv_async(1024).await.unwrap();
+        assert_eq!(data, b"test");
+    }
+
+    #[tokio::test]
+    async fn async_factory_connect_refused() {
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_secs(1));
+        // Port 1 is unlikely to have a listener.
+        let key = PoolKey::new("127.0.0.1", 1, "testdb", "user");
+
+        let result = factory.connect_async(&key, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn async_factory_connect_timeout() {
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_millis(100));
+        // Use a non-routable address to trigger timeout.
+        let key = PoolKey::new("192.0.2.1", 5432, "testdb", "user");
+
+        let result = factory.connect_async(&key, None).await;
+        assert!(result.is_err(), "should fail with timeout or connection error");
+    }
+
+    #[tokio::test]
+    async fn async_factory_ignores_password_for_passthrough() {
+        let addr = start_async_echo_server().await;
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_secs(2));
+        let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
+
+        // Password is provided but should be ignored — guest sends auth via wire protocol.
+        let mut backend = factory.connect_async(&key, Some("secret")).await.unwrap();
+        let sent = backend.send_async(b"test").await.unwrap();
+        assert_eq!(sent, 4);
     }
 }
