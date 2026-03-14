@@ -1,6 +1,7 @@
 //! Integration tests for Bun analysis pipeline.
 
 use std::path::Path;
+use warp_core::OverallVerdict;
 
 /// Test full analysis of the t5-bun-http-postgres fixture using --lang bun override.
 #[test]
@@ -40,6 +41,11 @@ fn test_analyze_bun_project_with_bunfig() {
     assert_eq!(report.language, "bun");
     assert_eq!(report.dependencies.len(), 2);
     assert!(report.blockers.is_empty(), "hono and zod should both pass");
+    assert!(
+        matches!(report.overall_verdict, OverallVerdict::Convertible),
+        "All-passing Bun project should be Convertible, got {:?}",
+        report.overall_verdict
+    );
 }
 
 /// Test that a failing dependency produces a blocker.
@@ -58,6 +64,12 @@ fn test_bun_failing_dep_produces_blocker() {
     assert_eq!(report.language, "bun");
     assert_eq!(report.blockers.len(), 1);
     assert_eq!(report.blockers[0].dependency, "marked");
+    // 1 dep, 1 blocker, 0 compatible → NotConvertible
+    assert!(
+        matches!(report.overall_verdict, OverallVerdict::NotConvertible),
+        "Fully-blocked Bun project should be NotConvertible, got {:?}",
+        report.overall_verdict
+    );
 }
 
 /// Test that exit code 1 logic works — blockers present means failure.
