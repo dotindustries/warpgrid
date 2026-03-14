@@ -1,0 +1,6 @@
+# Pinned commit SHA for Wasmtime source build with component-model-async support.
+# Branch: main (formerly wasip3-prototyping, now merged into main)
+# Date: 2026-03-13
+# Update this SHA to pull in newer async component model changes.
+# CI caches are keyed on this file — changing the SHA triggers a rebuild.
+cf1389857275c262a9157d157f4ea90b6b32c4c5
