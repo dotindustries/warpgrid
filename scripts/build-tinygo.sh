@@ -10,16 +10,19 @@
 #   --source       Build from source using system LLVM (requires LLVM 17-20)
 #   --build-llvm   Build from source, building LLVM first (slow, ~1hr)
 #   --download     Download pre-built release binary (default, fastest)
+#   --patched      Apply WarpGrid patches then build from source (requires LLVM)
 #
 # Prerequisites:
 #   --source:     Go 1.22+, LLVM 17-20 (Homebrew or apt), git
 #   --build-llvm: Go 1.22+, cmake, ninja, git
 #   --download:   curl or wget, tar
+#   --patched:    Go 1.22+, LLVM 17-20, git (applies patches/tinygo/*.patch)
 #
 # Usage:
 #   scripts/build-tinygo.sh                # Download pre-built binary (default)
 #   scripts/build-tinygo.sh --source       # Build from source with system LLVM
 #   scripts/build-tinygo.sh --build-llvm   # Build LLVM + TinyGo from source
+#   scripts/build-tinygo.sh --patched      # Apply patches then build from source
 #   scripts/build-tinygo.sh --verify       # Verify: compile hello-world, run in Wasmtime
 #   scripts/build-tinygo.sh --clean        # Remove build artifacts, rebuild
 #   scripts/build-tinygo.sh --help         # Show this help
@@ -70,6 +73,7 @@ usage() {
     echo "  --download     Download pre-built release binary (default, fastest)"
     echo "  --source       Build from source with system LLVM (requires LLVM 17-20)"
     echo "  --build-llvm   Build LLVM from source, then build TinyGo (slow, ~1hr)"
+    echo "  --patched      Apply WarpGrid patches, then build from source (LLVM required)"
     echo
     echo "Options:"
     echo "  --clean        Remove build artifacts before building"
@@ -441,7 +445,71 @@ verify_tinygo() {
         warn "Wasmtime not installed — skipping runtime verification"
     fi
 
+    # Verify build hash if available
+    if [ -f "${BUILD_DIR}/.build-hash" ]; then
+        verify_build_hash || warn "Build hash verification failed (binary may have changed)"
+    fi
+
     log "Verification complete."
+}
+
+# ─── Deterministic Build Hash ────────────────────────────────────────────────
+
+compute_build_hash() {
+    local binary="${BUILD_DIR}/bin/tinygo"
+    local hash_file="${BUILD_DIR}/.build-hash"
+
+    if [ ! -f "${binary}" ]; then
+        warn "Cannot compute build hash: binary not found at ${binary}"
+        return
+    fi
+
+    local hash
+    if command -v sha256sum &>/dev/null; then
+        hash="$(sha256sum "${binary}" | cut -d' ' -f1)"
+    elif command -v shasum &>/dev/null; then
+        hash="$(shasum -a 256 "${binary}" | cut -d' ' -f1)"
+    else
+        warn "Neither sha256sum nor shasum available — skipping build hash"
+        return
+    fi
+
+    echo "${hash}" > "${hash_file}"
+    log "Build hash (SHA-256): ${hash}"
+    log "Hash written to ${hash_file}"
+}
+
+verify_build_hash() {
+    local binary="${BUILD_DIR}/bin/tinygo"
+    local hash_file="${BUILD_DIR}/.build-hash"
+
+    if [ ! -f "${hash_file}" ]; then
+        warn "No build hash file found at ${hash_file}"
+        return 1
+    fi
+
+    local stored_hash
+    stored_hash="$(cat "${hash_file}")"
+
+    local current_hash
+    if command -v sha256sum &>/dev/null; then
+        current_hash="$(sha256sum "${binary}" | cut -d' ' -f1)"
+    elif command -v shasum &>/dev/null; then
+        current_hash="$(shasum -a 256 "${binary}" | cut -d' ' -f1)"
+    else
+        warn "Cannot verify: no sha256sum or shasum available"
+        return 1
+    fi
+
+    if [ "${stored_hash}" = "${current_hash}" ]; then
+        log "Build hash verified: ${current_hash}"
+        return 0
+    else
+        warn "Build hash mismatch!"
+        warn "  Stored:  ${stored_hash}"
+        warn "  Current: ${current_hash}"
+        return 1
+    fi
 }
 
 # ─── Stamp File (for idempotency) ───────────────────────────────────────────
@@ -472,6 +540,7 @@ main() {
             --download)   mode="download" ;;
             --source)     mode="source" ;;
             --build-llvm) mode="build-llvm" ;;
+            --patched)    mode="patched" ;;
             --clean)      do_clean=true ;;
             --verify)     do_verify=true ;;
             --help|-h)    usage ;;
@@ -483,7 +552,7 @@ main() {
     # Prerequisites
     check_git
 
-    if [ "${mode}" = "source" ] || [ "${mode}" = "build-llvm" ]; then
+    if [ "${mode}" = "source" ] || [ "${mode}" = "build-llvm" ] || [ "${mode}" = "patched" ]; then
         check_go_version
     fi
 
@@ -534,9 +603,32 @@ main() {
             build_llvm_from_source
             build_tinygo_from_source
             ;;
+        patched)
+            # Apply WarpGrid patches to the TinyGo source tree
+            log "Applying WarpGrid patches to TinyGo source..."
+            "${SCRIPT_DIR}/rebase-tinygo.sh" --apply --src "${VENDOR_DIR}"
+
+            if ! detect_llvm; then
+                echo
+                echo "No system LLVM installation found."
+                echo
+                echo "Options:"
+                echo "  macOS:  brew install llvm"
+                echo "  Ubuntu: apt install llvm-18-dev lld-18 libclang-18-dev"
+                echo "  Build:  scripts/build-tinygo.sh --build-llvm  (takes ~1 hour)"
+                echo
+                err "LLVM is required for --patched builds"
+            fi
+            build_tinygo_from_source
+            ;;
     esac
 
     write_stamp "${mode}"
+
+    # Deterministic build hash — compute SHA-256 for reproducibility tracking
+    if [ -x "${BUILD_DIR}/bin/tinygo" ]; then
+        compute_build_hash
+    fi
 
     if ${do_verify}; then
         verify_tinygo
