@@ -22,6 +22,7 @@ use warpgrid_host::dns::cache::DnsCacheConfig;
 use warpgrid_host::dns::host::DnsHost;
 use warpgrid_host::dns::{CachedDnsResolver, DnsResolver};
 use warpgrid_host::engine::{HostState, WarpGridEngine};
+use warpgrid_host::signals::host::SignalsHost;
 
 // ── Build helpers ─────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ fn test_host_state(
         filesystem: None,
         dns: Some(DnsHost::new(cached, runtime_handle)),
         db_proxy: None,
-        signal_queue: Vec::new(),
+        signals: SignalsHost::new(),
         threading_model: None,
         limiter: None,
     }
@@ -337,7 +338,7 @@ async fn test_wasm_ttl_caching_within_and_after_expiry() {
             filesystem: None,
             dns: Some(DnsHost::new(Arc::clone(cached), runtime_handle)),
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         };

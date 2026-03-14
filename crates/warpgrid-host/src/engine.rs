@@ -432,7 +432,7 @@ mod tests {
             filesystem: None,
             dns: None,
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         };
@@ -455,7 +455,7 @@ mod tests {
             filesystem: None,
             dns: None,
             db_proxy: None,
-            signal_queue: Vec::new(),
+            signals: SignalsHost::new(),
             threading_model: None,
             limiter: None,
         };
