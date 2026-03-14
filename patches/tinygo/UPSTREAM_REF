@@ -1,0 +1,8 @@
+# TinyGo upstream pin
+# This file records the exact upstream commit that the WarpGrid patch series applies to.
+# Update this file when rebasing patches onto a new upstream version.
+#
+# Repository: https://github.com/tinygo-org/tinygo
+# Last updated: 2026-03-14
+TAG=v0.40.0
+COMMIT=6970c80d34022fcf01e58942003671604dd05bf6
