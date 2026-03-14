@@ -36,7 +36,9 @@ pub async fn run_agent(
     info!(path = ?db_path, "local state store opened");
 
     // ── Wasm runtime ─────────────────────────────────────────────
-    let runtime = Arc::new(warp_runtime::Runtime::new()?);
+    let runtime = Arc::new(warp_runtime::Runtime::new(
+        warp_runtime::ShimConfig::default(),
+    )?);
     info!("wasm runtime initialized");
 
     // ── Local scheduler (Standalone mode for executing local work) ─

@@ -10,7 +10,6 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use crate::instance::{InstanceFactory, WasmInstance};
-use warpgrid_host::config::ShimConfig;
 
 /// Configuration for an instance pool.
 #[derive(Debug, Clone)]
@@ -21,8 +20,6 @@ pub struct PoolConfig {
     pub max_instances: u32,
     /// Memory limit per instance (bytes).
     pub memory_limit: usize,
-    /// Shim configuration for instances in this pool.
-    pub shim_config: ShimConfig,
 }
 
 impl Default for PoolConfig {
@@ -31,7 +28,6 @@ impl Default for PoolConfig {
             min_instances: 1,
             max_instances: 10,
             memory_limit: 64 * 1024 * 1024,
-            shim_config: ShimConfig::default(),
         }
     }
 }
@@ -69,7 +65,7 @@ impl InstancePool {
         for _ in 0..needed {
             let instance = self
                 .factory
-                .create_instance(&self.config.shim_config, self.config.memory_limit)
+                .create_instance(self.config.memory_limit)
                 .await?;
             self.available.lock().await.push_back(instance);
             *self.total_count.lock().await += 1;
@@ -102,7 +98,7 @@ impl InstancePool {
 
             let instance = self
                 .factory
-                .create_instance(&self.config.shim_config, self.config.memory_limit)
+                .create_instance(self.config.memory_limit)
                 .await?;
             debug!("created new instance for pool");
             Ok(Some(instance))
@@ -180,7 +176,6 @@ mod tests {
             min_instances: 2,
             max_instances: 50,
             memory_limit: 128 * 1024 * 1024,
-            shim_config: ShimConfig::default(),
         };
         assert_eq!(config.min_instances, 2);
         assert_eq!(config.max_instances, 50);

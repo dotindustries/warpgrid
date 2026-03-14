@@ -446,7 +446,7 @@ async fn fresh_instance(
         config.pool_config.recv_timeout,
         config.pool_config.connect_timeout,
     ));
-    let host_state = engine.build_host_state(&config, Some(factory));
+    let host_state = engine.build_host_state(Some(factory));
     let mut store = Store::new(engine.engine(), host_state);
 
     let instance = engine
@@ -464,7 +464,8 @@ async fn fresh_instance(
 #[tokio::test(flavor = "multi_thread")]
 async fn test_dns_resolves_db_host_through_service_registry() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -486,7 +487,8 @@ async fn test_dns_resolves_db_host_through_service_registry() {
 async fn test_get_users_returns_seed_users() {
     let server = QueryAwareMockPostgres::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -545,7 +547,8 @@ async fn test_get_users_returns_seed_users() {
 async fn test_post_user_returns_201_get_reflects_new_user() {
     let server = QueryAwareMockPostgres::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -583,7 +586,8 @@ async fn test_post_user_returns_201_get_reflects_new_user() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_invalid_db_host_returns_error() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -608,7 +612,8 @@ async fn test_invalid_db_host_returns_error() {
 async fn test_proxy_roundtrip_routes_through_database_proxy() {
     let server = QueryAwareMockPostgres::start_echo();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -646,7 +651,8 @@ async fn test_proxy_roundtrip_routes_through_database_proxy() {
 async fn test_full_lifecycle_dns_connect_query_close() {
     let server = QueryAwareMockPostgres::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     // Step 1: Verify DNS resolution works.

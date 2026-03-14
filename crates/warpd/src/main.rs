@@ -215,7 +215,9 @@ async fn run_standalone(
     );
 
     // Wasm runtime.
-    let runtime = Arc::new(warp_runtime::Runtime::new()?);
+    let runtime = Arc::new(warp_runtime::Runtime::new(
+        warp_runtime::ShimConfig::default(),
+    )?);
     info!("wasm runtime initialized");
 
     // Scheduler.

@@ -32,6 +32,7 @@ use wasmtime::Store;
 use warpgrid_host::db_proxy::host::DbProxyHost;
 use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::db_proxy::{ConnectionPoolManager, PoolConfig};
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 
 // ── Postgres protocol constants ─────────────────────────────────────
@@ -340,7 +341,7 @@ fn test_host_state(pool_manager: Arc<ConnectionPoolManager>) -> HostState {
 async fn test_t5_db_connect_and_handshake() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let factory = Arc::new(TcpConnectionFactory::plain(
@@ -388,7 +389,7 @@ async fn test_t5_db_connect_and_handshake() {
 async fn test_t5_full_lifecycle_select_users() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let factory = Arc::new(TcpConnectionFactory::plain(
@@ -479,7 +480,7 @@ async fn test_t5_full_lifecycle_select_users() {
 async fn test_t5_query_then_close() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let factory = Arc::new(TcpConnectionFactory::plain(
@@ -577,7 +578,7 @@ async fn test_t5_query_then_close() {
 async fn test_t5_connection_returned_to_pool_on_close() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let factory = Arc::new(TcpConnectionFactory::plain(
@@ -669,7 +670,7 @@ async fn test_t5_connection_returned_to_pool_on_close() {
 async fn test_t5_db_proxy_not_raw_tcp() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let factory = Arc::new(TcpConnectionFactory::plain(

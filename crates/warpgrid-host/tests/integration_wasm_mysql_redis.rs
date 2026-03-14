@@ -799,7 +799,7 @@ async fn fresh_instance(
         config.pool_config.recv_timeout,
         config.pool_config.connect_timeout,
     ));
-    let host_state = engine.build_host_state(&config, Some(factory));
+    let host_state = engine.build_host_state(Some(factory));
     let mut store = Store::new(engine.engine(), host_state);
 
     let instance = engine
@@ -897,7 +897,8 @@ async fn do_mysql_handshake(mgr: &ConnectionPoolManager, handle: u64) {
 async fn test_mysql_crud_via_wasm() {
     let mysql_server = StatefulMockMysqlServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -931,7 +932,8 @@ async fn test_mysql_crud_via_wasm() {
 async fn test_redis_crud_via_wasm() {
     let redis_server = StatefulMockRedisServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -962,7 +964,8 @@ async fn test_redis_crud_via_wasm() {
 async fn test_mysql_pool_reuse_via_wasm() {
     let mysql_server = StatefulMockMysqlServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -991,7 +994,8 @@ async fn test_mysql_pool_reuse_via_wasm() {
 async fn test_redis_pool_reuse_via_wasm() {
     let redis_server = StatefulMockRedisServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;

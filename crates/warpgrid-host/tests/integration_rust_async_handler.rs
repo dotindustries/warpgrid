@@ -27,6 +27,7 @@ use warpgrid_host::bindings::async_handler_bindings::WarpgridAsyncHandler;
 use warpgrid_host::dns::cache::DnsCacheConfig;
 use warpgrid_host::dns::host::DnsHost;
 use warpgrid_host::dns::{CachedDnsResolver, DnsResolver};
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
@@ -165,7 +166,7 @@ async fn rust_async_handler_builds_and_wit_validates() {
     );
 
     // Also verify it loads into a Wasmtime engine
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes);
     assert!(
         component.is_ok(),
@@ -178,7 +179,7 @@ async fn rust_async_handler_builds_and_wit_validates() {
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_processes_json_request() {
     let wasm_bytes = build_rust_async_handler_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -240,7 +241,7 @@ async fn rust_async_handler_processes_json_request() {
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_resolves_multi_address_hostname() {
     let wasm_bytes = build_rust_async_handler_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -289,7 +290,7 @@ async fn rust_async_handler_resolves_multi_address_hostname() {
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_returns_400_for_invalid_json() {
     let wasm_bytes = build_rust_async_handler_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -330,7 +331,7 @@ async fn rust_async_handler_returns_400_for_invalid_json() {
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_returns_502_for_dns_failure() {
     let wasm_bytes = build_rust_async_handler_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
