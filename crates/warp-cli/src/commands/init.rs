@@ -93,5 +93,8 @@ mod tests {
         assert!(target.join("src/handler.ts").exists());
         assert!(target.join("warp.toml").exists());
         assert!(target.join("README.md").exists());
+        assert!(target.join("wit/handler.wit").exists());
+        assert!(target.join("wit/deps/http/types.wit").exists());
+        assert!(target.join("wit/deps/shim/dns.wit").exists());
     }
 }
