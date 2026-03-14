@@ -1,0 +1,7 @@
+[[dependency]]
+ecosystem = "go"
+name = "github.com/redis/go-redis/v9"
+verdict = "shim_compatible"
+reason = "Uses TCP sockets via net.Dial for Redis RESP protocol. TLS code paths blocked by missing crypto/tls.Config.Clone() in TinyGo wasip2."
+shim = "database_proxy"
+notes = "Works transparently with WarpGrid database proxy shim (US-112). TLS termination handled at host level."
