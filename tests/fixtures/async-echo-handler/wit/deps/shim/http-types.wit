@@ -1,0 +1,21 @@
+package warpgrid:shim@0.1.0;
+
+interface http-types {
+    record http-header {
+        name: string,
+        value: string,
+    }
+
+    record http-request {
+        method: string,
+        uri: string,
+        headers: list<http-header>,
+        body: list<u8>,
+    }
+
+    record http-response {
+        status: u16,
+        headers: list<http-header>,
+        body: list<u8>,
+    }
+}

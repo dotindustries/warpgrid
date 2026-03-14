@@ -32,6 +32,7 @@ use wasmtime::component::Component;
 use wasmtime::Store;
 
 use warpgrid_host::bindings::warpgrid::shim::threading::ThreadingModel;
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::signals::host::SignalsHost;
 
@@ -144,7 +145,7 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for BufWriter {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_cooperative_declares_and_continues() {
     let wasm_bytes = build_threading_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
@@ -182,7 +183,7 @@ async fn test_cooperative_declares_and_continues() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_parallel_required_runs_cooperative_with_warning() {
     let wasm_bytes = build_threading_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
@@ -246,7 +247,7 @@ async fn test_parallel_required_runs_cooperative_with_warning() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_double_declaration_returns_error() {
     let wasm_bytes = build_threading_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
