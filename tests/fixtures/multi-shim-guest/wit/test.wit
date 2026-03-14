@@ -1,0 +1,25 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for ShimConfig integration tests.
+///
+/// Guest component imports all four shim interfaces and exports per-domain
+/// test functions. Used to verify that WarpGridEngine correctly enables/disables
+/// shims based on ShimConfig.
+world multi-shim-test {
+    import warpgrid:shim/filesystem@0.1.0;
+    import warpgrid:shim/dns@0.1.0;
+    import warpgrid:shim/signals@0.1.0;
+    import warpgrid:shim/threading@0.1.0;
+
+    /// Read /etc/resolv.conf via the filesystem shim and return its content.
+    export test-fs-read: func() -> result<string, string>;
+
+    /// Resolve a hostname via the DNS shim and return the first address.
+    export test-dns-resolve: func() -> result<string, string>;
+
+    /// Register interest in the terminate signal via the signals shim.
+    export test-signal-register: func() -> result<_, string>;
+
+    /// Declare cooperative threading model via the threading shim.
+    export test-threading-declare: func() -> result<_, string>;
+}
