@@ -24,7 +24,7 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
+use wasmtime::component::{Component, Val};
 use wasmtime::Store;
 
 use warpgrid_host::db_proxy::host::DbProxyHost;
@@ -756,4 +756,281 @@ async fn test_t3_connection_returned_to_pool_on_close() {
     assert_eq!(stats.total, 1, "pool should still have 1 connection");
     assert_eq!(stats.idle, 1, "connection should be idle (pooled)");
     assert_eq!(stats.active, 0, "no connections should be active");
+}
+
+// ── HTTP-level Integration Tests ──────────────────────────────────
+//
+// These tests validate the HTTP request/response cycle by calling
+// the guest's HTTP-level functions that simulate the Go handler:
+// connect to DB → execute query → format JSON response with status code.
+
+/// Helper: extract (status, content_type, body) from an http-response record Val.
+fn extract_http_response(results: &[Val]) -> (u16, String, String) {
+    match &results[0] {
+        Val::Result(r) => match r.as_ref() {
+            Ok(Some(val)) => extract_http_record(val),
+            Ok(None) => panic!("result Ok but no value"),
+            Err(Some(val)) => {
+                if let Val::String(s) = val.as_ref() {
+                    panic!("guest returned error: {s}");
+                } else {
+                    panic!("guest returned error: {:?}", val);
+                }
+            }
+            Err(None) => panic!("result Err but no value"),
+        },
+        other => panic!("expected Result val, got {:?}", other),
+    }
+}
+
+fn extract_http_record(val: &Val) -> (u16, String, String) {
+    if let Val::Record(fields) = val {
+        let field_vals: Vec<_> = fields.iter().collect();
+        let status = match &field_vals[0].1 {
+            Val::U16(v) => *v,
+            other => panic!("expected u16 for status, got {:?}", other),
+        };
+        let content_type = match &field_vals[1].1 {
+            Val::String(v) => v.to_string(),
+            other => panic!("expected string for content-type, got {:?}", other),
+        };
+        let body = match &field_vals[2].1 {
+            Val::String(v) => v.to_string(),
+            other => panic!("expected string for body, got {:?}", other),
+        };
+        (status, content_type, body)
+    } else {
+        panic!("expected Record val for http-response, got {:?}", val);
+    }
+}
+
+/// Test: GET /users returns HTTP 200 with JSON array of 5 seed users.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_t3_http_get_users_returns_200_json() {
+    let mock_pg = MockPostgresServer::start();
+    let wasm_bytes = build_guest_component();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
+    let component = Component::new(engine.engine(), wasm_bytes).unwrap();
+
+    let factory = Arc::new(TcpConnectionFactory::plain(
+        Duration::from_secs(5),
+        Duration::from_millis(2000),
+    ));
+    let pool_manager = Arc::new(ConnectionPoolManager::new(test_pool_config(), factory));
+    let host_state = test_host_state(pool_manager);
+    let mut store = Store::new(engine.engine(), host_state);
+
+    let instance = engine
+        .linker()
+        .instantiate_async(&mut store, &component)
+        .await
+        .unwrap();
+
+    let func = instance
+        .get_func(&mut store, "test-http-get-users")
+        .expect("test-http-get-users function should exist");
+
+    let params = [
+        Val::String("127.0.0.1".into()),
+        Val::U16(mock_pg.addr.port()),
+        Val::String("testdb".into()),
+        Val::String("testuser".into()),
+    ];
+    let mut results = vec![Val::Bool(false)]; // placeholder
+    func.call_async(&mut store, &params, &mut results)
+        .await
+        .unwrap();
+    func.post_return_async(&mut store).await.unwrap();
+
+    let (status, content_type, body) = extract_http_response(&results);
+
+    assert_eq!(status, 200, "GET /users should return HTTP 200");
+    assert_eq!(
+        content_type, "application/json",
+        "Content-Type should be application/json"
+    );
+
+    // Verify JSON body contains all 5 seed users
+    for (_, name, email) in &SEED_USERS {
+        assert!(
+            body.contains(name),
+            "response body should contain user '{name}'"
+        );
+        assert!(
+            body.contains(email),
+            "response body should contain email '{email}'"
+        );
+    }
+
+    // Verify it looks like a JSON array
+    assert!(body.starts_with('['), "body should be a JSON array");
+    assert!(body.ends_with(']'), "body should end with ]");
+}
+
+/// Test: POST /users returns HTTP 201 with inserted user as JSON.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_t3_http_post_user_returns_201_json() {
+    let mock_pg = MockPostgresServer::start();
+    let wasm_bytes = build_guest_component();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
+    let component = Component::new(engine.engine(), wasm_bytes).unwrap();
+
+    let factory = Arc::new(TcpConnectionFactory::plain(
+        Duration::from_secs(5),
+        Duration::from_millis(2000),
+    ));
+    let pool_manager = Arc::new(ConnectionPoolManager::new(test_pool_config(), factory));
+    let host_state = test_host_state(pool_manager);
+    let mut store = Store::new(engine.engine(), host_state);
+
+    let instance = engine
+        .linker()
+        .instantiate_async(&mut store, &component)
+        .await
+        .unwrap();
+
+    let func = instance
+        .get_func(&mut store, "test-http-post-user")
+        .expect("test-http-post-user function should exist");
+
+    let request_body = r#"{"name":"Test User","email":"test@example.com"}"#;
+    let params = [
+        Val::String("127.0.0.1".into()),
+        Val::U16(mock_pg.addr.port()),
+        Val::String("testdb".into()),
+        Val::String("testuser".into()),
+        Val::String(request_body.into()),
+    ];
+    let mut results = vec![Val::Bool(false)];
+    func.call_async(&mut store, &params, &mut results)
+        .await
+        .unwrap();
+    func.post_return_async(&mut store).await.unwrap();
+
+    let (status, content_type, body) = extract_http_response(&results);
+
+    assert_eq!(status, 201, "POST /users should return HTTP 201");
+    assert_eq!(
+        content_type, "application/json",
+        "Content-Type should be application/json"
+    );
+    assert!(
+        body.contains("Test User"),
+        "response should contain inserted user name"
+    );
+    assert!(
+        body.contains("test@example.com"),
+        "response should contain inserted user email"
+    );
+}
+
+/// Test: POST /users with malformed JSON returns HTTP 400.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_t3_http_post_malformed_json_returns_400() {
+    let wasm_bytes = build_guest_component();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
+    let component = Component::new(engine.engine(), wasm_bytes).unwrap();
+
+    // No mock Postgres needed — invalid JSON is rejected before DB access
+    let factory = Arc::new(TcpConnectionFactory::plain(
+        Duration::from_secs(5),
+        Duration::from_millis(2000),
+    ));
+    let pool_manager = Arc::new(ConnectionPoolManager::new(test_pool_config(), factory));
+    let host_state = test_host_state(pool_manager);
+    let mut store = Store::new(engine.engine(), host_state);
+
+    let instance = engine
+        .linker()
+        .instantiate_async(&mut store, &component)
+        .await
+        .unwrap();
+
+    let func = instance
+        .get_func(&mut store, "test-http-post-invalid-json")
+        .expect("test-http-post-invalid-json function should exist");
+
+    let params = [Val::String("not-json".into())];
+    let mut results = vec![Val::Bool(false)];
+    func.call_async(&mut store, &params, &mut results)
+        .await
+        .unwrap();
+    func.post_return_async(&mut store).await.unwrap();
+
+    let (status, content_type, body) = extract_http_response(&results);
+
+    assert_eq!(status, 400, "malformed JSON should return HTTP 400");
+    assert_eq!(
+        content_type, "application/json",
+        "Content-Type should be application/json"
+    );
+    assert!(
+        body.contains("Invalid JSON"),
+        "error body should contain 'Invalid JSON', got: {body}"
+    );
+}
+
+/// Test: GET /users when DB is unavailable returns HTTP 503.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_t3_http_db_unavailable_returns_503() {
+    let wasm_bytes = build_guest_component();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
+    let component = Component::new(engine.engine(), wasm_bytes).unwrap();
+
+    // Use a port with no server listening to simulate DB down
+    let factory = Arc::new(TcpConnectionFactory::plain(
+        Duration::from_secs(1),
+        Duration::from_millis(500),
+    ));
+    let pool_manager = Arc::new(ConnectionPoolManager::new(
+        PoolConfig {
+            max_size: 10,
+            idle_timeout: Duration::from_secs(300),
+            health_check_interval: Duration::from_secs(30),
+            connect_timeout: Duration::from_millis(500),
+            recv_timeout: Duration::from_secs(1),
+            use_tls: false,
+            verify_certificates: false,
+            drain_timeout: Duration::from_secs(5),
+        },
+        factory,
+    ));
+    let host_state = test_host_state(pool_manager);
+    let mut store = Store::new(engine.engine(), host_state);
+
+    let instance = engine
+        .linker()
+        .instantiate_async(&mut store, &component)
+        .await
+        .unwrap();
+
+    let func = instance
+        .get_func(&mut store, "test-http-db-unavailable")
+        .expect("test-http-db-unavailable function should exist");
+
+    // Port 1 is almost certainly not running a Postgres server
+    let params = [
+        Val::String("127.0.0.1".into()),
+        Val::U16(1),
+    ];
+    let mut results = vec![Val::Bool(false)];
+    func.call_async(&mut store, &params, &mut results)
+        .await
+        .unwrap();
+    func.post_return_async(&mut store).await.unwrap();
+
+    let (status, content_type, body) = extract_http_response(&results);
+
+    assert_eq!(
+        status, 503,
+        "DB unavailable should return HTTP 503, got {status}"
+    );
+    assert_eq!(
+        content_type, "application/json",
+        "Content-Type should be application/json"
+    );
+    assert!(
+        body.contains("Service Unavailable"),
+        "error body should contain 'Service Unavailable', got: {body}"
+    );
 }
