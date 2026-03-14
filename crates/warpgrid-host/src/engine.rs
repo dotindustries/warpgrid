@@ -770,4 +770,91 @@ mod tests {
             "db_proxy should be Some when enabled with a factory"
         );
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn build_host_state_with_async_factory_uses_async_path() {
+        use crate::db_proxy::async_io::{AsyncConnectionBackend, AsyncConnectionFactory, AsyncConnectFuture};
+        use crate::db_proxy::{ConnectionBackend, ConnectionFactory, PoolKey};
+        use std::future::Future;
+        use std::pin::Pin;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        #[derive(Debug)]
+        struct StubBackend;
+
+        impl ConnectionBackend for StubBackend {
+            fn send(&mut self, data: &[u8]) -> Result<usize, String> { Ok(data.len()) }
+            fn recv(&mut self, _max: usize) -> Result<Vec<u8>, String> { Ok(vec![]) }
+            fn ping(&mut self) -> bool { true }
+            fn close(&mut self) {}
+        }
+
+        struct CountingFactory(AtomicU64);
+        impl ConnectionFactory for CountingFactory {
+            fn connect(&self, _key: &PoolKey, _password: Option<&str>) -> Result<Box<dyn ConnectionBackend>, String> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Ok(Box::new(StubBackend))
+            }
+        }
+
+        #[derive(Debug)]
+        struct StubAsyncBackend;
+        impl AsyncConnectionBackend for StubAsyncBackend {
+            fn send_async<'a>(&'a mut self, data: &'a [u8]) -> Pin<Box<dyn Future<Output = Result<usize, String>> + Send + 'a>> {
+                Box::pin(async move { Ok(data.len()) })
+            }
+            fn recv_async<'a>(&'a mut self, max_bytes: usize) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
+                Box::pin(async move { Ok(vec![0x42; max_bytes.min(4)]) })
+            }
+            fn ping_async(&mut self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+                Box::pin(async { true })
+            }
+            fn close_async(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+                Box::pin(async {})
+            }
+        }
+
+        struct CountingAsyncFactory(AtomicU64);
+        impl AsyncConnectionFactory for CountingAsyncFactory {
+            fn connect_async<'a>(&'a self, _key: &'a PoolKey, _password: Option<&'a str>) -> AsyncConnectFuture<'a> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Box::pin(async { Ok(Box::new(StubAsyncBackend) as Box<dyn AsyncConnectionBackend>) })
+            }
+        }
+
+        let sync_factory = Arc::new(CountingFactory(AtomicU64::new(0)));
+        let async_factory = Arc::new(CountingAsyncFactory(AtomicU64::new(0)));
+
+        let config = ShimConfig {
+            database_proxy: true,
+            dns: false,
+            ..ShimConfig::default()
+        };
+        let engine = WarpGridEngine::new(config).unwrap();
+        let mut state = engine.build_host_state_with_async(
+            Some(sync_factory.clone()),
+            Some(async_factory.clone()),
+        );
+
+        assert!(state.db_proxy.is_some(), "db_proxy should be Some");
+
+        // Connect through HostState should use the async factory, not the sync one.
+        let connect_config = shim::database_proxy::ConnectConfig {
+            host: "db.local".into(),
+            port: 5432,
+            database: "mydb".into(),
+            user: "app".into(),
+            password: None,
+        };
+        let handle = shim::database_proxy::Host::connect(&mut state, connect_config).unwrap();
+        assert_eq!(async_factory.0.load(Ordering::Relaxed), 1, "async factory should be called");
+        assert_eq!(sync_factory.0.load(Ordering::Relaxed), 0, "sync factory should NOT be called");
+
+        // Send/recv should work through async path.
+        let sent = shim::database_proxy::Host::send(&mut state, handle, b"SELECT 1".to_vec()).unwrap();
+        assert_eq!(sent, 8);
+
+        let data = shim::database_proxy::Host::recv(&mut state, handle, 1024).unwrap();
+        assert!(!data.is_empty());
+    }
 }
