@@ -152,6 +152,65 @@ mod tests {
         assert!(result.unwrap_err().contains("already declared"));
     }
 
+    // ── Tracing verification ────────────────────────────────────────
+
+    /// AC #2: Declaring `ParallelRequired` emits a WARN-level tracing event
+    /// containing the expected fallback message.
+    ///
+    /// Uses `tracing_subscriber` with an in-memory writer to capture log
+    /// output and assert that the warning is present.
+    #[test]
+    fn declare_parallel_required_emits_warning() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+
+        /// A writer that appends to a shared buffer.
+        #[derive(Clone)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl<'a> MakeWriter<'a> for BufWriter {
+            type Writer = BufWriter;
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let writer = BufWriter(Arc::clone(&buffer));
+
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(writer)
+            .with_ansi(false)
+            .finish();
+
+        // Use `with_default` to scope the subscriber to this test only,
+        // avoiding interference with other tests running in parallel.
+        tracing::subscriber::with_default(subscriber, || {
+            let mut host = ThreadingHost::new();
+            host.declare_threading_model(ThreadingModel::ParallelRequired)
+                .unwrap();
+        });
+
+        let output = String::from_utf8(buffer.lock().unwrap().clone()).unwrap();
+        assert!(
+            output.contains("parallel threading requested but not supported"),
+            "expected warning message in tracing output, got: {output}"
+        );
+    }
+
+    // ── Immutability (double declaration) ───────────────────────────
+
     #[test]
     fn double_declaration_preserves_original_model() {
         let mut host = ThreadingHost::new();
