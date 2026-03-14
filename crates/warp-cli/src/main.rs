@@ -55,6 +55,10 @@ enum ConvertAction {
         /// Output format: text or json
         #[arg(short, long, default_value = "text")]
         format: String,
+        /// Override the project language (rust, go, typescript, bun).
+        /// If not specified, auto-detects from project files.
+        #[arg(short, long)]
+        lang: Option<String>,
     },
     /// Generate a warp.toml scaffold from analysis
     Init {
@@ -75,8 +79,12 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Convert { action } => match action {
-            ConvertAction::Analyze { path, format } => {
-                commands::convert::analyze(&path, &format)
+            ConvertAction::Analyze { path, format, lang } => {
+                let has_blockers = commands::convert::analyze(&path, &format, lang.as_deref())?;
+                if has_blockers {
+                    std::process::exit(1);
+                }
+                Ok(())
             }
             ConvertAction::Init { path } => {
                 commands::convert::init(&path)
