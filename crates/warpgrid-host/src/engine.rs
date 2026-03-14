@@ -658,4 +658,92 @@ mod tests {
         let result = engine.instantiate(b"not a valid wasm component").await;
         assert!(result.is_err());
     }
+
+    #[test]
+    fn disabled_db_proxy_host_methods_return_error() {
+        let mut state = HostState {
+            filesystem: None,
+            dns: None,
+            db_proxy: None,
+            signals: SignalsHost::new(),
+            threading_model: None,
+            limiter: None,
+        };
+
+        let connect_config = shim::database_proxy::ConnectConfig {
+            host: "db.local".to_string(),
+            port: 5432,
+            database: "mydb".to_string(),
+            user: "app".to_string(),
+            password: None,
+        };
+
+        let connect_err = shim::database_proxy::Host::connect(&mut state, connect_config);
+        assert!(connect_err.is_err());
+        assert!(connect_err.unwrap_err().contains("not enabled"));
+
+        let send_err = shim::database_proxy::Host::send(&mut state, 1, vec![0x00]);
+        assert!(send_err.is_err());
+        assert!(send_err.unwrap_err().contains("not enabled"));
+
+        let recv_err = shim::database_proxy::Host::recv(&mut state, 1, 1024);
+        assert!(recv_err.is_err());
+        assert!(recv_err.unwrap_err().contains("not enabled"));
+
+        let close_err = shim::database_proxy::Host::close(&mut state, 1);
+        assert!(close_err.is_err());
+        assert!(close_err.unwrap_err().contains("not enabled"));
+    }
+
+    #[test]
+    fn build_host_state_with_db_proxy_enabled_and_factory() {
+        use crate::db_proxy::{ConnectionBackend, ConnectionFactory, PoolKey};
+
+        #[derive(Debug)]
+        struct StubBackend;
+
+        impl ConnectionBackend for StubBackend {
+            fn send(&mut self, data: &[u8]) -> Result<usize, String> {
+                Ok(data.len())
+            }
+            fn recv(&mut self, _max: usize) -> Result<Vec<u8>, String> {
+                Ok(vec![])
+            }
+            fn ping(&mut self) -> bool {
+                true
+            }
+            fn close(&mut self) {}
+        }
+
+        struct StubFactory;
+
+        impl ConnectionFactory for StubFactory {
+            fn connect(
+                &self,
+                _key: &PoolKey,
+                _password: Option<&str>,
+            ) -> Result<Box<dyn ConnectionBackend>, String> {
+                Ok(Box::new(StubBackend))
+            }
+        }
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+
+        let config = ShimConfig {
+            database_proxy: true,
+            dns: false,
+            ..ShimConfig::default()
+        };
+        let engine = WarpGridEngine::new(config).unwrap();
+        let state = engine.build_host_state(Some(Arc::new(StubFactory)));
+
+        assert!(
+            state.db_proxy.is_some(),
+            "db_proxy should be Some when enabled with a factory"
+        );
+    }
 }
