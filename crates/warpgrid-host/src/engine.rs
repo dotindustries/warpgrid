@@ -21,7 +21,7 @@ use crate::bindings::async_handler_bindings::warpgrid::shim::http_types;
 use crate::bindings::warpgrid::shim;
 use crate::config::ShimConfig;
 use crate::db_proxy::host::DbProxyHost;
-use crate::db_proxy::{ConnectionFactory, ConnectionPoolManager};
+use crate::db_proxy::{AsyncConnectionFactory, ConnectionFactory, ConnectionPoolManager};
 use crate::dns::CachedDnsResolver;
 use crate::dns::host::DnsHost;
 use crate::dns::DnsResolver;
@@ -337,9 +337,26 @@ impl WarpGridEngine {
     ///
     /// This creates the per-instance shim implementations based on which
     /// shims are enabled in the config.
+    ///
+    /// When an `async_factory` is provided, the database proxy pool manager
+    /// uses async I/O for connections, releasing the internal mutex during
+    /// send/recv to enable concurrent access across connections.
     pub fn build_host_state(
         &self,
         connection_factory: Option<Arc<dyn ConnectionFactory>>,
+    ) -> HostState {
+        self.build_host_state_with_async(connection_factory, None)
+    }
+
+    /// Build a `HostState` with both sync and async connection factories.
+    ///
+    /// When `async_factory` is `Some`, the pool manager prefers async I/O
+    /// for new connections and uses `send_query`/`receive_results` which
+    /// release the mutex during I/O operations.
+    pub fn build_host_state_with_async(
+        &self,
+        connection_factory: Option<Arc<dyn ConnectionFactory>>,
+        async_factory: Option<Arc<dyn AsyncConnectionFactory>>,
     ) -> HostState {
         let config = &self.config;
 
@@ -369,8 +386,15 @@ impl WarpGridEngine {
 
         let db_proxy = if config.database_proxy {
             if let Some(factory) = connection_factory {
-                let pool_manager =
-                    Arc::new(ConnectionPoolManager::new(config.pool_config.clone(), factory));
+                let pool_manager = if let Some(async_f) = async_factory {
+                    Arc::new(ConnectionPoolManager::new_with_async(
+                        config.pool_config.clone(),
+                        factory,
+                        async_f,
+                    ))
+                } else {
+                    Arc::new(ConnectionPoolManager::new(config.pool_config.clone(), factory))
+                };
                 let runtime_handle = tokio::runtime::Handle::current();
                 Some(DbProxyHost::new(pool_manager, runtime_handle))
             } else {
