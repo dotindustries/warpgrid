@@ -205,5 +205,95 @@
       "workaround": null,
       "notes": "Pure JavaScript schema validation, fully compatible"
     }
+  ],
+  "coreApis": [
+    {
+      "name": "Buffer",
+      "available": "pass",
+      "functionalLevel": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Polyfilled by StarlingMonkey; Buffer.from(), Buffer.alloc(), and conversions work"
+    },
+    {
+      "name": "TextEncoder/TextDecoder",
+      "available": "pass",
+      "functionalLevel": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Web standard API, natively available in StarlingMonkey"
+    },
+    {
+      "name": "crypto",
+      "available": "partial",
+      "functionalLevel": "partial",
+      "blockingIssue": "No crypto.createHash or crypto.createHmac (Node.js-specific APIs)",
+      "workaround": "Use SubtleCrypto (crypto.subtle.digest, crypto.subtle.sign) for hashing and HMAC",
+      "notes": "crypto.getRandomValues() and SubtleCrypto available; Node.js crypto module APIs missing"
+    },
+    {
+      "name": "URL",
+      "available": "pass",
+      "functionalLevel": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "Web standard API, natively available in StarlingMonkey"
+    },
+    {
+      "name": "console",
+      "available": "pass",
+      "functionalLevel": "pass",
+      "blockingIssue": null,
+      "workaround": null,
+      "notes": "console.log/warn/error available in StarlingMonkey"
+    },
+    {
+      "name": "setTimeout",
+      "available": "partial",
+      "functionalLevel": "partial",
+      "blockingIssue": "No true async event loop in WASI single-request execution model",
+      "workaround": "Use synchronous alternatives or structure code for request/response lifecycle",
+      "notes": "setTimeout exists but WASI request model has no persistent event loop between requests"
+    },
+    {
+      "name": "process.env",
+      "available": "fail",
+      "functionalLevel": "fail",
+      "blockingIssue": "process global not available in stock ComponentizeJS",
+      "workaround": null,
+      "notes": "No process.env access; environment variables require WASI-specific polyfill"
+    },
+    {
+      "name": "fs",
+      "available": "fail",
+      "functionalLevel": "fail",
+      "blockingIssue": "No filesystem access in stock ComponentizeJS/StarlingMonkey",
+      "workaround": null,
+      "notes": "fs.readFileSync, fs.writeFileSync, and all fs APIs unavailable"
+    },
+    {
+      "name": "net",
+      "available": "fail",
+      "functionalLevel": "fail",
+      "blockingIssue": "No TCP socket API in WASI/StarlingMonkey",
+      "workaround": null,
+      "notes": "net.Socket, net.createConnection unavailable; blocks pg, ioredis, and other TCP clients"
+    },
+    {
+      "name": "dns",
+      "available": "fail",
+      "functionalLevel": "fail",
+      "blockingIssue": "No DNS resolution API in WASI/StarlingMonkey",
+      "workaround": null,
+      "notes": "dns.resolve, dns.lookup unavailable; blocks hostname-based connections"
+    },
+    {
+      "name": "http",
+      "available": "fail",
+      "functionalLevel": "fail",
+      "blockingIssue": "No http.createServer or http.request in WASI/StarlingMonkey",
+      "workaround": "Use native fetch() for outbound HTTP; use hono for request handling",
+      "notes": "Node.js http module server/client model incompatible with WASI request/response model"
+    }
   ]
 }
