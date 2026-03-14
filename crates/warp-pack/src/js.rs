@@ -689,6 +689,91 @@ addEventListener("fetch", (event) => {
     }
 
     #[test]
+    fn test_detect_shim_usage_filesystem() {
+        let source = r#"
+const config = await warpgrid.fs.readFile("/config.json", "utf-8");
+"#;
+        let usage = detect_shim_usage(source);
+        assert!(usage.uses_filesystem);
+        assert!(!usage.uses_database);
+        assert!(!usage.uses_dns);
+    }
+
+    #[test]
+    fn test_generate_prelude_always_includes_filesystem_shim() {
+        // Filesystem shim is unconditionally injected (unlike db/dns which are configurable).
+        // Verify it survives even when db and dns are both disabled.
+        let mut config = WarpConfig::scaffold("test", "js", "src/handler.js");
+        config.shims = Some(warp_core::config::ShimsConfig {
+            database_proxy: Some(false),
+            dns: Some(false),
+            timezone: None,
+            dev_urandom: None,
+            signals: None,
+            threading: None,
+        });
+        let prelude = generate_prelude(&config);
+
+        assert!(
+            prelude.contains("warpgrid:shim/filesystem"),
+            "Filesystem shim must always be injected"
+        );
+        assert!(
+            prelude.contains("warpgrid.fs"),
+            "warpgrid.fs global must always be present"
+        );
+        // Confirm db/dns are indeed absent
+        assert!(!prelude.contains("warpgrid:shim/database-proxy"));
+        assert!(!prelude.contains("warpgrid:shim/dns"));
+    }
+
+    #[test]
+    fn test_pack_js_missing_build_section() {
+        let config = WarpConfig {
+            package: warp_core::config::PackageConfig {
+                name: "test".to_string(),
+                version: "0.1.0".to_string(),
+                description: None,
+            },
+            build: None,
+            runtime: None,
+            capabilities: None,
+            health: None,
+            shims: None,
+            env: None,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let result = pack_js(dir.path(), &config);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("[build]"),
+            "Expected missing build section error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_find_jco_project_local_node_modules() {
+        let dir = TempDir::new().unwrap();
+        let jco_path = dir.path().join("node_modules").join(".bin").join("jco");
+        fs::create_dir_all(jco_path.parent().unwrap()).unwrap();
+        fs::write(&jco_path, "#!/bin/sh\n").unwrap();
+
+        // Make it executable (required for is_file() to work on some systems,
+        // though is_file() only checks existence, not permissions)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&jco_path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let result = find_jco(dir.path());
+        assert!(result.is_ok(), "Should find jco in project-local node_modules");
+        assert_eq!(result.unwrap(), jco_path);
+    }
+
+    #[test]
     fn test_find_sdk_root_from_subdir() {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
@@ -767,6 +852,79 @@ entry = "handler.js"
             Err(e) => {
                 // If jco is not installed, the error should be actionable
                 let msg: String = e.to_string();
+                assert!(
+                    msg.contains("jco") || msg.contains("ComponentizeJS"),
+                    "Unexpected error: {msg}"
+                );
+            }
+        }
+    }
+
+    // Integration test: full pipeline for warpgrid handler using database, dns, fs shims
+    // Run with: cargo test -p warp-pack -- --ignored test_pack_js_warpgrid_handler
+    #[test]
+    #[ignore]
+    fn test_pack_js_warpgrid_handler() {
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+
+        let test_fixture = project_root
+            .join("tests")
+            .join("fixtures")
+            .join("js-warpgrid-handler");
+        if !test_fixture.exists() {
+            eprintln!(
+                "Test fixture not found at {}",
+                test_fixture.display()
+            );
+            return;
+        }
+
+        // Create a temp project copying the fixture contents
+        let dir = TempDir::new().unwrap();
+        let project = dir.path();
+
+        // Copy warp.toml
+        fs::copy(test_fixture.join("warp.toml"), project.join("warp.toml")).unwrap();
+
+        // Copy handler source
+        let src_dir = project.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::copy(
+            test_fixture.join("src").join("handler.js"),
+            src_dir.join("handler.js"),
+        )
+        .unwrap();
+
+        // Copy WIT directory
+        let wit_src = test_fixture.join("wit");
+        let wit_dst = project.join("wit");
+        copy_dir_recursive(&wit_src, &wit_dst).unwrap();
+
+        let config = WarpConfig::from_file(&project.join("warp.toml")).unwrap();
+        let result = pack_js(project, &config);
+
+        match result {
+            Ok(pack_result) => {
+                let output = Path::new(&pack_result.output_path);
+                assert!(output.exists(), "handler.wasm should exist");
+                assert!(
+                    output.file_name().unwrap() == "handler.wasm",
+                    "Output should be handler.wasm"
+                );
+                assert!(pack_result.size_bytes > 0, "Wasm should be non-empty");
+                assert_eq!(
+                    pack_result.sha256.len(),
+                    64,
+                    "SHA256 hex digest should be 64 chars"
+                );
+            }
+            Err(e) => {
+                // If jco is not installed, error should be actionable
+                let msg = e.to_string();
                 assert!(
                     msg.contains("jco") || msg.contains("ComponentizeJS"),
                     "Unexpected error: {msg}"

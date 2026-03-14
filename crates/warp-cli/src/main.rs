@@ -23,16 +23,16 @@ enum Commands {
     },
     /// Package a project as a Wasm component.
     ///
-    /// Supported languages: rust, go, typescript, bun.
+    /// Supported languages: rust, go, js, typescript, bun.
     ///
     /// Language is read from [build].lang in warp.toml, or auto-detected
     /// from project marker files (bunfig.toml → bun, Cargo.toml → rust,
-    /// go.mod → go, package.json → typescript). Use --lang to override.
+    /// go.mod → go, package.json → typescript/js). Use --lang to override.
     Pack {
         /// Project directory (default: current directory)
         #[arg(short, long, default_value = ".")]
         path: String,
-        /// Override the build language (rust, go, typescript, bun).
+        /// Override the build language (rust, go, js, typescript, bun).
         /// If not specified, reads from warp.toml or auto-detects.
         #[arg(short, long)]
         lang: Option<String>,

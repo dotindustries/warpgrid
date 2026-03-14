@@ -10,9 +10,10 @@ use tracing::info;
 use warp_core::WarpConfig;
 
 mod bun;
+mod js;
 
 /// Supported languages for `warp pack`.
-pub const SUPPORTED_LANGUAGES: &[&str] = &["rust", "go", "typescript", "bun"];
+pub const SUPPORTED_LANGUAGES: &[&str] = &["rust", "go", "js", "typescript", "bun"];
 
 #[derive(Debug)]
 pub struct PackResult {
@@ -46,7 +47,7 @@ pub fn pack_with_lang(project_path: &Path, lang_override: Option<&str>) -> Resul
     match lang.as_str() {
         "rust" => pack_rust(project_path, &config),
         "go" => pack_go(project_path, &config),
-        "typescript" => pack_typescript(project_path, &config),
+        "js" | "typescript" => js::pack_js(project_path, &config),
         "bun" => bun::pack_bun(project_path, &config),
         _ => bail!(
             "Unsupported language: '{lang}'. Supported: {}",
@@ -113,11 +114,6 @@ fn pack_go(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
     bail!("Go packaging not yet implemented. Requires TinyGo.")
 }
 
-fn pack_typescript(_path: &Path, _config: &WarpConfig) -> Result<PackResult> {
-    // TODO: Invoke ComponentizeJS
-    bail!("TypeScript packaging not yet implemented. Requires ComponentizeJS.")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +147,14 @@ mod tests {
         assert!(
             SUPPORTED_LANGUAGES.contains(&"typescript"),
             "typescript should be in SUPPORTED_LANGUAGES"
+        );
+    }
+
+    #[test]
+    fn supported_languages_includes_js() {
+        assert!(
+            SUPPORTED_LANGUAGES.contains(&"js"),
+            "js should be in SUPPORTED_LANGUAGES"
         );
     }
 
@@ -281,6 +285,7 @@ mod tests {
         assert!(err.contains("bun"), "Should list bun in error: {err}");
         assert!(err.contains("rust"), "Should list rust in error: {err}");
         assert!(err.contains("go"), "Should list go in error: {err}");
+        assert!(err.contains("js"), "Should list js in error: {err}");
         assert!(err.contains("typescript"), "Should list typescript in error: {err}");
     }
 }
