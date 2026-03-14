@@ -6,8 +6,8 @@
 
 - [x] Verify existing unit tests pass (`npm run typecheck` and `npm test` — 44/44 pass)
 - [x] Write E2E integration test (`test/e2e.test.ts`) — 17 tests covering full handler→client→wire pipeline with MockTransport
-- [ ] Audit handler.js routing against handler-logic.ts — ensure both handle same routes/status codes/error formats
-- [ ] Add missing error handling to handler.js if needed (400 for missing body, invalid JSON, empty name; 500 for DB errors)
+- [x] Audit handler.js routing against handler-logic.ts — aligned 405 edge case for consistency
+- [x] Add missing error handling to handler.js if needed — all error cases already present, no changes needed
 - [ ] Verify TypeScript type checking passes after changes
 - [ ] Extend Rust E2E integration test (`integration_t4_ts_http_postgres.rs`) — HTTP-level tests using componentized TypeScript handler
 - [ ] Final validation — all acceptance criteria met
