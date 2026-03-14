@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -211,5 +212,76 @@ func TestErrorDetailsPresent(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestPassStatusHasNoErrors verifies that packages with "pass" status
+// do not carry spurious error data.
+func TestPassStatusHasNoErrors(t *testing.T) {
+	report := loadCompatJSON(t)
+
+	for _, pkg := range report.Packages {
+		if pkg.CompileStatus == "pass" {
+			t.Run(pkg.Name, func(t *testing.T) {
+				if len(pkg.Errors) != 0 {
+					t.Errorf("package %q has status 'pass' but non-empty errors: %v", pkg.Name, pkg.Errors)
+				}
+				if pkg.ErrorCount != 0 {
+					t.Errorf("package %q has status 'pass' but errorCount = %d", pkg.Name, pkg.ErrorCount)
+				}
+			})
+		}
+	}
+}
+
+// TestNoDuplicatePackages verifies that each import path appears exactly once
+// in the compatibility database.
+func TestNoDuplicatePackages(t *testing.T) {
+	report := loadCompatJSON(t)
+
+	seen := make(map[string]bool)
+	for _, pkg := range report.Packages {
+		if seen[pkg.ImportPath] {
+			t.Errorf("duplicate package entry for %q", pkg.ImportPath)
+		}
+		seen[pkg.ImportPath] = true
+	}
+}
+
+// TestMarkdownTableExists verifies the markdown compatibility table was
+// generated and contains expected structural elements.
+func TestMarkdownTableExists(t *testing.T) {
+	tablePath := filepath.Join(projectRoot(t), "compat-db", "tinygo-stdlib-compat-table.md")
+	data, err := os.ReadFile(tablePath)
+	if err != nil {
+		t.Fatalf("cannot read compat-db/tinygo-stdlib-compat-table.md: %v", err)
+	}
+
+	content := string(data)
+
+	// Must contain a markdown table header
+	if !strings.Contains(content, "| Package |") {
+		t.Error("markdown table missing header row")
+	}
+
+	// Must reference all 20 packages from the JSON
+	report := loadCompatJSON(t)
+	for _, pkg := range report.Packages {
+		if !strings.Contains(content, pkg.ImportPath) {
+			t.Errorf("markdown table missing package %q", pkg.ImportPath)
+		}
+	}
+}
+
+// TestAuditScriptExists verifies the audit script is present and executable.
+func TestAuditScriptExists(t *testing.T) {
+	scriptPath := filepath.Join(projectRoot(t), "scripts", "audit-tinygo-stdlib.sh")
+	info, err := os.Stat(scriptPath)
+	if err != nil {
+		t.Fatalf("audit script not found: %v", err)
+	}
+	// Check executable permission (owner execute bit)
+	if info.Mode()&0100 == 0 {
+		t.Error("audit script is not executable")
 	}
 }
