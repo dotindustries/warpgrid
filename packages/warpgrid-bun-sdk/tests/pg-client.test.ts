@@ -896,6 +896,161 @@ describe("Client (pg.Client-compatible)", () => {
     });
   });
 
+  // ── Auth edge cases ────────────────────────────────────────────
+
+  describe("auth edge cases", () => {
+    test("cleartext auth without password throws WarpGridDatabaseError", async () => {
+      const { Client } = await loadClient();
+      const noPasswordShim = new MockDatabaseShim();
+
+      const origConnect = noPasswordShim.connect.bind(noPasswordShim);
+      noPasswordShim.connect = (config) => {
+        const handle = origConnect(config);
+        noPasswordShim.recvQueues.set(handle, [buildAuthCleartext()]);
+        return handle;
+      };
+
+      const client = new Client({
+        user: "testuser",
+        // no password
+        mode: "wasm",
+        shim: noPasswordShim,
+      });
+
+      try {
+        await client.connect();
+        expect(true).toBe(false);
+      } catch (err) {
+        expect(err).toBeInstanceOf(WarpGridDatabaseError);
+        expect((err as WarpGridDatabaseError).message).toContain("password");
+      }
+    });
+
+    test("MD5 auth without password throws WarpGridDatabaseError", async () => {
+      const { Client } = await loadClient();
+      const noPasswordShim = new MockDatabaseShim();
+      const salt = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+
+      const origConnect = noPasswordShim.connect.bind(noPasswordShim);
+      noPasswordShim.connect = (config) => {
+        const handle = origConnect(config);
+        noPasswordShim.recvQueues.set(handle, [buildAuthMD5(salt)]);
+        return handle;
+      };
+
+      const client = new Client({
+        user: "testuser",
+        // no password
+        mode: "wasm",
+        shim: noPasswordShim,
+      });
+
+      try {
+        await client.connect();
+        expect(true).toBe(false);
+      } catch (err) {
+        expect(err).toBeInstanceOf(WarpGridDatabaseError);
+        expect((err as WarpGridDatabaseError).message).toContain("MD5");
+      }
+    });
+
+    test("unsupported auth method throws WarpGridDatabaseError", async () => {
+      const { Client } = await loadClient();
+      const unsupportedShim = new MockDatabaseShim();
+
+      const origConnect = unsupportedShim.connect.bind(unsupportedShim);
+      unsupportedShim.connect = (config) => {
+        const handle = origConnect(config);
+        // Auth type 10 = SASL (not supported by wasm client)
+        const buf = new ArrayBuffer(4);
+        new DataView(buf).setInt32(0, 10);
+        unsupportedShim.recvQueues.set(handle, [
+          buildBackendMessage(MSG.AUTH, new Uint8Array(buf)),
+        ]);
+        return handle;
+      };
+
+      const client = new Client({
+        user: "testuser",
+        password: "secret",
+        mode: "wasm",
+        shim: unsupportedShim,
+      });
+
+      try {
+        await client.connect();
+        expect(true).toBe(false);
+      } catch (err) {
+        expect(err).toBeInstanceOf(WarpGridDatabaseError);
+        expect((err as WarpGridDatabaseError).message).toContain(
+          "Unsupported authentication",
+        );
+      }
+    });
+
+    test("MD5 password message produces correct hash", async () => {
+      const { Client } = await loadClient();
+      const md5Shim = new MockDatabaseShim();
+      const salt = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+
+      const origConnect = md5Shim.connect.bind(md5Shim);
+      md5Shim.connect = (config) => {
+        const handle = origConnect(config);
+        md5Shim.recvQueues.set(handle, [buildAuthMD5(salt)]);
+        return handle;
+      };
+
+      md5Shim.send = (handle: number, data: Uint8Array): number => {
+        md5Shim.sendLog.push({ handle, data: new Uint8Array(data) });
+        if (data.length > 0 && data[0] === MSG.PASSWORD) {
+          md5Shim.queueResponse(handle, buildPostAuthResponse());
+        }
+        return data.length;
+      };
+
+      const client = new Client({
+        user: "testuser",
+        password: "testpass",
+        mode: "wasm",
+        shim: md5Shim,
+      });
+
+      await client.connect();
+
+      // Extract the password message payload
+      const pwMsg = md5Shim.sendLog.find(
+        (log) => log.data[0] === MSG.PASSWORD,
+      )!;
+      expect(pwMsg).toBeDefined();
+
+      // Decode the password string from the message (skip type byte + 4 length bytes)
+      const passwordBytes = pwMsg.data.slice(5);
+      const passwordStr = new TextDecoder().decode(
+        passwordBytes.slice(0, passwordBytes.indexOf(0)),
+      );
+
+      // Verify it starts with "md5" and is 35 chars (md5 + 32 hex digits)
+      expect(passwordStr).toStartWith("md5");
+      expect(passwordStr).toHaveLength(35);
+
+      // Compute expected: md5(md5(password + user) + salt)
+      const hasher1 = new Bun.CryptoHasher("md5");
+      hasher1.update(new TextEncoder().encode("testpass" + "testuser"));
+      const inner = hasher1.digest("hex") as string;
+
+      const outerInput = new Uint8Array(inner.length + salt.length);
+      outerInput.set(new TextEncoder().encode(inner));
+      outerInput.set(salt, inner.length);
+      const hasher2 = new Bun.CryptoHasher("md5");
+      hasher2.update(outerInput);
+      const expected = "md5" + (hasher2.digest("hex") as string);
+
+      expect(passwordStr).toBe(expected);
+
+      await client.end();
+    });
+  });
+
   // ── Mode auto-detection ────────────────────────────────────────
 
   describe("mode auto-detection", () => {

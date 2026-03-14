@@ -35,6 +35,28 @@ export class WarpGridDnsError extends WarpGridError {
   }
 }
 
+/** Thrown when a filesystem path is not found. */
+export class WarpGridFsNotFoundError extends WarpGridError {
+  readonly path: string;
+
+  constructor(path: string, options?: { cause?: unknown }) {
+    super(`File not found: ${path}`, options);
+    this.name = "WarpGridFsNotFoundError";
+    this.path = path;
+  }
+}
+
+/** Thrown when a filesystem operation is denied due to permissions. */
+export class WarpGridFsPermissionError extends WarpGridError {
+  readonly path: string;
+
+  constructor(path: string, options?: { cause?: unknown }) {
+    super(`Path traversal denied: ${path}`, options);
+    this.name = "WarpGridFsPermissionError";
+    this.path = path;
+  }
+}
+
 /** Thrown when handler validation fails (missing or invalid `fetch` method). */
 export class WarpGridHandlerValidationError extends WarpGridError {
   constructor(message: string) {
