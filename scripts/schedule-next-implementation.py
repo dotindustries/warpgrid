@@ -352,6 +352,7 @@ def schedule_implementation(gh_issue_number, gh_issue_title, beads_id,
         f"Beads ID: {beads_id}\n\n"
         f"Please read the full issue description from the URL above and "
         f"implement all acceptance criteria."
+        f"Make sure that the PR created at the end of the session will reference the originating github issue #{gh_issue_number}, so we can let github auto-close the issue when the PR is merged."
     )
 
     print(f"  Scheduling implementation for #{gh_issue_number}: {gh_issue_title}")
