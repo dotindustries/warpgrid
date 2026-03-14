@@ -8,9 +8,12 @@
 //   - /method  — returns the HTTP method in the response body
 //   - /stream  — reads body via io.Reader in chunks, reports byte count
 //
-// Build: tinygo build -target=wasip2 -o go-http-roundtrip.wasm .
+// Build: tinygo build -target=wasi -buildmode=c-shared -o go-http-roundtrip.wasm .
 // The WASI export bridge in wghttp.export_wasi.go provides the
 // warpgrid-handle-request core module export.
+// Reactor mode (-buildmode=c-shared) is required so that //go:wasmexport
+// functions can be called after _initialize without hitting TinyGo's
+// "function called after main.main returned" guard.
 package main
 
 import (
@@ -23,7 +26,11 @@ import (
 	wghttp "github.com/anthropics/warpgrid/packages/warpgrid-go/http"
 )
 
-func main() {
+// init registers HTTP handlers during module initialization.
+// This runs during _initialize (reactor mode) so that //go:wasmexport
+// functions can be called afterward without hitting TinyGo's
+// "function called after main.main returned" guard.
+func init() {
 	wghttp.HandleFunc("/echo", echoHandler)
 	wghttp.HandleFunc("/status", statusHandler)
 	wghttp.HandleFunc("/headers", headersHandler)
@@ -33,6 +40,12 @@ func main() {
 	// ListenAndServe registers the handler with WarpGrid — it does not
 	// open a socket. The addr is informational only.
 	wghttp.ListenAndServe(":0", nil)
+}
+
+func main() {
+	// main is intentionally empty. Handler registration happens in init()
+	// so that the module works correctly in reactor mode (-buildmode=c-shared)
+	// where _initialize runs init() functions but not main().
 }
 
 // echoHandler echoes the request body back with the same Content-Type.
