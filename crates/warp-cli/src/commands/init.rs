@@ -67,6 +67,9 @@ mod tests {
         assert!(target.join("src/lib.rs").exists());
         assert!(target.join("warp.toml").exists());
         assert!(target.join("README.md").exists());
+        assert!(target.join("wit/world.wit").exists());
+        assert!(target.join("wit/async-handler.wit").exists());
+        assert!(target.join("wit/http-types.wit").exists());
     }
 
     #[test]
@@ -76,6 +79,7 @@ mod tests {
         crate::templates::scaffold("async-go", &target).unwrap();
         assert!(target.join("go.mod").exists());
         assert!(target.join("main.go").exists());
+        assert!(target.join("main_test.go").exists());
         assert!(target.join("warp.toml").exists());
         assert!(target.join("README.md").exists());
     }
