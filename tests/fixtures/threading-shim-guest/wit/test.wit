@@ -1,0 +1,15 @@
+package warpgrid:test@0.1.0;
+
+/// Test world for threading shim integration tests.
+///
+/// Guest component imports the threading shim and exports test functions
+/// that exercise threading model declaration through the WIT boundary.
+world threading-shim-test {
+    import warpgrid:shim/threading@0.1.0;
+
+    /// Declare cooperative threading model.
+    export declare-cooperative: func() -> result<_, string>;
+
+    /// Declare parallel-required threading model.
+    export declare-parallel-required: func() -> result<_, string>;
+}
