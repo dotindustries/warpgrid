@@ -749,4 +749,20 @@ mod tests {
     fn canonicalize_trailing_slash() {
         assert_eq!(canonicalize_path("/etc/"), "/etc");
     }
+
+    // ── US-208 Edge Cases ───────────────────────────────────────────
+
+    #[test]
+    fn repeated_lookup_idempotency() {
+        let map = VirtualFileMap::with_defaults();
+        let first = map.lookup("/etc/resolv.conf");
+
+        for i in 0..100 {
+            let result = map.lookup("/etc/resolv.conf");
+            assert_eq!(
+                result, first,
+                "lookup #{i} returned different content — immutability violated"
+            );
+        }
+    }
 }
