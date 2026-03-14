@@ -6,7 +6,6 @@
 use wasmtime::component::{Component, Instance};
 use wasmtime::{Engine, StoreLimitsBuilder, Store};
 
-use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 
 /// A loaded and compiled Wasm component, ready to be instantiated.
@@ -61,17 +60,17 @@ pub struct WasmInstance {
 }
 
 impl WasmInstance {
-    /// Instantiate a compiled module with the given shim config.
+    /// Instantiate a compiled module.
     ///
     /// This creates a new `Store` with a fresh `HostState` and `StoreLimits`,
     /// then instantiates the component using the engine's pre-configured linker.
+    /// The shim configuration is taken from the engine's stored config.
     pub async fn new(
         warpgrid_engine: &WarpGridEngine,
         module: &CompiledModule,
-        shim_config: &ShimConfig,
         memory_limit: usize,
     ) -> anyhow::Result<Self> {
-        let mut host_state = warpgrid_engine.build_host_state(shim_config, None);
+        let mut host_state = warpgrid_engine.build_host_state(None);
 
         // Configure memory and table limits via wasmtime's built-in StoreLimits.
         let limits = StoreLimitsBuilder::new()
@@ -132,13 +131,14 @@ impl InstanceFactory {
         Self { engine, module }
     }
 
-    /// Create a new instance with the given config.
+    /// Create a new instance with the given memory limit.
+    ///
+    /// The shim configuration is taken from the engine's stored config.
     pub async fn create_instance(
         &self,
-        shim_config: &ShimConfig,
         memory_limit: usize,
     ) -> anyhow::Result<WasmInstance> {
-        WasmInstance::new(&self.engine, &self.module, shim_config, memory_limit).await
+        WasmInstance::new(&self.engine, &self.module, memory_limit).await
     }
 
     /// The compiled module this factory produces instances of.
@@ -150,12 +150,13 @@ impl InstanceFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use warpgrid_host::config::ShimConfig;
 
     #[test]
     fn engine_creates_successfully() {
-        // WarpGridEngine::new() configures async + component-model.
+        // WarpGridEngine::new(config) configures async + component-model.
         // If it returns Ok, the engine is properly configured.
-        let engine = WarpGridEngine::new();
+        let engine = WarpGridEngine::new(ShimConfig::default());
         assert!(engine.is_ok());
     }
 

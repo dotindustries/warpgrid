@@ -22,6 +22,7 @@ use warpgrid_host::bindings::async_handler_bindings::warpgrid::shim::http_types:
     HttpHeader, HttpRequest,
 };
 use warpgrid_host::bindings::async_handler_bindings::WarpgridAsyncHandler;
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
@@ -131,7 +132,7 @@ fn minimal_host_state() -> HostState {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_instantiates_and_returns_200() {
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -165,7 +166,7 @@ async fn async_handler_instantiates_and_returns_200() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_echoes_request_body() {
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -204,7 +205,7 @@ async fn async_handler_echoes_request_body() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_sets_x_async_header() {
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -245,7 +246,7 @@ async fn async_handler_sets_x_async_header() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_multiple_sequential_requests() {
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -288,7 +289,7 @@ async fn async_handler_multiple_sequential_requests() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_empty_body_returns_empty_response() {
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -327,7 +328,7 @@ async fn async_handler_echoes_multi_chunk_body_with_x_async_header() {
     init_tracing();
 
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let linker = engine.async_handler_linker().unwrap();
@@ -408,7 +409,7 @@ async fn async_handler_10_concurrent_requests_no_deadlock() {
     init_tracing();
 
     let wasm_bytes = build_async_echo_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Arc::new(
         Component::new(engine.engine(), wasm_bytes).unwrap(),
     );

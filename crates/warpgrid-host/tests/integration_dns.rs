@@ -21,6 +21,7 @@ use wasmtime::Store;
 use warpgrid_host::dns::cache::DnsCacheConfig;
 use warpgrid_host::dns::host::DnsHost;
 use warpgrid_host::dns::{CachedDnsResolver, DnsResolver};
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::signals::host::SignalsHost;
 
@@ -135,7 +136,7 @@ fn test_service_registry() -> HashMap<String, Vec<IpAddr>> {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_resolves_service_registry_name() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state(
@@ -166,7 +167,7 @@ async fn test_wasm_resolves_service_registry_name() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_resolves_etc_hosts_hostname() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state(
@@ -201,7 +202,7 @@ async fn test_wasm_resolves_etc_hosts_hostname() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_resolves_external_via_system_dns() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     // No registry entry or /etc/hosts for "localhost" — falls through to system DNS
@@ -234,7 +235,7 @@ async fn test_wasm_resolves_external_via_system_dns() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_round_robin_across_calls() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let registry = test_service_registry();
@@ -317,7 +318,7 @@ async fn test_wasm_round_robin_across_calls() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_ttl_caching_within_and_after_expiry() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let cache_config = DnsCacheConfig {
@@ -396,7 +397,7 @@ async fn test_wasm_ttl_caching_within_and_after_expiry() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_nonexistent_hostname_returns_error() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state(test_service_registry(), "");

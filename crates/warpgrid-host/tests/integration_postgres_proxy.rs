@@ -543,7 +543,7 @@ async fn fresh_instance(
         config.pool_config.recv_timeout,
         config.pool_config.connect_timeout,
     ));
-    let host_state = engine.build_host_state(&config, Some(factory));
+    let host_state = engine.build_host_state(Some(factory));
     let mut store = Store::new(engine.engine(), host_state);
 
     let instance = engine
@@ -567,7 +567,8 @@ async fn fresh_instance(
 async fn test_create_insert_select_drop() {
     let server = StatefulMockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -641,7 +642,8 @@ async fn test_create_insert_select_drop() {
 async fn test_connection_reuse_multiple_queries() {
     let server = StatefulMockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -703,7 +705,8 @@ async fn test_connection_reuse_multiple_queries() {
 async fn test_close_reconnect_reuses_pooled_connection() {
     let server = StatefulMockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let (mut store, instance) = fresh_instance(&engine, &component).await;
@@ -763,7 +766,8 @@ async fn test_close_reconnect_reuses_pooled_connection() {
 async fn test_full_lifecycle_end_to_end() {
     let server = StatefulMockPostgresServer::start();
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let config = test_shim_config();
+    let engine = WarpGridEngine::new(config).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     // Step 1: DDL lifecycle (CREATE, INSERT, SELECT, DROP).

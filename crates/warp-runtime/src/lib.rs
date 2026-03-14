@@ -30,11 +30,11 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::WarpGridEngine;
 
 pub use instance::{CompiledModule, InstanceFactory, WasmInstance};
 pub use pool::{InstancePool, PoolConfig};
+pub use warpgrid_host::config::ShimConfig;
 
 /// The top-level WarpGrid runtime.
 ///
@@ -47,9 +47,9 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    /// Create a new runtime with default configuration.
-    pub fn new() -> anyhow::Result<Self> {
-        let engine = WarpGridEngine::new()?;
+    /// Create a new runtime with the given shim configuration.
+    pub fn new(config: ShimConfig) -> anyhow::Result<Self> {
+        let engine = WarpGridEngine::new(config)?;
         tracing::info!("WarpGrid runtime initialized");
         Ok(Self {
             engine,
@@ -96,13 +96,14 @@ impl Runtime {
     }
 
     /// Create a single instance of a compiled module.
+    ///
+    /// The shim configuration is taken from the engine's stored config.
     pub async fn instantiate(
         &self,
         module: &CompiledModule,
-        shim_config: &ShimConfig,
         memory_limit: usize,
     ) -> anyhow::Result<WasmInstance> {
-        WasmInstance::new(&self.engine, module, shim_config, memory_limit).await
+        WasmInstance::new(&self.engine, module, memory_limit).await
     }
 
     /// Create an instance pool for a compiled module.
@@ -127,13 +128,13 @@ mod tests {
 
     #[test]
     fn runtime_creates_successfully() {
-        let runtime = Runtime::new();
+        let runtime = Runtime::new(ShimConfig::default());
         assert!(runtime.is_ok());
     }
 
     #[tokio::test]
     async fn module_cache_starts_empty() {
-        let runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new(ShimConfig::default()).unwrap();
         assert!(runtime.cached_modules().await.is_empty());
     }
 
@@ -145,7 +146,7 @@ mod tests {
             .unwrap();
         let _guard = rt.enter();
 
-        let runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new(ShimConfig::default()).unwrap();
         let _engine = runtime.engine();
     }
 }

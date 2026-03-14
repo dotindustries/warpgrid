@@ -31,6 +31,7 @@ use wasmtime::component::Component;
 use wasmtime::Store;
 
 use warpgrid_host::bindings::warpgrid::shim::signals::SignalType;
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::signals::host::SignalsHost;
 
@@ -121,7 +122,7 @@ fn minimal_host_state() -> HostState {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_register_terminate_deliver_poll() {
     let wasm_bytes = build_signal_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
@@ -167,7 +168,7 @@ async fn test_register_terminate_deliver_poll() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_poll_empty_queue_returns_none() {
     let wasm_bytes = build_signal_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
@@ -196,7 +197,7 @@ async fn test_poll_empty_queue_returns_none() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_20_signals_only_16_retrievable() {
     let wasm_bytes = build_signal_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
@@ -248,7 +249,7 @@ async fn test_20_signals_only_16_retrievable() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_register_hangup_deliver_terminate_poll_returns_none() {
     let wasm_bytes = build_signal_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();
@@ -291,7 +292,7 @@ async fn test_register_hangup_deliver_terminate_poll_returns_none() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiple_signal_types_register_and_deliver() {
     let wasm_bytes = build_signal_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = minimal_host_state();

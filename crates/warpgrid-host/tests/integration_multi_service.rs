@@ -30,6 +30,7 @@ use warpgrid_host::db_proxy::{ConnectionPoolManager, PoolConfig};
 use warpgrid_host::dns::host::DnsHost;
 use warpgrid_host::dns::{CachedDnsResolver, DnsResolver};
 use warpgrid_host::dns::cache::DnsCacheConfig;
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
@@ -366,7 +367,7 @@ async fn multi_service_full_flow() {
     let pg_server = MockPostgresServer::start();
     let redis_server = MockRedisServer::start();
 
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let runtime_handle = tokio::runtime::Handle::current();
 
     // Build all 4 components.
@@ -660,7 +661,7 @@ async fn multi_service_full_flow() {
 /// DNS shim correctly routes *.test.warp.local hostnames for all 3 services.
 #[tokio::test(flavor = "multi_thread")]
 async fn dns_routes_all_service_hostnames() {
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let runtime_handle = tokio::runtime::Handle::current();
     let gw_comp = Component::new(engine.engine(), gateway_bytes()).unwrap();
 
@@ -706,7 +707,7 @@ async fn dns_routes_all_service_hostnames() {
 /// Service error includes X-WarpGrid-Source-Service header (via error_source field).
 #[tokio::test(flavor = "multi_thread")]
 async fn service_error_includes_source_service_header() {
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let runtime_handle = tokio::runtime::Handle::current();
     let gw_comp = Component::new(engine.engine(), gateway_bytes()).unwrap();
 
@@ -775,7 +776,7 @@ async fn service_error_includes_source_service_header() {
 /// Verify that when DNS fails for a known path, the error source is populated.
 #[tokio::test(flavor = "multi_thread")]
 async fn dns_failure_populates_error_source() {
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let runtime_handle = tokio::runtime::Handle::current();
     let gw_comp = Component::new(engine.engine(), gateway_bytes()).unwrap();
 
@@ -842,7 +843,7 @@ async fn four_components_instantiate_in_same_engine() {
     let pg_server = MockPostgresServer::start();
     let redis_server = MockRedisServer::start();
 
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let runtime_handle = tokio::runtime::Handle::current();
 
     // All 4 components load successfully.

@@ -14,7 +14,6 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use warp_runtime::{InstancePool, PoolConfig, Runtime};
-use warpgrid_host::config::ShimConfig;
 use warpgrid_placement::convert::{deployment_to_requirements, node_info_to_resources};
 use warpgrid_placement::placer::{PlacementPlan, compute_placement};
 use warpgrid_placement::scorer::ScoringWeights;
@@ -329,19 +328,10 @@ impl Scheduler {
 
     /// Build a `PoolConfig` from a `DeploymentSpec`.
     fn build_pool_config(&self, spec: &DeploymentSpec) -> PoolConfig {
-        let shim_config = ShimConfig {
-            filesystem: spec.shims.timezone || spec.shims.dev_urandom,
-            dns: spec.shims.dns,
-            signals: spec.shims.signals,
-            database_proxy: spec.shims.database_proxy,
-            ..ShimConfig::default()
-        };
-
         PoolConfig {
             min_instances: spec.instances.min,
             max_instances: spec.instances.max,
             memory_limit: spec.resources.memory_bytes as usize,
-            shim_config,
         }
     }
 
@@ -388,6 +378,7 @@ fn epoch_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use warpgrid_host::config::ShimConfig;
 
     fn test_state() -> StateStore {
         StateStore::open_in_memory().unwrap()
@@ -416,7 +407,7 @@ mod tests {
 
     #[test]
     fn scheduler_creation() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
         assert_eq!(scheduler.node_id, "node-1");
@@ -424,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn scheduler_starts_empty() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
@@ -434,7 +425,7 @@ mod tests {
 
     #[tokio::test]
     async fn schedule_requires_deployment_in_state() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
@@ -444,7 +435,7 @@ mod tests {
 
     #[tokio::test]
     async fn schedule_requires_loaded_module() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let spec = test_deployment("default", "api");
         state.put_deployment(&spec).unwrap();
@@ -456,7 +447,7 @@ mod tests {
 
     #[tokio::test]
     async fn unschedule_nonexistent_is_noop() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
@@ -466,7 +457,7 @@ mod tests {
 
     #[tokio::test]
     async fn instance_count_returns_none_for_unscheduled() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
@@ -475,7 +466,7 @@ mod tests {
 
     #[tokio::test]
     async fn next_instance_fails_when_not_scheduled() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
@@ -488,7 +479,7 @@ mod tests {
 
     #[test]
     fn build_pool_config_from_spec() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
@@ -503,14 +494,11 @@ mod tests {
         assert_eq!(config.min_instances, 2);
         assert_eq!(config.max_instances, 20);
         assert_eq!(config.memory_limit, 128 * 1024 * 1024);
-        assert!(config.shim_config.dns);
-        assert!(config.shim_config.database_proxy);
-        assert!(!config.shim_config.filesystem);
     }
 
     #[tokio::test]
     async fn duplicate_schedule_is_rejected() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let spec = test_deployment("default", "api");
         state.put_deployment(&spec).unwrap();
@@ -565,7 +553,7 @@ mod tests {
 
     #[test]
     fn distributed_scheduler_creation() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
         assert_eq!(scheduler.placement_mode(), PlacementMode::Distributed);
@@ -573,7 +561,7 @@ mod tests {
 
     #[test]
     fn scheduler_defaults_to_standalone() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
         assert_eq!(scheduler.placement_mode(), PlacementMode::Standalone);
@@ -581,7 +569,7 @@ mod tests {
 
     #[test]
     fn standalone_rejects_distributed_placement() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let spec = test_deployment("default", "api");
         state.put_deployment(&spec).unwrap();
@@ -593,7 +581,7 @@ mod tests {
 
     #[test]
     fn distributed_placement_requires_deployment() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
 
@@ -603,7 +591,7 @@ mod tests {
 
     #[test]
     fn distributed_placement_requires_nodes() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let spec = test_deployment("default", "api");
         state.put_deployment(&spec).unwrap();
@@ -615,7 +603,7 @@ mod tests {
 
     #[test]
     fn distributed_placement_produces_plan() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
 
         let spec = test_deployment("default", "api");
@@ -638,7 +626,7 @@ mod tests {
 
     #[test]
     fn distributed_placement_partial_when_constrained() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
 
         let mut spec = test_deployment("default", "big");
@@ -661,7 +649,7 @@ mod tests {
 
     #[tokio::test]
     async fn distributed_scheduler_still_supports_local_schedule() {
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new(ShimConfig::default()).unwrap());
         let state = test_state();
         let scheduler = Scheduler::new_distributed(runtime, state, "node-1".to_string());
 

@@ -15,6 +15,7 @@ use std::sync::{Arc, OnceLock};
 use wasmtime::component::Component;
 use wasmtime::Store;
 
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
@@ -112,7 +113,7 @@ fn test_host_state(etc_hosts: &str) -> HostState {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_resolv_conf_contains_nameserver() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state("127.0.0.1 localhost\n");
@@ -144,7 +145,7 @@ async fn test_resolv_conf_contains_nameserver() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_dev_urandom_returns_32_random_bytes() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state("127.0.0.1 localhost\n");
@@ -172,7 +173,7 @@ async fn test_dev_urandom_returns_32_random_bytes() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_dev_null_returns_empty() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state("127.0.0.1 localhost\n");
@@ -196,7 +197,7 @@ async fn test_dev_null_returns_empty() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_nonvirtual_path_returns_error() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     let host_state = test_host_state("127.0.0.1 localhost\n");
@@ -225,7 +226,7 @@ async fn test_nonvirtual_path_returns_error() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_etc_hosts_contains_injected_entries() {
     let wasm_bytes = build_guest_component();
-    let engine = WarpGridEngine::new().unwrap();
+    let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
     // Inject custom /etc/hosts entries simulating a service registry
