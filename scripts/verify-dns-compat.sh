@@ -82,12 +82,18 @@ compile_compat_test() {
 
     mkdir -p "${wasm_dir}"
 
-    "${WASI_SDK_PATH}/bin/clang" \
+    local compile_output compile_rc=0
+    compile_output=$("${WASI_SDK_PATH}/bin/clang" \
         --target="${TARGET_TRIPLE}" \
         --sysroot="${sysroot}" \
         -O1 \
         -o "${wasm_file}" \
-        "${TEST_SRC}" 2>&1
+        "${TEST_SRC}" 2>&1) || compile_rc=$?
+
+    if [[ ${compile_rc} -ne 0 ]]; then
+        echo "${compile_output}" >&2
+        return ${compile_rc}
+    fi
 
     echo "${wasm_file}"
 }
@@ -119,9 +125,11 @@ check_vanilla_compat() {
         return
     fi
 
-    local wasm_file
-    if ! wasm_file=$(compile_compat_test "${sysroot}" "patched" 2>&1 | tail -1); then
+    local wasm_file compile_err
+    if ! wasm_file=$(compile_compat_test "${sysroot}" "patched"); then
+        compile_err=$(compile_compat_test "${sysroot}" "patched" 2>&1 || true)
         fail "Check 1 — failed to compile test_dns_compat.c against patched sysroot"
+        echo "    ${compile_err}" | head -5
         return
     fi
 
@@ -150,9 +158,11 @@ check_stock_build() {
         return
     fi
 
-    local wasm_file
-    if ! wasm_file=$(compile_compat_test "${sysroot}" "stock" 2>&1 | tail -1); then
+    local wasm_file compile_err
+    if ! wasm_file=$(compile_compat_test "${sysroot}" "stock"); then
+        compile_err=$(compile_compat_test "${sysroot}" "stock" 2>&1 || true)
         fail "Check 2 — failed to compile test_dns_compat.c against stock sysroot"
+        echo "    ${compile_err}" | head -5
         return
     fi
 
@@ -190,6 +200,11 @@ check_binary_size() {
     local stock_size patched_size
     stock_size=$(stat -c%s "${stock_libc}" 2>/dev/null || stat -f%z "${stock_libc}")
     patched_size=$(stat -c%s "${patched_libc}" 2>/dev/null || stat -f%z "${patched_libc}")
+
+    if [[ "${stock_size}" -eq 0 ]]; then
+        fail "Check 3 — stock libc.a has zero size"
+        return
+    fi
 
     # Calculate percentage difference: |patched - stock| / stock * 100
     local diff_abs delta_pct
