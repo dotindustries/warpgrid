@@ -480,7 +480,7 @@ func TestDial_DNSFailureWrapsInnerDNSError(t *testing.T) {
 	}
 
 	// The inner error should be *net.DNSError with correct fields
-	var dnsErr *net.DNSError
+	var dnsErr *wgnet.DNSError
 	if !errors.As(opErr.Err, &dnsErr) {
 		t.Fatalf("expected inner *net.DNSError, got %T: %v", opErr.Err, opErr.Err)
 	}
@@ -509,7 +509,7 @@ func TestDial_DNSEmptyResultWrapsInnerDNSError(t *testing.T) {
 		t.Fatalf("expected *net.OpError, got %T: %v", err, err)
 	}
 
-	var dnsErr *net.DNSError
+	var dnsErr *wgnet.DNSError
 	if !errors.As(opErr.Err, &dnsErr) {
 		t.Fatalf("expected inner *net.DNSError, got %T: %v", opErr.Err, opErr.Err)
 	}
