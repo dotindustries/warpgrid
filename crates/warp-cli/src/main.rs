@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 mod commands;
+mod templates;
 
 #[derive(Parser)]
 #[command(
@@ -36,6 +37,17 @@ enum Commands {
         /// If not specified, reads from warp.toml or auto-detects.
         #[arg(short, long)]
         lang: Option<String>,
+    },
+    /// Scaffold a new WarpGrid project from a template.
+    ///
+    /// Available templates: async-rust, async-go, async-ts
+    Init {
+        /// Template name (async-rust, async-go, async-ts)
+        #[arg(short, long)]
+        template: String,
+        /// Target directory (default: ./<template-name>)
+        #[arg(short, long)]
+        path: Option<String>,
     },
     // Phase 3+:
     // Deploy { ... },
@@ -84,6 +96,9 @@ fn main() -> anyhow::Result<()> {
         },
         Commands::Pack { path, lang } => {
             commands::pack::pack(&path, lang.as_deref())
+        }
+        Commands::Init { template, path } => {
+            commands::init::init(&template, path.as_deref())
         }
     }
 }
