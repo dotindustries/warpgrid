@@ -108,16 +108,16 @@ export function buildCleartextPasswordMessage(password: string): Uint8Array {
  * Build a PasswordMessage for MD5 auth.
  * MD5 password = "md5" + md5(md5(password + user) + salt)
  */
-export async function buildMD5PasswordMessage(
+export function buildMD5PasswordMessage(
   user: string,
   password: string,
   salt: Uint8Array,
-): Promise<Uint8Array> {
-  const inner = await md5hex(TEXT_ENCODER.encode(password + user));
+): Uint8Array {
+  const inner = md5hex(TEXT_ENCODER.encode(password + user));
   const outerInput = new Uint8Array(inner.length + salt.length);
   outerInput.set(TEXT_ENCODER.encode(inner));
   outerInput.set(salt, inner.length);
-  const outer = await md5hex(outerInput);
+  const outer = md5hex(outerInput);
   return buildCleartextPasswordMessage("md5" + outer);
 }
 
@@ -407,12 +407,8 @@ export function parseCommandComplete(payload: Uint8Array): number {
 
 // ── Utility ───────────────────────────────────────────────────────────
 
-async function md5hex(data: Uint8Array): Promise<string> {
-  const buf = new ArrayBuffer(data.byteLength);
-  new Uint8Array(buf).set(data);
-  const hashBuffer = await crypto.subtle.digest("MD5", buf);
-  const hashArray = new Uint8Array(hashBuffer);
-  return Array.from(hashArray)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+function md5hex(data: Uint8Array): string {
+  const hasher = new Bun.CryptoHasher("md5");
+  hasher.update(data);
+  return hasher.digest("hex") as string;
 }
