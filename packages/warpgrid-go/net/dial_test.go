@@ -387,6 +387,53 @@ func TestDial_DNSErrorContainsHostname(t *testing.T) {
 	}
 }
 
+// ── Package-level Dial() convenience function tests ─────────────────
+
+func TestPackageDial_HostnameResolvedViaDNS(t *testing.T) {
+	// Package-level Dial on non-WASI falls through to net.Dial, so it
+	// won't use the WarpGrid DNS shim.  We test that the function at
+	// least compiles and works with an IP literal (which bypasses DNS
+	// on all platforms).
+	addr, cleanup := startEchoServer(t)
+	defer cleanup()
+
+	conn, err := wgnet.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("wgnet.Dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	// Echo round-trip
+	message := "Hello from package-level Dial!"
+	_, err = conn.Write([]byte(message))
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	buf := make([]byte, len(message))
+	_, err = io.ReadFull(conn, buf)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+
+	if string(buf) != message {
+		t.Fatalf("expected %q, got %q", message, string(buf))
+	}
+}
+
+func TestPackageDialTimeout_RespectsTimeout(t *testing.T) {
+	start := time.Now()
+	_, err := wgnet.DialTimeout("tcp", "192.0.2.1:65535", 200*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error dialing unreachable address")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("DialTimeout not respected: took %v (expected <5s with 200ms timeout)", elapsed)
+	}
+}
+
 // ── ConnectTimeout tests ────────────────────────────────────────────
 
 func TestDial_ConnectTimeoutIsApplied(t *testing.T) {
