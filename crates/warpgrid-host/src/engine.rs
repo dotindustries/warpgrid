@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
-use wasmtime::component::{HasSelf, Linker};
-use wasmtime::{Config, Engine};
+use wasmtime::component::{Component, HasSelf, Instance, Linker};
+use wasmtime::{Config, Engine, Store, StoreLimitsBuilder};
 
 use crate::bindings::async_handler_bindings::warpgrid::shim::http_types;
 use crate::bindings::warpgrid::shim;
@@ -294,6 +294,43 @@ impl WarpGridEngine {
 
         tracing::info!("async handler linker initialized");
         Ok(linker)
+    }
+
+    /// Compile and instantiate a Wasm component from raw bytes in one call.
+    ///
+    /// This is a convenience method that:
+    /// 1. Compiles the component from bytes
+    /// 2. Builds host state from the stored config
+    /// 3. Creates a store with a 64 MiB memory limit
+    /// 4. Instantiates the component via the linker
+    ///
+    /// For more control over memory limits or connection factories, use the
+    /// individual methods (`build_host_state`, `linker().instantiate_async`).
+    pub async fn instantiate(
+        &self,
+        module_bytes: &[u8],
+    ) -> anyhow::Result<(Store<HostState>, Instance)> {
+        let component = Component::from_binary(&self.engine, module_bytes)?;
+
+        let mut host_state = self.build_host_state(None);
+
+        // Default memory limit: 64 MiB.
+        let limits = StoreLimitsBuilder::new()
+            .memory_size(64 * 1024 * 1024)
+            .table_elements(10_000)
+            .build();
+        host_state.limiter = Some(limits);
+
+        let mut store = Store::new(&self.engine, host_state);
+        store.limiter(|data| {
+            data.limiter
+                .as_mut()
+                .expect("limiter must be set before instantiation")
+        });
+
+        let instance = self.linker.instantiate_async(&mut store, &component).await?;
+
+        Ok((store, instance))
     }
 
     /// Build a `HostState` from the stored `ShimConfig`.
@@ -613,5 +650,12 @@ mod tests {
             state.threading_model,
             Some(shim::threading::ThreadingModel::Cooperative)
         ));
+    }
+
+    #[tokio::test]
+    async fn instantiate_rejects_invalid_bytes() {
+        let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
+        let result = engine.instantiate(b"not a valid wasm component").await;
+        assert!(result.is_err());
     }
 }
