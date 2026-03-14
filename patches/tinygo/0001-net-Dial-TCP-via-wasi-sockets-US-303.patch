@@ -1,0 +1,664 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: WarpGrid SDK <sdk@warpgrid.dev>
+Date: Fri, 14 Mar 2026 00:00:00 +0000
+Subject: [PATCH 1/1] net: implement wasip2 netdev for TCP via wasi-sockets
+ (US-303)
+
+Implement the netdever interface for the wasip2 target by bridging
+to wasi:sockets/tcp@0.2.0 component-model bindings. This enables
+net.Dial("tcp", addr) to work transparently on wasip2.
+
+The wasip2Netdev implementation:
+- Maps integer file descriptors to TCPSocket + InputStream + OutputStream
+- Uses two-phase async pattern (Start/Finish + Subscribe/Block) for connect
+- Provides DNS resolution via wasi:sockets/ip-name-lookup@0.2.0
+- Maps all 21 WASI ErrorCode variants to Go syscall.Errno values
+- Supports Bind/Listen/Accept for server-side TCP
+- Registers automatically via init() calling useNetdev()
+
+Architecture:
+  net.Dial("tcp", host:port)
+    -> ResolveTCPAddr -> netdev.GetHostByName -> ip-name-lookup
+    -> DialTCP -> netdev.Socket   -> tcp-create-socket.CreateTCPSocket
+              -> netdev.Connect  -> TCPSocket.StartConnect/FinishConnect
+              -> netdev.Send     -> OutputStream.BlockingWriteAndFlush
+              -> netdev.Recv     -> InputStream.BlockingRead
+              -> netdev.Close    -> TCPSocket.Shutdown + ResourceDrop
+
+Runtime validation (AC3: send/receive bytes against echo server) requires
+the WarpGrid test harness with a TCP echo server component.
+
+Depends on: TinyGo v0.40.0 with wasi:sockets/tcp@0.2.0 bindings
+Depends on: US-301 (TinyGo fork and build pipeline)
+---
+
+The patch adds a single new file to TinyGo's net package (from the
+tinygo-org/net submodule at src/net/):
+
+1. src/net/netdev_wasip2.go (new file, build-tagged wasip2):
+   - wasip2Netdev struct implementing the netdever interface
+   - Socket fd table mapping int fds to WASI TCPSocket resources
+   - Two-phase async connect/bind/listen with Subscribe/Block polling
+   - DNS resolution via wasi:sockets/ip-name-lookup@0.2.0
+   - Error code mapping from all 21 WASI ErrorCode variants to syscall.Errno
+   - init() auto-registration via useNetdev()
+
+--- /dev/null
++++ b/src/net/netdev_wasip2.go
+@@ -0,0 +1,614 @@
++// WARPGRID PATCH START — US-303
++//go:build wasip2
++
++// netdev_wasip2.go implements the netdever interface for the wasip2 target
++// by delegating to the wasi:sockets/tcp@0.2.0 component-model bindings.
++//
++// This enables net.Dial("tcp", addr) to work transparently on wasip2 by
++// bridging TinyGo's BSD-socket-like netdev interface to WASI Preview 2 sockets.
++//
++// The implementation:
++//   - Maps integer file descriptors to wasi:sockets TCPSocket resources
++//   - Uses the two-phase async pattern (Start/Finish + Subscribe/Block)
++//     for connect, bind, and listen operations
++//   - Provides DNS resolution via wasi:sockets/ip-name-lookup
++//   - Maps WASI ErrorCode values to Go syscall.Errno values
++
++package net
++
++import (
++	"internal/cm"
++	instancenetwork "internal/wasi/sockets/v0.2.0/instance-network"
++	ipnamelookup "internal/wasi/sockets/v0.2.0/ip-name-lookup"
++	"internal/wasi/sockets/v0.2.0/network"
++	"internal/wasi/sockets/v0.2.0/tcp"
++	tcpcreatesocket "internal/wasi/sockets/v0.2.0/tcp-create-socket"
++	"io"
++	"net/netip"
++	"sync"
++	"syscall"
++	"time"
++)
++
++// maxOpenSockets is the maximum number of concurrent sockets.
++const maxOpenSockets = 1024
++
++// wasip2Socket holds the WASI resources associated with a single socket fd.
++type wasip2Socket struct {
++	sock   tcp.TCPSocket
++	in     tcp.InputStream
++	out    tcp.OutputStream
++	family network.IPAddressFamily
++
++	// connected is true after FinishConnect succeeds and streams are available.
++	connected bool
++
++	// listening is true after FinishListen succeeds.
++	listening bool
++}
++
++// wasip2Netdev implements the netdever interface using wasi:sockets/tcp@0.2.0.
++type wasip2Netdev struct {
++	mu      sync.Mutex
++	sockets map[int]*wasip2Socket
++	nextFD  int
++}
++
++func init() {
++	dev := &wasip2Netdev{
++		sockets: make(map[int]*wasip2Socket),
++		nextFD:  3, // skip stdin/stdout/stderr
++	}
++	useNetdev(dev)
++}
++
++// getNet returns the ambient network capability handle.
++func getNet() network.Network {
++	return instancenetwork.InstanceNetwork()
++}
++
++// lookupSocket returns the socket for the given fd, or an error if not found.
++func (w *wasip2Netdev) lookupSocket(fd int) (*wasip2Socket, error) {
++	s, ok := w.sockets[fd]
++	if !ok {
++		return nil, syscall.EBADF
++	}
++	return s, nil
++}
++
++// allocFD allocates the next available file descriptor.
++func (w *wasip2Netdev) allocFD() (int, error) {
++	if len(w.sockets) >= maxOpenSockets {
++		return -1, syscall.EMFILE
++	}
++	fd := w.nextFD
++	w.nextFD++
++	return fd, nil
++}
++
++// GetHostByName resolves a hostname to an IP address using
++// wasi:sockets/ip-name-lookup@0.2.0.
++func (w *wasip2Netdev) GetHostByName(name string) (netip.Addr, error) {
++	net_ := getNet()
++	defer net_.ResourceDrop()
++
++	res := ipnamelookup.ResolveAddresses(net_, name)
++	if res.IsErr() {
++		return netip.Addr{}, wasiErrorToErrno(*res.Err())
++	}
++	stream := *res.OK()
++	defer stream.ResourceDrop()
++
++	// Poll until the first result is ready.
++	pollable := stream.Subscribe()
++	pollable.Block()
++	pollable.ResourceDrop()
++
++	// Iterate results, preferring IPv4 (matching TinyGo's IPv4-only net package).
++	for {
++		addrRes := stream.ResolveNextAddress()
++		if addrRes.IsErr() {
++			code := *addrRes.Err()
++			if code == network.ErrorCodeWouldBlock {
++				// Poll again and retry.
++				p := stream.Subscribe()
++				p.Block()
++				p.ResourceDrop()
++				continue
++			}
++			return netip.Addr{}, wasiErrorToErrno(code)
++		}
++
++		opt := addrRes.OK()
++		if opt.None() {
++			// No more results.
++			break
++		}
++		ipAddr := opt.Some()
++		if ipAddr == nil {
++			break
++		}
++
++		if v4 := ipAddr.IPv4(); v4 != nil {
++			return netip.AddrFrom4(*v4), nil
++		}
++		// Skip IPv6 addresses for now — TinyGo's net only supports IPv4.
++	}
++
++	return netip.Addr{}, &dnsError{Err: "no suitable address found", Name: name}
++}
++
++// Addr returns the IP address assigned to the interface.
++// On wasip2, there is no single "interface address" — return unspecified.
++func (w *wasip2Netdev) Addr() (netip.Addr, error) {
++	return netip.IPv4Unspecified(), nil
++}
++
++// Socket creates a new TCP socket and returns a file descriptor.
++func (w *wasip2Netdev) Socket(domain int, stype int, protocol int) (int, error) {
++	// Only TCP (SOCK_STREAM) is supported via wasi:sockets/tcp.
++	if stype != _SOCK_STREAM {
++		return -1, syscall.EPROTONOSUPPORT
++	}
++
++	// Determine address family.
++	var family network.IPAddressFamily
++	switch domain {
++	case _AF_INET:
++		family = network.IPAddressFamilyIPv4
++	default:
++		// TinyGo's net package only uses _AF_INET. Treat anything else as unsupported.
++		return -1, syscall.EAFNOSUPPORT
++	}
++
++	// Protocol check: accept TCP and TLS (TinyGo uses _IPPROTO_TLS for TLS sockets).
++	switch protocol {
++	case _IPPROTO_TCP:
++		// OK
++	case _IPPROTO_TLS:
++		// TLS over TCP — create a regular TCP socket. TLS handshake is handled
++		// at a higher layer. The netdev only provides the transport.
++		// Note: TinyGo's TLS support on wasip2 is limited and may not work
++		// without additional host-side TLS termination.
++	default:
++		return -1, syscall.EPROTONOSUPPORT
++	}
++
++	res := tcpcreatesocket.CreateTCPSocket(family)
++	if res.IsErr() {
++		return -1, wasiErrorToErrno(*res.Err())
++	}
++	sock := *res.OK()
++
++	w.mu.Lock()
++	defer w.mu.Unlock()
++
++	fd, err := w.allocFD()
++	if err != nil {
++		sock.ResourceDrop()
++		return -1, err
++	}
++
++	w.sockets[fd] = &wasip2Socket{
++		sock:   sock,
++		family: family,
++	}
++
++	return fd, nil
++}
++
++// Connect initiates a TCP connection to the given address.
++func (w *wasip2Netdev) Connect(sockfd int, host string, ip netip.AddrPort) error {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return err
++	}
++
++	net_ := getNet()
++	defer net_.ResourceDrop()
++
++	// Build the remote address.
++	remoteAddr := addrPortToIPSocketAddress(ip)
++
++	// Start the async connect.
++	connectRes := s.sock.StartConnect(net_, remoteAddr)
++	if connectRes.IsErr() {
++		return wasiErrorToErrno(*connectRes.Err())
++	}
++
++	// Poll until the connection completes.
++	pollable := s.sock.Subscribe()
++	pollable.Block()
++	pollable.ResourceDrop()
++
++	// Finish the connection — retrieve the I/O streams.
++	finishRes := s.sock.FinishConnect()
++	if finishRes.IsErr() {
++		return wasiErrorToErrno(*finishRes.Err())
++	}
++	streams := finishRes.OK()
++	s.in = streams.F0
++	s.out = streams.F1
++	s.connected = true
++
++	return nil
++}
++
++// Bind binds the socket to a local address.
++func (w *wasip2Netdev) Bind(sockfd int, ip netip.AddrPort) error {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return err
++	}
++
++	net_ := getNet()
++	defer net_.ResourceDrop()
++
++	localAddr := addrPortToIPSocketAddress(ip)
++
++	bindRes := s.sock.StartBind(net_, localAddr)
++	if bindRes.IsErr() {
++		return wasiErrorToErrno(*bindRes.Err())
++	}
++
++	pollable := s.sock.Subscribe()
++	pollable.Block()
++	pollable.ResourceDrop()
++
++	finishRes := s.sock.FinishBind()
++	if finishRes.IsErr() {
++		return wasiErrorToErrno(*finishRes.Err())
++	}
++
++	return nil
++}
++
++// Listen marks the socket as a passive listener.
++func (w *wasip2Netdev) Listen(sockfd int, backlog int) error {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return err
++	}
++
++	// Set backlog size if > 0.
++	if backlog > 0 {
++		s.sock.SetListenBacklogSize(uint64(backlog))
++		// Ignore errors — not all runtimes support configuring backlog.
++	}
++
++	listenRes := s.sock.StartListen()
++	if listenRes.IsErr() {
++		return wasiErrorToErrno(*listenRes.Err())
++	}
++
++	pollable := s.sock.Subscribe()
++	pollable.Block()
++	pollable.ResourceDrop()
++
++	finishRes := s.sock.FinishListen()
++	if finishRes.IsErr() {
++		return wasiErrorToErrno(*finishRes.Err())
++	}
++
++	s.listening = true
++	return nil
++}
++
++// Accept accepts a new connection on a listening socket.
++func (w *wasip2Netdev) Accept(sockfd int) (int, netip.AddrPort, error) {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return -1, netip.AddrPort{}, err
++	}
++
++	// Poll until a connection is available.
++	pollable := s.sock.Subscribe()
++	pollable.Block()
++	pollable.ResourceDrop()
++
++	acceptRes := s.sock.Accept()
++	if acceptRes.IsErr() {
++		return -1, netip.AddrPort{}, wasiErrorToErrno(*acceptRes.Err())
++	}
++
++	tuple := acceptRes.OK()
++	newSock := tuple.F0
++	newIn := tuple.F1
++	newOut := tuple.F2
++
++	// Get the remote address of the accepted connection.
++	var raddr netip.AddrPort
++	raddrRes := newSock.RemoteAddress()
++	if raddrRes.IsOK() {
++		raddr = ipSocketAddressToAddrPort(*raddrRes.OK())
++	}
++
++	w.mu.Lock()
++	defer w.mu.Unlock()
++
++	fd, allocErr := w.allocFD()
++	if allocErr != nil {
++		newIn.ResourceDrop()
++		newOut.ResourceDrop()
++		newSock.ResourceDrop()
++		return -1, netip.AddrPort{}, allocErr
++	}
++
++	w.sockets[fd] = &wasip2Socket{
++		sock:      newSock,
++		in:        newIn,
++		out:       newOut,
++		family:    s.family,
++		connected: true,
++	}
++
++	return fd, raddr, nil
++}
++
++// Send writes data to the connected socket.
++func (w *wasip2Netdev) Send(sockfd int, buf []byte, flags int, deadline time.Time) (int, error) {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return 0, err
++	}
++
++	if !s.connected {
++		return 0, syscall.ENOTCONN
++	}
++
++	if len(buf) == 0 {
++		return 0, nil
++	}
++
++	data := cm.ToList(buf)
++	writeRes := s.out.BlockingWriteAndFlush(data)
++	if writeRes.IsErr() {
++		streamErr := writeRes.Err()
++		if streamErr.Closed() {
++			return 0, io.EOF
++		}
++		if e := streamErr.LastOperationFailed(); e != nil {
++			msg := e.ToDebugString()
++			e.ResourceDrop()
++			return 0, &OpError{Op: "write", Err: errorString(msg)}
++		}
++		return 0, syscall.EIO
++	}
++
++	return len(buf), nil
++}
++
++// Recv reads data from the connected socket.
++func (w *wasip2Netdev) Recv(sockfd int, buf []byte, flags int, deadline time.Time) (int, error) {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return 0, err
++	}
++
++	if !s.connected {
++		return 0, syscall.ENOTCONN
++	}
++
++	if len(buf) == 0 {
++		return 0, nil
++	}
++
++	readRes := s.in.BlockingRead(uint64(len(buf)))
++	if readRes.IsErr() {
++		streamErr := readRes.Err()
++		if streamErr.Closed() {
++			return 0, io.EOF
++		}
++		if e := streamErr.LastOperationFailed(); e != nil {
++			msg := e.ToDebugString()
++			e.ResourceDrop()
++			return 0, &OpError{Op: "read", Err: errorString(msg)}
++		}
++		return 0, syscall.EIO
++	}
++
++	data := readRes.OK().Slice()
++	n := copy(buf, data)
++	return n, nil
++}
++
++// Close shuts down and releases the socket and its associated resources.
++func (w *wasip2Netdev) Close(sockfd int) error {
++	w.mu.Lock()
++	s, ok := w.sockets[sockfd]
++	if !ok {
++		w.mu.Unlock()
++		return syscall.EBADF
++	}
++	delete(w.sockets, sockfd)
++	w.mu.Unlock()
++
++	// Shut down the socket if connected.
++	if s.connected {
++		s.sock.Shutdown(tcp.ShutdownTypeBoth)
++		// Ignore shutdown errors — the socket may already be in an error state.
++	}
++
++	// Drop resources in reverse order of acquisition.
++	if s.connected {
++		s.in.ResourceDrop()
++		s.out.ResourceDrop()
++	}
++	s.sock.ResourceDrop()
++
++	return nil
++}
++
++// SetSockOpt sets a socket option.
++func (w *wasip2Netdev) SetSockOpt(sockfd int, level int, opt int, value interface{}) error {
++	w.mu.Lock()
++	s, err := w.lookupSocket(sockfd)
++	w.mu.Unlock()
++	if err != nil {
++		return err
++	}
++
++	switch level {
++	case _SOL_SOCKET:
++		switch opt {
++		case _SO_KEEPALIVE:
++			if v, ok := value.(bool); ok {
++				res := s.sock.SetKeepAliveEnabled(v)
++				if res.IsErr() {
++					return wasiErrorToErrno(*res.Err())
++				}
++				return nil
++			}
++		case _SO_LINGER:
++			// Linger is handled by shutdown semantics in WASI.
++			// Silently accept to avoid breaking callers.
++			return nil
++		}
++	case _SOL_TCP:
++		switch opt {
++		case _TCP_KEEPINTVL:
++			if v, ok := value.(float64); ok {
++				// Value is in seconds (as float64 from TinyGo's SetKeepAlivePeriod).
++				nanos := uint64(v * 1e9)
++				res := s.sock.SetKeepAliveInterval(nanos)
++				if res.IsErr() {
++					return wasiErrorToErrno(*res.Err())
++				}
++				return nil
++			}
++		}
++	}
++
++	// Unknown option — silently ignore to avoid breaking callers.
++	return nil
++}
++
++// addrPortToIPSocketAddress converts a Go netip.AddrPort to a WASI IPSocketAddress.
++func addrPortToIPSocketAddress(ap netip.AddrPort) network.IPSocketAddress {
++	addr := ap.Addr().Unmap() // Ensure IPv4-mapped IPv6 addresses are treated as IPv4.
++	port := ap.Port()
++
++	if addr.Is4() {
++		raw := addr.As4()
++		return network.IPSocketAddressIPv4(network.IPv4SocketAddress{
++			Port:    port,
++			Address: network.IPv4Address(raw),
++		})
++	}
++
++	raw := addr.As16()
++	// Convert 16 bytes to 8 uint16 values (big-endian).
++	var v6 network.IPv6Address
++	for i := 0; i < 8; i++ {
++		v6[i] = uint16(raw[2*i])<<8 | uint16(raw[2*i+1])
++	}
++	return network.IPSocketAddressIPv6(network.IPv6SocketAddress{
++		Port:    port,
++		Address: v6,
++	})
++}
++
++// ipSocketAddressToAddrPort converts a WASI IPSocketAddress to a Go netip.AddrPort.
++func ipSocketAddressToAddrPort(sa network.IPSocketAddress) netip.AddrPort {
++	if v4 := sa.IPv4(); v4 != nil {
++		addr := netip.AddrFrom4(v4.Address)
++		return netip.AddrPortFrom(addr, v4.Port)
++	}
++	if v6 := sa.IPv6(); v6 != nil {
++		var raw [16]byte
++		for i := 0; i < 8; i++ {
++			raw[2*i] = byte(v6.Address[i] >> 8)
++			raw[2*i+1] = byte(v6.Address[i])
++		}
++		addr := netip.AddrFrom16(raw)
++		return netip.AddrPortFrom(addr, v6.Port)
++	}
++	return netip.AddrPort{}
++}
++
++// errorString is a simple string-based error type used for stream error messages.
++type errorString string
++
++func (e errorString) Error() string { return string(e) }
++
++// dnsError represents a DNS resolution failure. This is a minimal version
++// compatible with Go's net.DNSError for the fields we use.
++type dnsError struct {
++	Err         string
++	Name        string
++	IsTemporary bool
++}
++
++func (e *dnsError) Error() string {
++	if e.Name != "" {
++		return "lookup " + e.Name + ": " + e.Err
++	}
++	return "dns: " + e.Err
++}
++
++func (e *dnsError) Temporary() bool { return e.IsTemporary }
++func (e *dnsError) Timeout() bool   { return false }
++
++// wasiErrorToErrno maps a wasi:sockets ErrorCode to a Go syscall.Errno.
++func wasiErrorToErrno(code network.ErrorCode) error {
++	switch code {
++	case network.ErrorCodeUnknown:
++		return syscall.EIO
++	case network.ErrorCodeAccessDenied:
++		return syscall.EACCES
++	case network.ErrorCodeNotSupported:
++		return syscall.EOPNOTSUPP
++	case network.ErrorCodeInvalidArgument:
++		return syscall.EINVAL
++	case network.ErrorCodeOutOfMemory:
++		return syscall.ENOMEM
++	case network.ErrorCodeTimeout:
++		return syscall.ETIMEDOUT
++	case network.ErrorCodeConcurrencyConflict:
++		return syscall.EALREADY
++	case network.ErrorCodeNotInProgress:
++		return syscall.EINVAL
++	case network.ErrorCodeWouldBlock:
++		return syscall.EAGAIN
++	case network.ErrorCodeInvalidState:
++		return syscall.EINVAL
++	case network.ErrorCodeNewSocketLimit:
++		return syscall.EMFILE
++	case network.ErrorCodeAddressNotBindable:
++		return syscall.EADDRNOTAVAIL
++	case network.ErrorCodeAddressInUse:
++		return syscall.EADDRINUSE
++	case network.ErrorCodeRemoteUnreachable:
++		return syscall.ENETUNREACH
++	case network.ErrorCodeConnectionRefused:
++		return syscall.ECONNREFUSED
++	case network.ErrorCodeConnectionReset:
++		return syscall.ECONNRESET
++	case network.ErrorCodeConnectionAborted:
++		return syscall.ECONNABORTED
++	case network.ErrorCodeDatagramTooLarge:
++		return syscall.EMSGSIZE
++	case network.ErrorCodeNameUnresolvable:
++		return &dnsError{Err: "name unresolvable"}
++	case network.ErrorCodeTemporaryResolverFailure:
++		return &dnsError{Err: "temporary resolver failure", IsTemporary: true}
++	case network.ErrorCodePermanentResolverFailure:
++		return &dnsError{Err: "permanent resolver failure"}
++	default:
++		return syscall.EIO
++	}
++}
++
++// WARPGRID PATCH END — US-303
+--
+2.48.1
