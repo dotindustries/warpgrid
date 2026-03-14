@@ -1,0 +1,22 @@
+package warpgrid:shim@0.1.0;
+
+/// Async handler interface for WarpGrid HTTP trigger invocation.
+///
+/// Guest components export `handle-request` to receive HTTP requests from
+/// the WarpGrid trigger system. This is the primary entry point for
+/// request-driven workloads (as opposed to long-running daemons).
+///
+/// The function signature is synchronous at the WIT level; async execution
+/// is managed by the Wasmtime component-model-async runtime, which allows
+/// the host to invoke this function concurrently across multiple requests
+/// without blocking.
+interface async-handler {
+    use http-types.{http-request, http-response};
+
+    /// Handle an incoming HTTP request and return a response.
+    ///
+    /// The host invokes this function for each inbound HTTP request routed
+    /// to this component. The function should process the request and return
+    /// a complete response.
+    handle-request: func(request: http-request) -> http-response;
+}

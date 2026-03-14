@@ -1,0 +1,37 @@
+package warpgrid:shim@0.1.0;
+
+/// HTTP types shared between async handler exports and shim imports.
+///
+/// These types model a minimal HTTP request/response pair suitable for
+/// WarpGrid's trigger-based invocation model. Request and response bodies
+/// are byte buffers (not streams) for simplicity in the sync binding path;
+/// streaming support is layered on top via the async handler adapter (US-505).
+interface http-types {
+    /// An HTTP header as a name-value pair.
+    record http-header {
+        name: string,
+        value: string,
+    }
+
+    /// An incoming HTTP request.
+    record http-request {
+        /// HTTP method (GET, POST, PUT, DELETE, etc.).
+        method: string,
+        /// Request URI path and query string (e.g., "/users?page=1").
+        uri: string,
+        /// Request headers.
+        headers: list<http-header>,
+        /// Request body as raw bytes. Empty for bodyless requests (GET, HEAD).
+        body: list<u8>,
+    }
+
+    /// An outgoing HTTP response.
+    record http-response {
+        /// HTTP status code (e.g., 200, 404, 500).
+        status: u16,
+        /// Response headers.
+        headers: list<http-header>,
+        /// Response body as raw bytes.
+        body: list<u8>,
+    }
+}

@@ -1,0 +1,19 @@
+package warpgrid:shim@0.1.0;
+
+/// Threading model declaration shim interface.
+///
+/// Allows guest modules to declare their threading expectations so the
+/// host can configure the appropriate execution mode or warn about
+/// incompatibilities.
+interface threading {
+    /// Threading model expectations a guest module can declare.
+    enum threading-model {
+        /// Module requires true parallel threads (may be degraded to cooperative).
+        parallel-required,
+        /// Module is designed for cooperative/sequential execution.
+        cooperative,
+    }
+
+    /// Declare the module's threading model. May only be called once per instance.
+    declare-threading-model: func(model: threading-model) -> result<_, string>;
+}
