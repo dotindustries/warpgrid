@@ -775,6 +775,79 @@ entry = "handler.js"
         }
     }
 
+    // Integration test: full pipeline for warpgrid handler using database, dns, fs shims
+    // Run with: cargo test -p warp-pack -- --ignored test_pack_js_warpgrid_handler
+    #[test]
+    #[ignore]
+    fn test_pack_js_warpgrid_handler() {
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+
+        let test_fixture = project_root
+            .join("tests")
+            .join("fixtures")
+            .join("js-warpgrid-handler");
+        if !test_fixture.exists() {
+            eprintln!(
+                "Test fixture not found at {}",
+                test_fixture.display()
+            );
+            return;
+        }
+
+        // Create a temp project copying the fixture contents
+        let dir = TempDir::new().unwrap();
+        let project = dir.path();
+
+        // Copy warp.toml
+        fs::copy(test_fixture.join("warp.toml"), project.join("warp.toml")).unwrap();
+
+        // Copy handler source
+        let src_dir = project.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::copy(
+            test_fixture.join("src").join("handler.js"),
+            src_dir.join("handler.js"),
+        )
+        .unwrap();
+
+        // Copy WIT directory
+        let wit_src = test_fixture.join("wit");
+        let wit_dst = project.join("wit");
+        copy_dir_recursive(&wit_src, &wit_dst).unwrap();
+
+        let config = WarpConfig::from_file(&project.join("warp.toml")).unwrap();
+        let result = pack_js(project, &config);
+
+        match result {
+            Ok(pack_result) => {
+                let output = Path::new(&pack_result.output_path);
+                assert!(output.exists(), "handler.wasm should exist");
+                assert!(
+                    output.file_name().unwrap() == "handler.wasm",
+                    "Output should be handler.wasm"
+                );
+                assert!(pack_result.size_bytes > 0, "Wasm should be non-empty");
+                assert_eq!(
+                    pack_result.sha256.len(),
+                    64,
+                    "SHA256 hex digest should be 64 chars"
+                );
+            }
+            Err(e) => {
+                // If jco is not installed, error should be actionable
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("jco") || msg.contains("ComponentizeJS"),
+                    "Unexpected error: {msg}"
+                );
+            }
+        }
+    }
+
     fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         fs::create_dir_all(dst)?;
         for entry in fs::read_dir(src)? {
