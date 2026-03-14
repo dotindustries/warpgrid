@@ -9,6 +9,7 @@
 
 pub mod host;
 
+use crate::tzdata;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -175,8 +176,10 @@ impl VirtualFileMap {
     /// Create a default `VirtualFileMap` with standard WarpGrid virtual paths.
     ///
     /// Includes `/dev/null`, `/dev/urandom`, default `/etc/resolv.conf`,
-    /// empty `/etc/hosts`, default `/proc/self/` entries, and timezone data
-    /// for UTC, US/Eastern, US/Pacific, Europe/London.
+    /// `/etc/hosts`, default `/proc/self/` entries, and real TZif v2 timezone
+    /// data for UTC, America/New_York, US/Eastern, America/Chicago,
+    /// America/Denver, America/Los_Angeles, US/Pacific, Europe/London,
+    /// Asia/Tokyo.
     pub fn with_defaults() -> Self {
         let mut proc_entries = HashMap::new();
         proc_entries.insert(
@@ -185,20 +188,7 @@ impl VirtualFileMap {
         );
         proc_entries.insert("cmdline".to_string(), b"warpgrid-guest\0".to_vec());
 
-        let mut zones = HashMap::new();
-        zones.insert("UTC".to_string(), make_placeholder_tzif("UTC"));
-        zones.insert(
-            "US/Eastern".to_string(),
-            make_placeholder_tzif("US/Eastern"),
-        );
-        zones.insert(
-            "US/Pacific".to_string(),
-            make_placeholder_tzif("US/Pacific"),
-        );
-        zones.insert(
-            "Europe/London".to_string(),
-            make_placeholder_tzif("Europe/London"),
-        );
+        let zones = tzdata::default_timezone_data();
 
         Self::builder()
             .with_dev_null()
@@ -293,22 +283,6 @@ fn canonicalize_path(path: &str) -> String {
     }
 }
 
-/// Create placeholder TZif-format data for a timezone.
-///
-/// In production this would embed real tzdata; for now we create a minimal
-/// identifiable payload with the TZif magic header.
-fn make_placeholder_tzif(tz_name: &str) -> Vec<u8> {
-    // TZif magic header (4 bytes) + version byte + padding + timezone name.
-    // This is NOT a valid TZif file — it's a recognizable placeholder for testing.
-    // US-207 will embed real tzdata when integrating with `localtime()`.
-    let mut data = Vec::new();
-    data.extend_from_slice(b"TZif"); // magic
-    data.push(b'2'); // version
-    data.extend_from_slice(&[0u8; 15]); // reserved
-    data.extend_from_slice(tz_name.as_bytes());
-    data
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,6 +322,11 @@ mod tests {
         assert!(map.contains("/usr/share/zoneinfo/US/Eastern"));
         assert!(map.contains("/usr/share/zoneinfo/US/Pacific"));
         assert!(map.contains("/usr/share/zoneinfo/Europe/London"));
+        assert!(map.contains("/usr/share/zoneinfo/America/New_York"));
+        assert!(map.contains("/usr/share/zoneinfo/America/Chicago"));
+        assert!(map.contains("/usr/share/zoneinfo/America/Denver"));
+        assert!(map.contains("/usr/share/zoneinfo/America/Los_Angeles"));
+        assert!(map.contains("/usr/share/zoneinfo/Asia/Tokyo"));
     }
 
     // ── /dev/null ────────────────────────────────────────────────────
@@ -498,14 +477,32 @@ mod tests {
     // ── /usr/share/zoneinfo/** ───────────────────────────────────────
 
     #[test]
-    fn timezone_utc_available_in_defaults() {
+    fn timezone_utc_has_valid_tzif_v2() {
         let map = VirtualFileMap::with_defaults();
         match map.lookup("/usr/share/zoneinfo/UTC") {
             VirtualContent::Found(bytes) => {
-                // Should start with TZif magic header.
-                assert!(bytes.starts_with(b"TZif"));
-                // Should contain the timezone name.
+                assert!(bytes.starts_with(b"TZif"), "missing TZif magic");
+                assert_eq!(bytes[4], b'2', "expected TZif version 2");
+                // Real TZif v2: must have two headers (v1 + v2).
+                assert!(bytes.len() > 88, "too small for TZif v2 (two 44-byte headers)");
+                // Should contain "UTC" abbreviation.
                 assert!(bytes.windows(3).any(|w| w == b"UTC"));
+                // Footer should end with newline.
+                assert_eq!(bytes[bytes.len() - 1], b'\n');
+            }
+            other => panic!("expected Found, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn timezone_america_new_york_has_est_edt() {
+        let map = VirtualFileMap::with_defaults();
+        match map.lookup("/usr/share/zoneinfo/America/New_York") {
+            VirtualContent::Found(bytes) => {
+                assert!(bytes.starts_with(b"TZif"));
+                // Should contain both abbreviations.
+                assert!(bytes.windows(3).any(|w| w == b"EST"));
+                assert!(bytes.windows(3).any(|w| w == b"EDT"));
             }
             other => panic!("expected Found, got {:?}", other),
         }
@@ -528,17 +525,32 @@ mod tests {
         match map.lookup("/usr/share/zoneinfo/US/Pacific") {
             VirtualContent::Found(bytes) => {
                 assert!(bytes.starts_with(b"TZif"));
+                assert!(bytes.windows(3).any(|w| w == b"PST"));
             }
             other => panic!("expected Found, got {:?}", other),
         }
     }
 
     #[test]
-    fn timezone_europe_london_available_in_defaults() {
+    fn timezone_europe_london_has_gmt_bst() {
         let map = VirtualFileMap::with_defaults();
         match map.lookup("/usr/share/zoneinfo/Europe/London") {
             VirtualContent::Found(bytes) => {
                 assert!(bytes.starts_with(b"TZif"));
+                assert!(bytes.windows(3).any(|w| w == b"GMT"));
+                assert!(bytes.windows(3).any(|w| w == b"BST"));
+            }
+            other => panic!("expected Found, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn timezone_asia_tokyo_has_jst() {
+        let map = VirtualFileMap::with_defaults();
+        match map.lookup("/usr/share/zoneinfo/Asia/Tokyo") {
+            VirtualContent::Found(bytes) => {
+                assert!(bytes.starts_with(b"TZif"));
+                assert!(bytes.windows(3).any(|w| w == b"JST"));
             }
             other => panic!("expected Found, got {:?}", other),
         }
@@ -566,6 +578,34 @@ mod tests {
                 assert_eq!(bytes, b"TZif2custom-data");
             }
             other => panic!("expected Found, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn all_default_timezones_within_vfd_size_limit() {
+        let map = VirtualFileMap::with_defaults();
+        let zones = [
+            "UTC",
+            "America/New_York",
+            "US/Eastern",
+            "America/Chicago",
+            "America/Denver",
+            "America/Los_Angeles",
+            "US/Pacific",
+            "Europe/London",
+            "Asia/Tokyo",
+        ];
+        for zone in &zones {
+            match map.lookup(&format!("/usr/share/zoneinfo/{zone}")) {
+                VirtualContent::Found(bytes) => {
+                    assert!(
+                        bytes.len() <= 8192,
+                        "{zone}: TZif data ({} bytes) exceeds WARPGRID_FS_MAX_CONTENT",
+                        bytes.len()
+                    );
+                }
+                other => panic!("{zone}: expected Found, got {:?}", other),
+            }
         }
     }
 

@@ -1,0 +1,6623 @@
+From ae57e3f443240733759c8ef904368162e43f9c8e Mon Sep 17 00:00:00 2001
+From: Janos <janos@dot.industries>
+Date: Sat, 14 Mar 2026 10:02:47 +0000
+Subject: [PATCH] feat: patch __tz.c to load timezone data via virtual
+ filesystem
+
+Replace mmap-based timezone file loading with open/read/close to work
+with WarpGrid's virtual filesystem shim. This enables localtime(),
+strftime(), and other timezone-aware functions to use real TZif v2 data
+served by the host through /usr/share/zoneinfo/*.
+
+- Add warpgrid_load_file() using static 8KB buffer instead of mmap
+- Re-enable full musl timezone parsing (previously stubbed to UTC-only)
+- Export timezone globals (__timezone, __daylight, __tzname, tzset)
+- Update expected-symbols for all WASI targets
+
+Part of US-207: Patch timezone loading to use virtual filesystem
+---
+ .../wasm32-wasip1-threads/defined-symbols.txt | 922 +++++++++---------
+ expected/wasm32-wasip1/defined-symbols.txt    | 858 ++++++++--------
+ expected/wasm32-wasip2/defined-symbols.txt    | 822 ++++++++--------
+ expected/wasm32-wasip3/defined-symbols.txt    | 802 +++++++--------
+ libc-top-half/musl/src/time/__tz.c            |  90 +-
+ 5 files changed, 1773 insertions(+), 1721 deletions(-)
+
+diff --git a/expected/wasm32-wasip1-threads/defined-symbols.txt b/expected/wasm32-wasip1-threads/defined-symbols.txt
+index 4fb5d53..88b923e 100644
+--- a/expected/wasm32-wasip1-threads/defined-symbols.txt
++++ b/expected/wasm32-wasip1-threads/defined-symbols.txt
+@@ -1,426 +1,3 @@
+-_CLOCK_MONOTONIC
+-_CLOCK_REALTIME
+-_Exit
+-_IO_feof_unlocked
+-_IO_ferror_unlocked
+-_IO_getc
+-_IO_getc_unlocked
+-_IO_putc
+-_IO_putc_unlocked
+-__EINVAL
+-__ENOMEM
+-__SIG_ERR
+-__SIG_IGN
+-__acquire_ptc
+-__aio_close
+-__asctime_r
+-__assert_fail
+-__at_quick_exit_lockptr
+-__atexit_lockptr
+-__c_dot_utf8
+-__c_dot_utf8_locale
+-__c_locale
+-__clock
+-__clock_gettime
+-__clock_nanosleep
+-__copy_tls
+-__cos
+-__cosdf
+-__cosl
+-__crypt_blowfish
+-__crypt_des
+-__crypt_md5
+-__crypt_r
+-__crypt_sha256
+-__crypt_sha512
+-__ctype_b_loc
+-__ctype_get_mb_cur_max
+-__ctype_tolower_loc
+-__ctype_toupper_loc
+-__cxa_atexit
+-__cxa_finalize
+-__default_guardsize
+-__default_stacksize
+-__des_setkey
+-__do_cleanup_pop
+-__do_cleanup_push
+-__do_des
+-__do_orphaned_stdio_locks
+-__dummy_reference
+-__duplocale
+-__env_rm_add
+-__errno_location
+-__exp2f_data
+-__exp_data
+-__expo2
+-__expo2f
+-__fbufsize
+-__fclose_ca
+-__fdopen
+-__fesetround
+-__fgetwc_unlocked
+-__flbf
+-__floatscan
+-__fmodeflags
+-__fopen_rb_ca
+-__fpending
+-__fpurge
+-__fputwc_unlocked
+-__freadable
+-__freadahead
+-__freading
+-__freadptr
+-__freadptrinc
+-__freelocale
+-__fseeko
+-__fseeko_unlocked
+-__fseterr
+-__fsetlocking
+-__fsmu8
+-__ftello
+-__ftello_unlocked
+-__funcs_on_exit
+-__funcs_on_quick_exit
+-__futimesat
+-__fwritable
+-__fwritex
+-__fwriting
+-__get_locale
+-__getdelim
+-__getentropy
+-__getopt_msg
+-__gmtime_r
+-__hwcap
+-__inet_aton
+-__init_ssp
+-__init_tp
+-__intscan
+-__invtrigl_R
+-__isalnum_l
+-__isalpha_l
+-__isatty
+-__isblank_l
+-__iscntrl_l
+-__isdigit_l
+-__isgraph_l
+-__islower_l
+-__isoc99_fscanf
+-__isoc99_fwscanf
+-__isoc99_scanf
+-__isoc99_sscanf
+-__isoc99_swscanf
+-__isoc99_vfscanf
+-__isoc99_vfwscanf
+-__isoc99_vscanf
+-__isoc99_vsscanf
+-__isoc99_vswscanf
+-__isoc99_vwscanf
+-__isoc99_wscanf
+-__isprint_l
+-__ispunct_l
+-__isspace_l
+-__isupper_l
+-__iswalnum_l
+-__iswalpha_l
+-__iswblank_l
+-__iswcntrl_l
+-__iswctype_l
+-__iswdigit_l
+-__iswgraph_l
+-__iswlower_l
+-__iswprint_l
+-__iswpunct_l
+-__iswspace_l
+-__iswupper_l
+-__iswxdigit_l
+-__isxdigit_l
+-__lctrans
+-__lctrans_cur
+-__lctrans_impl
+-__ldexp_cexp
+-__ldexp_cexpf
+-__lgamma_r
+-__lgammaf_r
+-__lgammal_r
+-__libc
+-__libc_calloc
+-__libc_free
+-__libc_malloc
+-__loc_is_allocated
+-__locale_lock
+-__locale_lockptr
+-__localtime_r
+-__lock
+-__lockfile
+-__log2_data
+-__log2f_data
+-__log_data
+-__logf_data
+-__lseek
+-__main_void
+-__math_divzero
+-__math_divzerof
+-__math_invalid
+-__math_invalidf
+-__math_invalidl
+-__math_oflow
+-__math_oflowf
+-__math_uflow
+-__math_uflowf
+-__math_xflow
+-__math_xflowf
+-__memrchr
+-__mo_lookup
+-__month_to_secs
+-__newlocale
+-__nl_langinfo
+-__nl_langinfo_l
+-__ofl_add
+-__ofl_lock
+-__ofl_unlock
+-__optpos
+-__optreset
+-__overflow
+-__p1evll
+-__pio2_hi
+-__pio2_lo
+-__pleval
+-__polevll
+-__posix_getopt
+-__pow_log_data
+-__powf_log2_data
+-__private_cond_signal
+-__progname
+-__progname_full
+-__pthread_cond_timedwait
+-__pthread_create
+-__pthread_join
+-__pthread_key_create
+-__pthread_key_delete
+-__pthread_mutex_lock
+-__pthread_mutex_timedlock
+-__pthread_mutex_trylock
+-__pthread_mutex_trylock_owner
+-__pthread_mutex_unlock
+-__pthread_once
+-__pthread_once_full
+-__pthread_rwlock_rdlock
+-__pthread_rwlock_timedrdlock
+-__pthread_rwlock_timedwrlock
+-__pthread_rwlock_tryrdlock
+-__pthread_rwlock_trywrlock
+-__pthread_rwlock_unlock
+-__pthread_rwlock_wrlock
+-__pthread_setcancelstate
+-__pthread_testcancel
+-__pthread_tsd_main
+-__pthread_tsd_run_dtors
+-__pthread_tsd_size
+-__putenv
+-__qsort_r
+-__rand48_step
+-__random_lockptr
+-__reallocarray
+-__register_locked_file
+-__release_ptc
+-__rem_pio2
+-__rem_pio2_large
+-__rem_pio2f
+-__rem_pio2l
+-__rsqrt_tab
+-__secs_to_tm
+-__secs_to_zone
+-__seed48
+-__shgetc
+-__shlim
+-__signgam
+-__sin
+-__sindf
+-__sinl
+-__small_printf
+-__stack_chk_fail
+-__stack_chk_fail_local
+-__stack_chk_guard
+-__stderr_FILE
+-__stderr_used
+-__stdin_FILE
+-__stdin_used
+-__stdio_close
+-__stdio_exit
+-__stdio_exit_needed
+-__stdio_ofl_lockptr
+-__stdio_read
+-__stdio_seek
+-__stdio_write
+-__stdout_FILE
+-__stdout_used
+-__stdout_write
+-__stpcpy
+-__stpncpy
+-__strcasecmp_l
+-__strchrnul
+-__strcoll_l
+-__strerror_l
+-__strftime_fmt_1
+-__strftime_l
+-__strncasecmp_l
+-__strtod_l
+-__strtof_l
+-__strtoimax_internal
+-__strtol_internal
+-__strtold_l
+-__strtoll_internal
+-__strtoul_internal
+-__strtoull_internal
+-__strtoumax_internal
+-__strxfrm_l
+-__sysinfo
+-__sysv_signal
+-__tan
+-__tandf
+-__tanl
+-__testcancel
+-__thread_list_lock
+-__timedwait
+-__timedwait_cp
+-__tl_lock
+-__tl_sync
+-__tl_unlock
+-__tm_to_secs
+-__tm_to_tzname
+-__tolower_l
+-__toread
+-__toread_needs_stdio_exit
+-__toupper_l
+-__towctrans_l
+-__towlower_l
+-__towrite
+-__towrite_needs_stdio_exit
+-__towupper_l
+-__tre_mem_alloc_impl
+-__tre_mem_destroy
+-__tre_mem_new_impl
+-__tsearch_balance
+-__uflow
+-__unlist_locked_file
+-__unlock
+-__unlockfile
+-__uselocale
+-__utc
+-__wait
+-__wasi_args_get
+-__wasi_args_sizes_get
+-__wasi_clock_res_get
+-__wasi_clock_time_get
+-__wasi_environ_get
+-__wasi_environ_sizes_get
+-__wasi_fd_advise
+-__wasi_fd_allocate
+-__wasi_fd_close
+-__wasi_fd_datasync
+-__wasi_fd_fdstat_get
+-__wasi_fd_fdstat_set_flags
+-__wasi_fd_fdstat_set_rights
+-__wasi_fd_filestat_get
+-__wasi_fd_filestat_set_size
+-__wasi_fd_filestat_set_times
+-__wasi_fd_pread
+-__wasi_fd_prestat_dir_name
+-__wasi_fd_prestat_get
+-__wasi_fd_pwrite
+-__wasi_fd_read
+-__wasi_fd_readdir
+-__wasi_fd_renumber
+-__wasi_fd_seek
+-__wasi_fd_sync
+-__wasi_fd_tell
+-__wasi_fd_write
+-__wasi_init_tp
+-__wasi_path_create_directory
+-__wasi_path_filestat_get
+-__wasi_path_filestat_set_times
+-__wasi_path_link
+-__wasi_path_open
+-__wasi_path_readlink
+-__wasi_path_remove_directory
+-__wasi_path_rename
+-__wasi_path_symlink
+-__wasi_path_unlink_file
+-__wasi_poll_oneoff
+-__wasi_proc_exit
+-__wasi_random_get
+-__wasi_sched_yield
+-__wasi_sock_accept
+-__wasi_sock_recv
+-__wasi_sock_send
+-__wasi_sock_shutdown
+-__wasi_thread_spawn
+-__wasi_thread_start_C
+-__wasilibc_access
+-__wasilibc_cwd
+-__wasilibc_cwd_lock
+-__wasilibc_cwd_unlock
+-__wasilibc_deinitialize_environ
+-__wasilibc_dttoif
+-__wasilibc_enable_futex_busywait_on_current_thread
+-__wasilibc_ensure_environ
+-__wasilibc_environ
+-__wasilibc_fd_renumber
+-__wasilibc_find_abspath
+-__wasilibc_find_relpath
+-__wasilibc_find_relpath_alloc
+-__wasilibc_futex_wait
+-__wasilibc_futex_wait_atomic_wait
+-__wasilibc_futex_wait_maybe_busy
+-__wasilibc_get_environ
+-__wasilibc_iftodt
+-__wasilibc_initialize_environ
+-__wasilibc_link
+-__wasilibc_link_newat
+-__wasilibc_link_oldat
+-__wasilibc_maybe_reinitialize_environ_eagerly
+-__wasilibc_nocwd___wasilibc_rmdirat
+-__wasilibc_nocwd___wasilibc_unlinkat
+-__wasilibc_nocwd_faccessat
+-__wasilibc_nocwd_fstatat
+-__wasilibc_nocwd_linkat
+-__wasilibc_nocwd_mkdirat_nomode
+-__wasilibc_nocwd_openat_nomode
+-__wasilibc_nocwd_opendirat
+-__wasilibc_nocwd_readlinkat
+-__wasilibc_nocwd_renameat
+-__wasilibc_nocwd_scandirat
+-__wasilibc_nocwd_symlinkat
+-__wasilibc_nocwd_utimensat
+-__wasilibc_open_nomode
+-__wasilibc_populate_preopens
+-__wasilibc_pthread_self
+-__wasilibc_register_preopened_fd
+-__wasilibc_rename_newat
+-__wasilibc_rename_oldat
+-__wasilibc_reset_preopens
+-__wasilibc_rmdirat
+-__wasilibc_stat
+-__wasilibc_tell
+-__wasilibc_unlinkat
+-__wasilibc_use_busy_futex
+-__wasilibc_utimens
+-__wasm_call_dtors
+-__wcscoll_l
+-__wcsftime_l
+-__wcsxfrm_l
+-__wctrans_l
+-__wctype_l
+-__xpg_basename
+-__xpg_strerror_r
+-__year_to_secs
+-_environ
+-_exit
+-_flushlbf
+-_initialize
+-_pthread_cleanup_pop
+-_pthread_cleanup_push
+-_start
+ a64l
+ abort
+ abs
+@@ -433,6 +10,8 @@ acosh
+ acoshf
+ acoshl
+ acosl
++__acquire_ptc
++__aio_close
+ aligned_alloc
+ alphasort
+ alphasort64
+@@ -440,6 +19,7 @@ arc4random
+ arc4random_buf
+ arc4random_uniform
+ asctime
++__asctime_r
+ asctime_r
+ asin
+ asinf
+@@ -448,7 +28,7 @@ asinhf
+ asinhl
+ asinl
+ asprintf
+-at_quick_exit
++__assert_fail
+ atan
+ atan2
+ atan2f
+@@ -459,10 +39,13 @@ atanhf
+ atanhl
+ atanl
+ atexit
++__atexit_lockptr
+ atof
+ atoi
+ atol
+ atoll
++at_quick_exit
++__at_quick_exit_lockptr
+ basename
+ bcmp
+ bcopy
+@@ -509,6 +92,8 @@ ccosh
+ ccoshf
+ ccoshl
+ ccosl
++__c_dot_utf8
++__c_dot_utf8_locale
+ ceil
+ ceilf
+ ceill
+@@ -523,10 +108,16 @@ cimagl
+ clearenv
+ clearerr
+ clearerr_unlocked
++__c_locale
++__clock
+ clock
+ clock_getres
++__clock_gettime
+ clock_gettime
++_CLOCK_MONOTONIC
++__clock_nanosleep
+ clock_nanosleep
++_CLOCK_REALTIME
+ clog
+ clogf
+ clogl
+@@ -539,11 +130,15 @@ conjl
+ copysign
+ copysignf
+ copysignl
++__copy_tls
++__cos
+ cos
++__cosdf
+ cosf
+ cosh
+ coshf
+ coshl
++__cosl
+ cosl
+ cpow
+ cpowf
+@@ -557,7 +152,13 @@ creall
+ creat
+ creat64
+ crypt
++__crypt_blowfish
++__crypt_des
++__crypt_md5
++__crypt_r
+ crypt_r
++__crypt_sha256
++__crypt_sha512
+ csin
+ csinf
+ csinh
+@@ -575,18 +176,38 @@ ctanhl
+ ctanl
+ ctime
+ ctime_r
++__ctype_b_loc
++__ctype_get_mb_cur_max
++__ctype_tolower_loc
++__ctype_toupper_loc
++__cxa_atexit
++__cxa_finalize
++daylight
++__default_guardsize
++__default_stacksize
++__des_setkey
+ difftime
+ dirfd
+ dirname
+ div
++__do_cleanup_pop
++__do_cleanup_push
++__do_des
++__do_orphaned_stdio_locks
+ dprintf
+ drand48
+ drem
+ dremf
++__dummy_reference
++__duplocale
+ duplocale
+ ecvt
++__EINVAL
+ encrypt
++__ENOMEM
++_environ
+ environ
++__env_rm_add
+ erand48
+ erf
+ erfc
+@@ -595,27 +216,36 @@ erfcl
+ erff
+ erfl
+ errno
++__errno_location
++_exit
+ exit
++_Exit
+ exp
+ exp10
+ exp10f
+ exp10l
+ exp2
+ exp2f
++__exp2f_data
+ exp2l
++__exp_data
+ expf
+ expl
+ explicit_bzero
+ expm1
+ expm1f
+ expm1l
++__expo2
++__expo2f
+ fabs
+ fabsf
+ fabsl
+ faccessat
++__fbufsize
+ fchmod
+ fchmodat
+ fclose
++__fclose_ca
+ fcntl
+ fcvt
+ fdatasync
+@@ -623,6 +253,7 @@ fdclosedir
+ fdim
+ fdimf
+ fdiml
++__fdopen
+ fdopen
+ fdopendir
+ feclearexcept
+@@ -637,6 +268,7 @@ ferror
+ ferror_unlocked
+ fesetenv
+ fesetexceptflag
++__fesetround
+ fesetround
+ fetestexcept
+ feupdateenv
+@@ -653,6 +285,7 @@ fgetpos64
+ fgets
+ fgets_unlocked
+ fgetwc
++__fgetwc_unlocked
+ fgetwc_unlocked
+ fgetws
+ fgetws_unlocked
+@@ -660,10 +293,13 @@ fileno
+ fileno_unlocked
+ finite
+ finitef
++__flbf
++__floatscan
+ flockfile
+ floor
+ floorf
+ floorl
++_flushlbf
+ fma
+ fmaf
+ fmal
+@@ -675,6 +311,7 @@ fmin
+ fminf
+ fminl
+ fmod
++__fmodeflags
+ fmodf
+ fmodl
+ fmtmsg
+@@ -682,20 +319,30 @@ fnmatch
+ fopen
+ fopen64
+ fopencookie
++__fopen_rb_ca
+ fpathconf
++__fpending
+ fprintf
++__fpurge
+ fpurge
+ fputc
+ fputc_unlocked
+ fputs
+ fputs_unlocked
+ fputwc
++__fputwc_unlocked
+ fputwc_unlocked
+ fputws
+ fputws_unlocked
+ fread
++__freadable
++__freadahead
++__freading
++__freadptr
++__freadptrinc
+ fread_unlocked
+ free
++__freelocale
+ freelocale
+ freopen
+ freopen64
+@@ -704,17 +351,24 @@ frexpf
+ frexpl
+ fscanf
+ fseek
++__fseeko
+ fseeko
+ fseeko64
++__fseeko_unlocked
++__fseterr
++__fsetlocking
+ fsetpos
+ fsetpos64
++__fsmu8
+ fstat
+ fstatat
+ fstatvfs
+ fsync
+ ftell
++__ftello
+ ftello
+ ftello64
++__ftello_unlocked
+ ftime
+ ftruncate
+ ftrylockfile
+@@ -723,37 +377,47 @@ fts_close
+ fts_open
+ fts_read
+ fts_set
++__funcs_on_exit
++__funcs_on_quick_exit
+ funlockfile
+ futimens
++__futimesat
+ futimesat
+ fwide
+ fwprintf
++__fwritable
+ fwrite
+ fwrite_unlocked
++__fwritex
++__fwriting
+ fwscanf
+ gcvt
+ get_avphys_pages
+-get_nprocs
+-get_nprocs_conf
+-get_phys_pages
+ getc
+-getc_unlocked
+ getchar
+ getchar_unlocked
++getc_unlocked
+ getcwd
+ getdate
+ getdate_err
++__getdelim
+ getdelim
+ getdomainname
++__getentropy
+ getentropy
+ getenv
+ gethostid
+ gethostname
+ getline
++__get_locale
++get_nprocs
++get_nprocs_conf
+ getopt
+ getopt_long
+ getopt_long_only
++__getopt_msg
+ getpagesize
++get_phys_pages
+ getpid
+ getrusage
+ getsockopt
+@@ -761,14 +425,15 @@ getsubopt
+ gettimeofday
+ getw
+ getwc
+-getwc_unlocked
+ getwchar
+ getwchar_unlocked
++getwc_unlocked
+ glob
+ glob64
+ globfree
+ globfree64
+ gmtime
++__gmtime_r
+ gmtime_r
+ hcreate
+ hcreate_r
+@@ -778,6 +443,7 @@ hsearch
+ hsearch_r
+ htonl
+ htons
++__hwcap
+ hypot
+ hypotf
+ hypotl
+@@ -793,6 +459,7 @@ in6addr_any
+ in6addr_loopback
+ index
+ inet_addr
++__inet_aton
+ inet_aton
+ inet_lnaof
+ inet_makeaddr
+@@ -801,61 +468,110 @@ inet_network
+ inet_ntoa
+ inet_ntop
+ inet_pton
++_initialize
++__init_ssp
+ initstate
++__init_tp
+ insque
++__intscan
++__invtrigl_R
+ ioctl
++_IO_feof_unlocked
++_IO_ferror_unlocked
++_IO_getc
++_IO_getc_unlocked
++_IO_putc
++_IO_putc_unlocked
+ iprintf
+ isalnum
++__isalnum_l
+ isalnum_l
+ isalpha
++__isalpha_l
+ isalpha_l
+ isascii
++__isatty
+ isatty
+ isblank
++__isblank_l
+ isblank_l
+ iscntrl
++__iscntrl_l
+ iscntrl_l
+ isdigit
++__isdigit_l
+ isdigit_l
+ isgraph
++__isgraph_l
+ isgraph_l
+ islower
++__islower_l
+ islower_l
++__isoc99_fscanf
++__isoc99_fwscanf
++__isoc99_scanf
++__isoc99_sscanf
++__isoc99_swscanf
++__isoc99_vfscanf
++__isoc99_vfwscanf
++__isoc99_vscanf
++__isoc99_vsscanf
++__isoc99_vswscanf
++__isoc99_vwscanf
++__isoc99_wscanf
+ isprint
++__isprint_l
+ isprint_l
+ ispunct
++__ispunct_l
+ ispunct_l
+ isspace
++__isspace_l
+ isspace_l
+ isupper
++__isupper_l
+ isupper_l
+ iswalnum
++__iswalnum_l
+ iswalnum_l
+ iswalpha
++__iswalpha_l
+ iswalpha_l
+ iswblank
++__iswblank_l
+ iswblank_l
+ iswcntrl
++__iswcntrl_l
+ iswcntrl_l
+ iswctype
++__iswctype_l
+ iswctype_l
+ iswdigit
++__iswdigit_l
+ iswdigit_l
+ iswgraph
++__iswgraph_l
+ iswgraph_l
+ iswlower
++__iswlower_l
+ iswlower_l
+ iswprint
++__iswprint_l
+ iswprint_l
+ iswpunct
++__iswpunct_l
+ iswpunct_l
+ iswspace
++__iswspace_l
+ iswspace_l
+ iswupper
++__iswupper_l
+ iswupper_l
+ iswxdigit
++__iswxdigit_l
+ iswxdigit_l
+ isxdigit
++__isxdigit_l
+ isxdigit_l
+ j0
+ j0f
+@@ -867,17 +583,29 @@ jrand48
+ l64a
+ labs
+ lcong48
++__lctrans
++__lctrans_cur
++__lctrans_impl
+ ldexp
++__ldexp_cexp
++__ldexp_cexpf
+ ldexpf
+ ldexpl
+ ldiv
+ lfind
+ lgamma
+-lgamma_r
+ lgammaf
++__lgammaf_r
+ lgammaf_r
+ lgammal
++__lgammal_r
+ lgammal_r
++__lgamma_r
++lgamma_r
++__libc
++__libc_calloc
++__libc_free
++__libc_malloc
+ link
+ linkat
+ llabs
+@@ -889,8 +617,14 @@ llround
+ llroundf
+ llroundl
+ localeconv
++__locale_lock
++__locale_lockptr
+ localtime
++__localtime_r
+ localtime_r
++__loc_is_allocated
++__lock
++__lockfile
+ log
+ log10
+ log10f
+@@ -899,12 +633,16 @@ log1p
+ log1pf
+ log1pl
+ log2
++__log2_data
+ log2f
++__log2f_data
+ log2l
+ logb
+ logbf
+ logbl
++__log_data
+ logf
++__logf_data
+ logl
+ lrand48
+ lrint
+@@ -914,10 +652,23 @@ lround
+ lroundf
+ lroundl
+ lsearch
++__lseek
+ lseek
+ lstat
++__main_void
+ malloc
+ malloc_usable_size
++__math_divzero
++__math_divzerof
++__math_invalid
++__math_invalidf
++__math_invalidl
++__math_oflow
++__math_oflowf
++__math_uflow
++__math_uflowf
++__math_xflow
++__math_xflowf
+ mblen
+ mbrlen
+ mbrtoc16
+@@ -935,6 +686,7 @@ memcpy
+ memmem
+ memmove
+ mempcpy
++__memrchr
+ memrchr
+ memset
+ mkdir
+@@ -944,6 +696,8 @@ mmap
+ modf
+ modff
+ modfl
++__mo_lookup
++__month_to_secs
+ mprotect
+ mrand48
+ munmap
+@@ -954,6 +708,7 @@ nanosleep
+ nearbyint
+ nearbyintf
+ nearbyintl
++__newlocale
+ newlocale
+ nextafter
+ nextafterf
+@@ -963,38 +718,57 @@ nexttowardf
+ nexttowardl
+ nftw
+ nftw64
++__nl_langinfo
+ nl_langinfo
++__nl_langinfo_l
+ nl_langinfo_l
+ nrand48
+ ntohl
+ ntohs
++__ofl_add
++__ofl_lock
++__ofl_unlock
+ open
+-open_memstream
+-open_wmemstream
+ openat
+ opendir
+ opendirat
++open_memstream
++open_wmemstream
+ optarg
+ opterr
+ optind
+ optopt
++__optpos
++__optreset
+ optreset
++__overflow
++__p1evll
+ pathconf
+ perror
++__pio2_hi
++__pio2_lo
++__pleval
++__polevll
+ poll
+ posix_close
+ posix_fadvise
+ posix_fallocate
++__posix_getopt
+ posix_memalign
+ pow
+ pow10
+ pow10f
+ pow10l
+ powf
++__powf_log2_data
+ powl
++__pow_log_data
+ pread
+ preadv
+ printf
++__private_cond_signal
++__progname
++__progname_full
+ program_invocation_name
+ program_invocation_short_name
+ pselect
+@@ -1011,42 +785,41 @@ pthread_attr_setguardsize
+ pthread_attr_setschedparam
+ pthread_attr_setstack
+ pthread_attr_setstacksize
+-pthread_barrier_destroy
+-pthread_barrier_init
+-pthread_barrier_wait
+ pthread_barrierattr_destroy
+ pthread_barrierattr_getpshared
+ pthread_barrierattr_init
+ pthread_barrierattr_setpshared
++pthread_barrier_destroy
++pthread_barrier_init
++pthread_barrier_wait
+ pthread_cancel
+-pthread_cond_broadcast
+-pthread_cond_destroy
+-pthread_cond_init
+-pthread_cond_signal
+-pthread_cond_timedwait
+-pthread_cond_wait
++_pthread_cleanup_pop
++_pthread_cleanup_push
+ pthread_condattr_destroy
+ pthread_condattr_getclock
+ pthread_condattr_getpshared
+ pthread_condattr_init
+ pthread_condattr_setclock
+ pthread_condattr_setpshared
++pthread_cond_broadcast
++pthread_cond_destroy
++pthread_cond_init
++pthread_cond_signal
++__pthread_cond_timedwait
++pthread_cond_timedwait
++pthread_cond_wait
++__pthread_create
+ pthread_create
+ pthread_detach
+ pthread_equal
+ pthread_getattr_np
+ pthread_getspecific
++__pthread_join
+ pthread_join
++__pthread_key_create
+ pthread_key_create
++__pthread_key_delete
+ pthread_key_delete
+-pthread_mutex_consistent
+-pthread_mutex_destroy
+-pthread_mutex_getprioceiling
+-pthread_mutex_init
+-pthread_mutex_lock
+-pthread_mutex_timedlock
+-pthread_mutex_trylock
+-pthread_mutex_unlock
+ pthread_mutexattr_destroy
+ pthread_mutexattr_getprotocol
+ pthread_mutexattr_getpshared
+@@ -1057,21 +830,44 @@ pthread_mutexattr_setprotocol
+ pthread_mutexattr_setpshared
+ pthread_mutexattr_setrobust
+ pthread_mutexattr_settype
++pthread_mutex_consistent
++pthread_mutex_destroy
++pthread_mutex_getprioceiling
++pthread_mutex_init
++__pthread_mutex_lock
++pthread_mutex_lock
++__pthread_mutex_timedlock
++pthread_mutex_timedlock
++__pthread_mutex_trylock
++pthread_mutex_trylock
++__pthread_mutex_trylock_owner
++__pthread_mutex_unlock
++pthread_mutex_unlock
++__pthread_once
+ pthread_once
++__pthread_once_full
++pthread_rwlockattr_destroy
++pthread_rwlockattr_getpshared
++pthread_rwlockattr_init
++pthread_rwlockattr_setpshared
+ pthread_rwlock_destroy
+ pthread_rwlock_init
++__pthread_rwlock_rdlock
+ pthread_rwlock_rdlock
++__pthread_rwlock_timedrdlock
+ pthread_rwlock_timedrdlock
++__pthread_rwlock_timedwrlock
+ pthread_rwlock_timedwrlock
++__pthread_rwlock_tryrdlock
+ pthread_rwlock_tryrdlock
++__pthread_rwlock_trywrlock
+ pthread_rwlock_trywrlock
++__pthread_rwlock_unlock
+ pthread_rwlock_unlock
++__pthread_rwlock_wrlock
+ pthread_rwlock_wrlock
+-pthread_rwlockattr_destroy
+-pthread_rwlockattr_getpshared
+-pthread_rwlockattr_init
+-pthread_rwlockattr_setpshared
+ pthread_self
++__pthread_setcancelstate
+ pthread_setcancelstate
+ pthread_setcanceltype
+ pthread_setspecific
+@@ -1080,35 +876,44 @@ pthread_spin_init
+ pthread_spin_lock
+ pthread_spin_trylock
+ pthread_spin_unlock
++__pthread_testcancel
+ pthread_testcancel
+ pthread_timedjoin_np
+ pthread_tryjoin_np
++__pthread_tsd_main
++__pthread_tsd_run_dtors
++__pthread_tsd_size
+ putc
+-putc_unlocked
+ putchar
+ putchar_unlocked
++putc_unlocked
++__putenv
+ putenv
+ puts
+ putw
+ putwc
+-putwc_unlocked
+ putwchar
+ putwchar_unlocked
++putwc_unlocked
+ pwrite
+ pwritev
+ qsort
++__qsort_r
+ qsort_r
+ quick_exit
+ raise
+ rand
+-rand_r
++__rand48_step
+ random
++__random_lockptr
++rand_r
+ read
+ readdir
+ readlink
+ readlinkat
+ readv
+ realloc
++__reallocarray
+ reallocarray
+ realpath
+ recv
+@@ -1116,10 +921,16 @@ regcomp
+ regerror
+ regexec
+ regfree
++__register_locked_file
++__release_ptc
+ remainder
+ remainderf
+ remainderl
+ remove
++__rem_pio2
++__rem_pio2f
++__rem_pio2l
++__rem_pio2_large
+ remque
+ remquo
+ remquof
+@@ -1136,6 +947,7 @@ rmdir
+ round
+ roundf
+ roundl
++__rsqrt_tab
+ sbrk
+ scalb
+ scalbf
+@@ -1149,6 +961,9 @@ scandir
+ scandirat
+ scanf
+ sched_yield
++__secs_to_tm
++__secs_to_zone
++__seed48
+ seed48
+ seekdir
+ select
+@@ -1168,21 +983,30 @@ setlinebuf
+ setlocale
+ setstate
+ setvbuf
++__shgetc
++__shlim
+ shutdown
++__SIG_ERR
++__SIG_IGN
+ signal
++__signgam
+ signgam
+ significand
+ significandf
++__sin
+ sin
+ sincos
+ sincosf
+ sincosl
++__sindf
+ sinf
+ sinh
+ sinhf
+ sinhl
++__sinl
+ sinl
+ sleep
++__small_printf
+ snprintf
+ sprintf
+ sqrt
+@@ -1192,36 +1016,63 @@ srand
+ srand48
+ srandom
+ sscanf
++__stack_chk_fail
++__stack_chk_fail_local
++__stack_chk_guard
++_start
+ stat
+ statvfs
+ stderr
++__stderr_FILE
++__stderr_used
+ stdin
++__stdin_FILE
++__stdin_used
++__stdio_close
++__stdio_exit
++__stdio_exit_needed
++__stdio_ofl_lockptr
++__stdio_read
++__stdio_seek
++__stdio_write
+ stdout
++__stdout_FILE
++__stdout_used
++__stdout_write
++__stpcpy
+ stpcpy
++__stpncpy
+ stpncpy
+ strcasecmp
++__strcasecmp_l
+ strcasecmp_l
+ strcasestr
+ strcat
+ strchr
++__strchrnul
+ strchrnul
+ strcmp
+ strcoll
++__strcoll_l
+ strcoll_l
+ strcpy
+ strcspn
+ strdup
+ strerror
++__strerror_l
+ strerror_l
+ strerror_r
+ strfmon
+ strfmon_l
+ strftime
++__strftime_fmt_1
++__strftime_l
+ strftime_l
+ strlcat
+ strlcpy
+ strlen
+ strncasecmp
++__strncasecmp_l
+ strncasecmp_l
+ strncat
+ strncmp
+@@ -1236,21 +1087,31 @@ strsignal
+ strspn
+ strstr
+ strtod
++__strtod_l
+ strtod_l
+ strtof
++__strtof_l
+ strtof_l
+ strtoimax
++__strtoimax_internal
+ strtok
+ strtok_r
+ strtol
+ strtold
++__strtold_l
+ strtold_l
++__strtol_internal
+ strtoll
++__strtoll_internal
+ strtoul
++__strtoul_internal
+ strtoull
++__strtoull_internal
+ strtoumax
++__strtoumax_internal
+ strverscmp
+ strxfrm
++__strxfrm_l
+ strxfrm_l
+ swab
+ swprintf
+@@ -1258,15 +1119,21 @@ swscanf
+ symlink
+ symlinkat
+ sysconf
++__sysinfo
++__sysv_signal
++__tan
+ tan
++__tandf
+ tanf
+ tanh
+ tanhf
+ tanhl
++__tanl
+ tanl
+ tdelete
+ tdestroy
+ telldir
++__testcancel
+ tfind
+ tgamma
+ tgammaf
+@@ -1275,36 +1142,70 @@ thrd_current
+ thrd_detach
+ thrd_equal
+ thrd_sleep
++__thread_list_lock
+ time
++__timedwait
++__timedwait_cp
+ timegm
+ times
+ timespec_get
++__timezone
++timezone
++__timezone_lockptr
++__tl_lock
++__tl_sync
++__tl_unlock
++__tm_to_secs
++__tm_to_tzname
+ toascii
+ tolower
++__tolower_l
+ tolower_l
++__toread
++__toread_needs_stdio_exit
+ toupper
++__toupper_l
+ toupper_l
+ towctrans
++__towctrans_l
+ towctrans_l
+ towlower
++__towlower_l
+ towlower_l
++__towrite
++__towrite_needs_stdio_exit
+ towupper
++__towupper_l
+ towupper_l
++__tre_mem_alloc_impl
++__tre_mem_destroy
++__tre_mem_new_impl
+ trunc
+ truncate
+ truncf
+ truncl
+ tsearch
++__tsearch_balance
+ tss_get
+ twalk
++__tzname
++tzname
++__tzset
++tzset
++__uflow
+ uname
+ ungetc
+ ungetwc
+ unlink
+ unlinkat
++__unlist_locked_file
++__unlock
++__unlockfile
+ unsetenv
++__uselocale
+ uselocale
+ usleep
++__utc
+ utime
+ utimensat
+ utimes
+@@ -1325,7 +1226,106 @@ vswprintf
+ vswscanf
+ vwprintf
+ vwscanf
++__wait
++__wasi_args_get
++__wasi_args_sizes_get
++__wasi_clock_res_get
++__wasi_clock_time_get
++__wasi_environ_get
++__wasi_environ_sizes_get
++__wasi_fd_advise
++__wasi_fd_allocate
++__wasi_fd_close
++__wasi_fd_datasync
++__wasi_fd_fdstat_get
++__wasi_fd_fdstat_set_flags
++__wasi_fd_fdstat_set_rights
++__wasi_fd_filestat_get
++__wasi_fd_filestat_set_size
++__wasi_fd_filestat_set_times
++__wasi_fd_pread
++__wasi_fd_prestat_dir_name
++__wasi_fd_prestat_get
++__wasi_fd_pwrite
++__wasi_fd_read
++__wasi_fd_readdir
++__wasi_fd_renumber
++__wasi_fd_seek
++__wasi_fd_sync
++__wasi_fd_tell
++__wasi_fd_write
++__wasi_init_tp
++__wasilibc_access
++__wasilibc_cwd
++__wasilibc_cwd_lock
++__wasilibc_cwd_unlock
++__wasilibc_deinitialize_environ
++__wasilibc_dttoif
++__wasilibc_enable_futex_busywait_on_current_thread
++__wasilibc_ensure_environ
++__wasilibc_environ
++__wasilibc_fd_renumber
++__wasilibc_find_abspath
++__wasilibc_find_relpath
++__wasilibc_find_relpath_alloc
++__wasilibc_futex_wait
++__wasilibc_futex_wait_atomic_wait
++__wasilibc_futex_wait_maybe_busy
++__wasilibc_get_environ
++__wasilibc_iftodt
++__wasilibc_initialize_environ
++__wasilibc_link
++__wasilibc_link_newat
++__wasilibc_link_oldat
++__wasilibc_maybe_reinitialize_environ_eagerly
++__wasilibc_nocwd_faccessat
++__wasilibc_nocwd_fstatat
++__wasilibc_nocwd_linkat
++__wasilibc_nocwd_mkdirat_nomode
++__wasilibc_nocwd_openat_nomode
++__wasilibc_nocwd_opendirat
++__wasilibc_nocwd_readlinkat
++__wasilibc_nocwd_renameat
++__wasilibc_nocwd_scandirat
++__wasilibc_nocwd_symlinkat
++__wasilibc_nocwd_utimensat
++__wasilibc_nocwd___wasilibc_rmdirat
++__wasilibc_nocwd___wasilibc_unlinkat
++__wasilibc_open_nomode
++__wasilibc_populate_preopens
++__wasilibc_pthread_self
++__wasilibc_register_preopened_fd
++__wasilibc_rename_newat
++__wasilibc_rename_oldat
++__wasilibc_reset_preopens
++__wasilibc_rmdirat
++__wasilibc_stat
++__wasilibc_tell
++__wasilibc_unlinkat
++__wasilibc_use_busy_futex
++__wasilibc_utimens
++__wasi_path_create_directory
++__wasi_path_filestat_get
++__wasi_path_filestat_set_times
++__wasi_path_link
++__wasi_path_open
++__wasi_path_readlink
++__wasi_path_remove_directory
++__wasi_path_rename
++__wasi_path_symlink
++__wasi_path_unlink_file
++__wasi_poll_oneoff
++__wasi_proc_exit
++__wasi_random_get
++__wasi_sched_yield
++__wasi_sock_accept
++__wasi_sock_recv
++__wasi_sock_send
++__wasi_sock_shutdown
++__wasi_thread_spawn
+ wasi_thread_start
++__wasi_thread_start_C
++__wasm_call_dtors
+ wcpcpy
+ wcpncpy
+ wcrtomb
+@@ -1335,11 +1335,13 @@ wcscat
+ wcschr
+ wcscmp
+ wcscoll
++__wcscoll_l
+ wcscoll_l
+ wcscpy
+ wcscspn
+ wcsdup
+ wcsftime
++__wcsftime_l
+ wcsftime_l
+ wcslen
+ wcsncasecmp
+@@ -1368,12 +1370,15 @@ wcstoumax
+ wcswcs
+ wcswidth
+ wcsxfrm
++__wcsxfrm_l
+ wcsxfrm_l
+ wctob
+ wctomb
+ wctrans
++__wctrans_l
+ wctrans_l
+ wctype
++__wctype_l
+ wctype_l
+ wcwidth
+ wmemchr
+@@ -1385,9 +1390,12 @@ wprintf
+ write
+ writev
+ wscanf
++__xpg_basename
++__xpg_strerror_r
+ y0
+ y0f
+ y1
+ y1f
++__year_to_secs
+ yn
+-ynf
+\ No newline at end of file
++ynf__daylight
+diff --git a/expected/wasm32-wasip1/defined-symbols.txt b/expected/wasm32-wasip1/defined-symbols.txt
+index 562d705..8f582b3 100644
+--- a/expected/wasm32-wasip1/defined-symbols.txt
++++ b/expected/wasm32-wasip1/defined-symbols.txt
+@@ -1,394 +1,3 @@
+-_CLOCK_MONOTONIC
+-_CLOCK_REALTIME
+-_Exit
+-_IO_feof_unlocked
+-_IO_ferror_unlocked
+-_IO_getc
+-_IO_getc_unlocked
+-_IO_putc
+-_IO_putc_unlocked
+-__EINVAL
+-__ENOMEM
+-__SIG_ERR
+-__SIG_IGN
+-__acquire_ptc
+-__asctime_r
+-__assert_fail
+-__c_dot_utf8
+-__c_dot_utf8_locale
+-__c_locale
+-__clock
+-__clock_gettime
+-__clock_nanosleep
+-__cos
+-__cosdf
+-__cosl
+-__crypt_blowfish
+-__crypt_des
+-__crypt_md5
+-__crypt_r
+-__crypt_sha256
+-__crypt_sha512
+-__ctype_b_loc
+-__ctype_get_mb_cur_max
+-__ctype_tolower_loc
+-__ctype_toupper_loc
+-__cxa_atexit
+-__cxa_finalize
+-__default_guardsize
+-__default_stacksize
+-__des_setkey
+-__do_cleanup_pop
+-__do_cleanup_push
+-__do_des
+-__duplocale
+-__env_rm_add
+-__errno_location
+-__exp2f_data
+-__exp_data
+-__expo2
+-__expo2f
+-__fbufsize
+-__fclose_ca
+-__fdopen
+-__fesetround
+-__fgetwc_unlocked
+-__flbf
+-__floatscan
+-__fmodeflags
+-__fopen_rb_ca
+-__fpending
+-__fpurge
+-__fputwc_unlocked
+-__freadable
+-__freadahead
+-__freading
+-__freadptr
+-__freadptrinc
+-__freelocale
+-__fseeko
+-__fseeko_unlocked
+-__fseterr
+-__fsetlocking
+-__fsmu8
+-__ftello
+-__ftello_unlocked
+-__funcs_on_exit
+-__funcs_on_quick_exit
+-__futimesat
+-__fwritable
+-__fwritex
+-__fwriting
+-__get_locale
+-__getdelim
+-__getentropy
+-__getopt_msg
+-__gmtime_r
+-__hwcap
+-__inet_aton
+-__init_ssp
+-__init_tp
+-__intscan
+-__invtrigl_R
+-__isalnum_l
+-__isalpha_l
+-__isatty
+-__isblank_l
+-__iscntrl_l
+-__isdigit_l
+-__isgraph_l
+-__islower_l
+-__isoc99_fscanf
+-__isoc99_fwscanf
+-__isoc99_scanf
+-__isoc99_sscanf
+-__isoc99_swscanf
+-__isoc99_vfscanf
+-__isoc99_vfwscanf
+-__isoc99_vscanf
+-__isoc99_vsscanf
+-__isoc99_vswscanf
+-__isoc99_vwscanf
+-__isoc99_wscanf
+-__isprint_l
+-__ispunct_l
+-__isspace_l
+-__isupper_l
+-__iswalnum_l
+-__iswalpha_l
+-__iswblank_l
+-__iswcntrl_l
+-__iswctype_l
+-__iswdigit_l
+-__iswgraph_l
+-__iswlower_l
+-__iswprint_l
+-__iswpunct_l
+-__iswspace_l
+-__iswupper_l
+-__iswxdigit_l
+-__isxdigit_l
+-__lctrans
+-__lctrans_cur
+-__lctrans_impl
+-__ldexp_cexp
+-__ldexp_cexpf
+-__lgamma_r
+-__lgammaf_r
+-__lgammal_r
+-__libc
+-__libc_calloc
+-__libc_free
+-__libc_malloc
+-__loc_is_allocated
+-__localtime_r
+-__log2_data
+-__log2f_data
+-__log_data
+-__logf_data
+-__lseek
+-__main_void
+-__math_divzero
+-__math_divzerof
+-__math_invalid
+-__math_invalidf
+-__math_invalidl
+-__math_oflow
+-__math_oflowf
+-__math_uflow
+-__math_uflowf
+-__math_xflow
+-__math_xflowf
+-__memrchr
+-__mo_lookup
+-__month_to_secs
+-__newlocale
+-__nl_langinfo
+-__nl_langinfo_l
+-__ofl_add
+-__ofl_lock
+-__ofl_unlock
+-__optpos
+-__optreset
+-__overflow
+-__p1evll
+-__pio2_hi
+-__pio2_lo
+-__pleval
+-__polevll
+-__posix_getopt
+-__pow_log_data
+-__powf_log2_data
+-__progname
+-__progname_full
+-__pthread_cond_timedwait
+-__pthread_create
+-__pthread_join
+-__pthread_key_create
+-__pthread_key_delete
+-__pthread_mutex_lock
+-__pthread_mutex_timedlock
+-__pthread_mutex_trylock
+-__pthread_mutex_unlock
+-__pthread_once
+-__pthread_rwlock_rdlock
+-__pthread_rwlock_timedrdlock
+-__pthread_rwlock_timedwrlock
+-__pthread_rwlock_tryrdlock
+-__pthread_rwlock_trywrlock
+-__pthread_rwlock_unlock
+-__pthread_rwlock_wrlock
+-__pthread_setcancelstate
+-__pthread_testcancel
+-__pthread_tsd_main
+-__pthread_tsd_run_dtors
+-__pthread_tsd_size
+-__putenv
+-__qsort_r
+-__rand48_step
+-__reallocarray
+-__release_ptc
+-__rem_pio2
+-__rem_pio2_large
+-__rem_pio2f
+-__rem_pio2l
+-__rsqrt_tab
+-__secs_to_tm
+-__secs_to_zone
+-__seed48
+-__shgetc
+-__shlim
+-__signgam
+-__sin
+-__sindf
+-__sinl
+-__small_printf
+-__stack_chk_fail
+-__stack_chk_fail_local
+-__stack_chk_guard
+-__stderr_FILE
+-__stderr_used
+-__stdin_FILE
+-__stdin_used
+-__stdio_close
+-__stdio_exit
+-__stdio_exit_needed
+-__stdio_read
+-__stdio_seek
+-__stdio_write
+-__stdout_FILE
+-__stdout_used
+-__stdout_write
+-__stpcpy
+-__stpncpy
+-__strcasecmp_l
+-__strchrnul
+-__strcoll_l
+-__strerror_l
+-__strftime_fmt_1
+-__strftime_l
+-__strncasecmp_l
+-__strtod_l
+-__strtof_l
+-__strtoimax_internal
+-__strtol_internal
+-__strtold_l
+-__strtoll_internal
+-__strtoul_internal
+-__strtoull_internal
+-__strtoumax_internal
+-__strxfrm_l
+-__sysinfo
+-__sysv_signal
+-__tan
+-__tandf
+-__tanl
+-__testcancel
+-__tl_lock
+-__tl_unlock
+-__tm_to_secs
+-__tm_to_tzname
+-__tolower_l
+-__toread
+-__toread_needs_stdio_exit
+-__toupper_l
+-__towctrans_l
+-__towlower_l
+-__towrite
+-__towrite_needs_stdio_exit
+-__towupper_l
+-__tre_mem_alloc_impl
+-__tre_mem_destroy
+-__tre_mem_new_impl
+-__tsearch_balance
+-__uflow
+-__unlist_locked_file
+-__uselocale
+-__utc
+-__wasi_args_get
+-__wasi_args_sizes_get
+-__wasi_clock_res_get
+-__wasi_clock_time_get
+-__wasi_environ_get
+-__wasi_environ_sizes_get
+-__wasi_fd_advise
+-__wasi_fd_allocate
+-__wasi_fd_close
+-__wasi_fd_datasync
+-__wasi_fd_fdstat_get
+-__wasi_fd_fdstat_set_flags
+-__wasi_fd_fdstat_set_rights
+-__wasi_fd_filestat_get
+-__wasi_fd_filestat_set_size
+-__wasi_fd_filestat_set_times
+-__wasi_fd_pread
+-__wasi_fd_prestat_dir_name
+-__wasi_fd_prestat_get
+-__wasi_fd_pwrite
+-__wasi_fd_read
+-__wasi_fd_readdir
+-__wasi_fd_renumber
+-__wasi_fd_seek
+-__wasi_fd_sync
+-__wasi_fd_tell
+-__wasi_fd_write
+-__wasi_init_tp
+-__wasi_path_create_directory
+-__wasi_path_filestat_get
+-__wasi_path_filestat_set_times
+-__wasi_path_link
+-__wasi_path_open
+-__wasi_path_readlink
+-__wasi_path_remove_directory
+-__wasi_path_rename
+-__wasi_path_symlink
+-__wasi_path_unlink_file
+-__wasi_poll_oneoff
+-__wasi_proc_exit
+-__wasi_random_get
+-__wasi_sched_yield
+-__wasi_sock_accept
+-__wasi_sock_recv
+-__wasi_sock_send
+-__wasi_sock_shutdown
+-__wasilibc_access
+-__wasilibc_cwd
+-__wasilibc_deinitialize_environ
+-__wasilibc_dttoif
+-__wasilibc_ensure_environ
+-__wasilibc_environ
+-__wasilibc_fd_renumber
+-__wasilibc_find_abspath
+-__wasilibc_find_relpath
+-__wasilibc_find_relpath_alloc
+-__wasilibc_get_environ
+-__wasilibc_iftodt
+-__wasilibc_initialize_environ
+-__wasilibc_link
+-__wasilibc_link_newat
+-__wasilibc_link_oldat
+-__wasilibc_maybe_reinitialize_environ_eagerly
+-__wasilibc_nocwd___wasilibc_rmdirat
+-__wasilibc_nocwd___wasilibc_unlinkat
+-__wasilibc_nocwd_faccessat
+-__wasilibc_nocwd_fstatat
+-__wasilibc_nocwd_linkat
+-__wasilibc_nocwd_mkdirat_nomode
+-__wasilibc_nocwd_openat_nomode
+-__wasilibc_nocwd_opendirat
+-__wasilibc_nocwd_readlinkat
+-__wasilibc_nocwd_renameat
+-__wasilibc_nocwd_scandirat
+-__wasilibc_nocwd_symlinkat
+-__wasilibc_nocwd_utimensat
+-__wasilibc_open_nomode
+-__wasilibc_populate_preopens
+-__wasilibc_pthread_self
+-__wasilibc_register_preopened_fd
+-__wasilibc_rename_newat
+-__wasilibc_rename_oldat
+-__wasilibc_reset_preopens
+-__wasilibc_rmdirat
+-__wasilibc_stat
+-__wasilibc_tell
+-__wasilibc_unlinkat
+-__wasilibc_utimens
+-__wasm_call_dtors
+-__wcscoll_l
+-__wcsftime_l
+-__wcsxfrm_l
+-__wctrans_l
+-__wctype_l
+-__xpg_basename
+-__xpg_strerror_r
+-__year_to_secs
+-_environ
+-_exit
+-_flushlbf
+-_initialize
+-_pthread_cleanup_pop
+-_pthread_cleanup_push
+-_start
+ a64l
+ abort
+ abs
+@@ -401,6 +10,7 @@ acosh
+ acoshf
+ acoshl
+ acosl
++__acquire_ptc
+ aligned_alloc
+ alphasort
+ alphasort64
+@@ -408,6 +18,7 @@ arc4random
+ arc4random_buf
+ arc4random_uniform
+ asctime
++__asctime_r
+ asctime_r
+ asin
+ asinf
+@@ -416,7 +27,7 @@ asinhf
+ asinhl
+ asinl
+ asprintf
+-at_quick_exit
++__assert_fail
+ atan
+ atan2
+ atan2f
+@@ -431,6 +42,7 @@ atof
+ atoi
+ atol
+ atoll
++at_quick_exit
+ basename
+ bcmp
+ bcopy
+@@ -477,6 +89,8 @@ ccosh
+ ccoshf
+ ccoshl
+ ccosl
++__c_dot_utf8
++__c_dot_utf8_locale
+ ceil
+ ceilf
+ ceill
+@@ -491,10 +105,16 @@ cimagl
+ clearenv
+ clearerr
+ clearerr_unlocked
++__c_locale
++__clock
+ clock
+ clock_getres
++__clock_gettime
+ clock_gettime
++_CLOCK_MONOTONIC
++__clock_nanosleep
+ clock_nanosleep
++_CLOCK_REALTIME
+ clog
+ clogf
+ clogl
+@@ -507,11 +127,14 @@ conjl
+ copysign
+ copysignf
+ copysignl
++__cos
+ cos
++__cosdf
+ cosf
+ cosh
+ coshf
+ coshl
++__cosl
+ cosl
+ cpow
+ cpowf
+@@ -525,7 +148,13 @@ creall
+ creat
+ creat64
+ crypt
++__crypt_blowfish
++__crypt_des
++__crypt_md5
++__crypt_r
+ crypt_r
++__crypt_sha256
++__crypt_sha512
+ csin
+ csinf
+ csinh
+@@ -543,18 +172,36 @@ ctanhl
+ ctanl
+ ctime
+ ctime_r
++__ctype_b_loc
++__ctype_get_mb_cur_max
++__ctype_tolower_loc
++__ctype_toupper_loc
++__cxa_atexit
++__cxa_finalize
++daylight
++__default_guardsize
++__default_stacksize
++__des_setkey
+ difftime
+ dirfd
+ dirname
+ div
++__do_cleanup_pop
++__do_cleanup_push
++__do_des
+ dprintf
+ drand48
+ drem
+ dremf
++__duplocale
+ duplocale
+ ecvt
++__EINVAL
+ encrypt
++__ENOMEM
++_environ
+ environ
++__env_rm_add
+ erand48
+ erf
+ erfc
+@@ -563,27 +210,36 @@ erfcl
+ erff
+ erfl
+ errno
++__errno_location
++_exit
+ exit
++_Exit
+ exp
+ exp10
+ exp10f
+ exp10l
+ exp2
+ exp2f
++__exp2f_data
+ exp2l
++__exp_data
+ expf
+ expl
+ explicit_bzero
+ expm1
+ expm1f
+ expm1l
++__expo2
++__expo2f
+ fabs
+ fabsf
+ fabsl
+ faccessat
++__fbufsize
+ fchmod
+ fchmodat
+ fclose
++__fclose_ca
+ fcntl
+ fcvt
+ fdatasync
+@@ -591,6 +247,7 @@ fdclosedir
+ fdim
+ fdimf
+ fdiml
++__fdopen
+ fdopen
+ fdopendir
+ feclearexcept
+@@ -605,6 +262,7 @@ ferror
+ ferror_unlocked
+ fesetenv
+ fesetexceptflag
++__fesetround
+ fesetround
+ fetestexcept
+ feupdateenv
+@@ -621,6 +279,7 @@ fgetpos64
+ fgets
+ fgets_unlocked
+ fgetwc
++__fgetwc_unlocked
+ fgetwc_unlocked
+ fgetws
+ fgetws_unlocked
+@@ -628,9 +287,12 @@ fileno
+ fileno_unlocked
+ finite
+ finitef
++__flbf
++__floatscan
+ floor
+ floorf
+ floorl
++_flushlbf
+ fma
+ fmaf
+ fmal
+@@ -642,6 +304,7 @@ fmin
+ fminf
+ fminl
+ fmod
++__fmodeflags
+ fmodf
+ fmodl
+ fmtmsg
+@@ -649,20 +312,30 @@ fnmatch
+ fopen
+ fopen64
+ fopencookie
++__fopen_rb_ca
+ fpathconf
++__fpending
+ fprintf
++__fpurge
+ fpurge
+ fputc
+ fputc_unlocked
+ fputs
+ fputs_unlocked
+ fputwc
++__fputwc_unlocked
+ fputwc_unlocked
+ fputws
+ fputws_unlocked
+ fread
++__freadable
++__freadahead
++__freading
++__freadptr
++__freadptrinc
+ fread_unlocked
+ free
++__freelocale
+ freelocale
+ freopen
+ freopen64
+@@ -671,17 +344,24 @@ frexpf
+ frexpl
+ fscanf
+ fseek
++__fseeko
+ fseeko
+ fseeko64
++__fseeko_unlocked
++__fseterr
++__fsetlocking
+ fsetpos
+ fsetpos64
++__fsmu8
+ fstat
+ fstatat
+ fstatvfs
+ fsync
+ ftell
++__ftello
+ ftello
+ ftello64
++__ftello_unlocked
+ ftime
+ ftruncate
+ fts_children
+@@ -689,36 +369,46 @@ fts_close
+ fts_open
+ fts_read
+ fts_set
++__funcs_on_exit
++__funcs_on_quick_exit
+ futimens
++__futimesat
+ futimesat
+ fwide
+ fwprintf
++__fwritable
+ fwrite
+ fwrite_unlocked
++__fwritex
++__fwriting
+ fwscanf
+ gcvt
+ get_avphys_pages
+-get_nprocs
+-get_nprocs_conf
+-get_phys_pages
+ getc
+-getc_unlocked
+ getchar
+ getchar_unlocked
++getc_unlocked
+ getcwd
+ getdate
+ getdate_err
++__getdelim
+ getdelim
+ getdomainname
++__getentropy
+ getentropy
+ getenv
+ gethostid
+ gethostname
+ getline
++__get_locale
++get_nprocs
++get_nprocs_conf
+ getopt
+ getopt_long
+ getopt_long_only
++__getopt_msg
+ getpagesize
++get_phys_pages
+ getpid
+ getrusage
+ getsockopt
+@@ -726,14 +416,15 @@ getsubopt
+ gettimeofday
+ getw
+ getwc
+-getwc_unlocked
+ getwchar
+ getwchar_unlocked
++getwc_unlocked
+ glob
+ glob64
+ globfree
+ globfree64
+ gmtime
++__gmtime_r
+ gmtime_r
+ hcreate
+ hcreate_r
+@@ -743,6 +434,7 @@ hsearch
+ hsearch_r
+ htonl
+ htons
++__hwcap
+ hypot
+ hypotf
+ hypotl
+@@ -758,6 +450,7 @@ in6addr_any
+ in6addr_loopback
+ index
+ inet_addr
++__inet_aton
+ inet_aton
+ inet_lnaof
+ inet_makeaddr
+@@ -766,61 +459,110 @@ inet_network
+ inet_ntoa
+ inet_ntop
+ inet_pton
++_initialize
++__init_ssp
+ initstate
++__init_tp
+ insque
++__intscan
++__invtrigl_R
+ ioctl
++_IO_feof_unlocked
++_IO_ferror_unlocked
++_IO_getc
++_IO_getc_unlocked
++_IO_putc
++_IO_putc_unlocked
+ iprintf
+ isalnum
++__isalnum_l
+ isalnum_l
+ isalpha
++__isalpha_l
+ isalpha_l
+ isascii
++__isatty
+ isatty
+ isblank
++__isblank_l
+ isblank_l
+ iscntrl
++__iscntrl_l
+ iscntrl_l
+ isdigit
++__isdigit_l
+ isdigit_l
+ isgraph
++__isgraph_l
+ isgraph_l
+ islower
++__islower_l
+ islower_l
++__isoc99_fscanf
++__isoc99_fwscanf
++__isoc99_scanf
++__isoc99_sscanf
++__isoc99_swscanf
++__isoc99_vfscanf
++__isoc99_vfwscanf
++__isoc99_vscanf
++__isoc99_vsscanf
++__isoc99_vswscanf
++__isoc99_vwscanf
++__isoc99_wscanf
+ isprint
++__isprint_l
+ isprint_l
+ ispunct
++__ispunct_l
+ ispunct_l
+ isspace
++__isspace_l
+ isspace_l
+ isupper
++__isupper_l
+ isupper_l
+ iswalnum
++__iswalnum_l
+ iswalnum_l
+ iswalpha
++__iswalpha_l
+ iswalpha_l
+ iswblank
++__iswblank_l
+ iswblank_l
+ iswcntrl
++__iswcntrl_l
+ iswcntrl_l
+ iswctype
++__iswctype_l
+ iswctype_l
+ iswdigit
++__iswdigit_l
+ iswdigit_l
+ iswgraph
++__iswgraph_l
+ iswgraph_l
+ iswlower
++__iswlower_l
+ iswlower_l
+ iswprint
++__iswprint_l
+ iswprint_l
+ iswpunct
++__iswpunct_l
+ iswpunct_l
+ iswspace
++__iswspace_l
+ iswspace_l
+ iswupper
++__iswupper_l
+ iswupper_l
+ iswxdigit
++__iswxdigit_l
+ iswxdigit_l
+ isxdigit
++__isxdigit_l
+ isxdigit_l
+ j0
+ j0f
+@@ -832,17 +574,29 @@ jrand48
+ l64a
+ labs
+ lcong48
++__lctrans
++__lctrans_cur
++__lctrans_impl
+ ldexp
++__ldexp_cexp
++__ldexp_cexpf
+ ldexpf
+ ldexpl
+ ldiv
+ lfind
+ lgamma
+-lgamma_r
+ lgammaf
++__lgammaf_r
+ lgammaf_r
+ lgammal
++__lgammal_r
+ lgammal_r
++__lgamma_r
++lgamma_r
++__libc
++__libc_calloc
++__libc_free
++__libc_malloc
+ link
+ linkat
+ llabs
+@@ -855,7 +609,9 @@ llroundf
+ llroundl
+ localeconv
+ localtime
++__localtime_r
+ localtime_r
++__loc_is_allocated
+ log
+ log10
+ log10f
+@@ -864,12 +620,16 @@ log1p
+ log1pf
+ log1pl
+ log2
++__log2_data
+ log2f
++__log2f_data
+ log2l
+ logb
+ logbf
+ logbl
++__log_data
+ logf
++__logf_data
+ logl
+ lrand48
+ lrint
+@@ -879,10 +639,23 @@ lround
+ lroundf
+ lroundl
+ lsearch
++__lseek
+ lseek
+ lstat
++__main_void
+ malloc
+ malloc_usable_size
++__math_divzero
++__math_divzerof
++__math_invalid
++__math_invalidf
++__math_invalidl
++__math_oflow
++__math_oflowf
++__math_uflow
++__math_uflowf
++__math_xflow
++__math_xflowf
+ mblen
+ mbrlen
+ mbrtoc16
+@@ -900,6 +673,7 @@ memcpy
+ memmem
+ memmove
+ mempcpy
++__memrchr
+ memrchr
+ memset
+ mkdir
+@@ -909,6 +683,8 @@ mmap
+ modf
+ modff
+ modfl
++__mo_lookup
++__month_to_secs
+ mprotect
+ mrand48
+ munmap
+@@ -919,6 +695,7 @@ nanosleep
+ nearbyint
+ nearbyintf
+ nearbyintl
++__newlocale
+ newlocale
+ nextafter
+ nextafterf
+@@ -928,38 +705,56 @@ nexttowardf
+ nexttowardl
+ nftw
+ nftw64
++__nl_langinfo
+ nl_langinfo
++__nl_langinfo_l
+ nl_langinfo_l
+ nrand48
+ ntohl
+ ntohs
++__ofl_add
++__ofl_lock
++__ofl_unlock
+ open
+-open_memstream
+-open_wmemstream
+ openat
+ opendir
+ opendirat
++open_memstream
++open_wmemstream
+ optarg
+ opterr
+ optind
+ optopt
++__optpos
++__optreset
+ optreset
++__overflow
++__p1evll
+ pathconf
+ perror
++__pio2_hi
++__pio2_lo
++__pleval
++__polevll
+ poll
+ posix_close
+ posix_fadvise
+ posix_fallocate
++__posix_getopt
+ posix_memalign
+ pow
+ pow10
+ pow10f
+ pow10l
+ powf
++__powf_log2_data
+ powl
++__pow_log_data
+ pread
+ preadv
+ printf
++__progname
++__progname_full
+ program_invocation_name
+ program_invocation_short_name
+ pselect
+@@ -976,42 +771,41 @@ pthread_attr_setguardsize
+ pthread_attr_setschedparam
+ pthread_attr_setstack
+ pthread_attr_setstacksize
+-pthread_barrier_destroy
+-pthread_barrier_init
+-pthread_barrier_wait
+ pthread_barrierattr_destroy
+ pthread_barrierattr_getpshared
+ pthread_barrierattr_init
+ pthread_barrierattr_setpshared
++pthread_barrier_destroy
++pthread_barrier_init
++pthread_barrier_wait
+ pthread_cancel
+-pthread_cond_broadcast
+-pthread_cond_destroy
+-pthread_cond_init
+-pthread_cond_signal
+-pthread_cond_timedwait
+-pthread_cond_wait
++_pthread_cleanup_pop
++_pthread_cleanup_push
+ pthread_condattr_destroy
+ pthread_condattr_getclock
+ pthread_condattr_getpshared
+ pthread_condattr_init
+ pthread_condattr_setclock
+ pthread_condattr_setpshared
++pthread_cond_broadcast
++pthread_cond_destroy
++pthread_cond_init
++pthread_cond_signal
++__pthread_cond_timedwait
++pthread_cond_timedwait
++pthread_cond_wait
++__pthread_create
+ pthread_create
+ pthread_detach
+ pthread_equal
+ pthread_getattr_np
+ pthread_getspecific
++__pthread_join
+ pthread_join
++__pthread_key_create
+ pthread_key_create
++__pthread_key_delete
+ pthread_key_delete
+-pthread_mutex_consistent
+-pthread_mutex_destroy
+-pthread_mutex_getprioceiling
+-pthread_mutex_init
+-pthread_mutex_lock
+-pthread_mutex_timedlock
+-pthread_mutex_trylock
+-pthread_mutex_unlock
+ pthread_mutexattr_destroy
+ pthread_mutexattr_getprotocol
+ pthread_mutexattr_getpshared
+@@ -1022,21 +816,42 @@ pthread_mutexattr_setprotocol
+ pthread_mutexattr_setpshared
+ pthread_mutexattr_setrobust
+ pthread_mutexattr_settype
++pthread_mutex_consistent
++pthread_mutex_destroy
++pthread_mutex_getprioceiling
++pthread_mutex_init
++__pthread_mutex_lock
++pthread_mutex_lock
++__pthread_mutex_timedlock
++pthread_mutex_timedlock
++__pthread_mutex_trylock
++pthread_mutex_trylock
++__pthread_mutex_unlock
++pthread_mutex_unlock
++__pthread_once
+ pthread_once
++pthread_rwlockattr_destroy
++pthread_rwlockattr_getpshared
++pthread_rwlockattr_init
++pthread_rwlockattr_setpshared
+ pthread_rwlock_destroy
+ pthread_rwlock_init
++__pthread_rwlock_rdlock
+ pthread_rwlock_rdlock
++__pthread_rwlock_timedrdlock
+ pthread_rwlock_timedrdlock
++__pthread_rwlock_timedwrlock
+ pthread_rwlock_timedwrlock
++__pthread_rwlock_tryrdlock
+ pthread_rwlock_tryrdlock
++__pthread_rwlock_trywrlock
+ pthread_rwlock_trywrlock
++__pthread_rwlock_unlock
+ pthread_rwlock_unlock
++__pthread_rwlock_wrlock
+ pthread_rwlock_wrlock
+-pthread_rwlockattr_destroy
+-pthread_rwlockattr_getpshared
+-pthread_rwlockattr_init
+-pthread_rwlockattr_setpshared
+ pthread_self
++__pthread_setcancelstate
+ pthread_setcancelstate
+ pthread_setcanceltype
+ pthread_setspecific
+@@ -1045,35 +860,43 @@ pthread_spin_init
+ pthread_spin_lock
+ pthread_spin_trylock
+ pthread_spin_unlock
++__pthread_testcancel
+ pthread_testcancel
+ pthread_timedjoin_np
+ pthread_tryjoin_np
++__pthread_tsd_main
++__pthread_tsd_run_dtors
++__pthread_tsd_size
+ putc
+-putc_unlocked
+ putchar
+ putchar_unlocked
++putc_unlocked
++__putenv
+ putenv
+ puts
+ putw
+ putwc
+-putwc_unlocked
+ putwchar
+ putwchar_unlocked
++putwc_unlocked
+ pwrite
+ pwritev
+ qsort
++__qsort_r
+ qsort_r
+ quick_exit
+ raise
+ rand
+-rand_r
++__rand48_step
+ random
++rand_r
+ read
+ readdir
+ readlink
+ readlinkat
+ readv
+ realloc
++__reallocarray
+ reallocarray
+ realpath
+ recv
+@@ -1081,10 +904,15 @@ regcomp
+ regerror
+ regexec
+ regfree
++__release_ptc
+ remainder
+ remainderf
+ remainderl
+ remove
++__rem_pio2
++__rem_pio2f
++__rem_pio2l
++__rem_pio2_large
+ remque
+ remquo
+ remquof
+@@ -1101,6 +929,7 @@ rmdir
+ round
+ roundf
+ roundl
++__rsqrt_tab
+ sbrk
+ scalb
+ scalbf
+@@ -1114,6 +943,9 @@ scandir
+ scandirat
+ scanf
+ sched_yield
++__secs_to_tm
++__secs_to_zone
++__seed48
+ seed48
+ seekdir
+ select
+@@ -1126,21 +958,30 @@ setlinebuf
+ setlocale
+ setstate
+ setvbuf
++__shgetc
++__shlim
+ shutdown
++__SIG_ERR
++__SIG_IGN
+ signal
++__signgam
+ signgam
+ significand
+ significandf
++__sin
+ sin
+ sincos
+ sincosf
+ sincosl
++__sindf
+ sinf
+ sinh
+ sinhf
+ sinhl
++__sinl
+ sinl
+ sleep
++__small_printf
+ snprintf
+ sprintf
+ sqrt
+@@ -1150,36 +991,62 @@ srand
+ srand48
+ srandom
+ sscanf
++__stack_chk_fail
++__stack_chk_fail_local
++__stack_chk_guard
++_start
+ stat
+ statvfs
+ stderr
++__stderr_FILE
++__stderr_used
+ stdin
++__stdin_FILE
++__stdin_used
++__stdio_close
++__stdio_exit
++__stdio_exit_needed
++__stdio_read
++__stdio_seek
++__stdio_write
+ stdout
++__stdout_FILE
++__stdout_used
++__stdout_write
++__stpcpy
+ stpcpy
++__stpncpy
+ stpncpy
+ strcasecmp
++__strcasecmp_l
+ strcasecmp_l
+ strcasestr
+ strcat
+ strchr
++__strchrnul
+ strchrnul
+ strcmp
+ strcoll
++__strcoll_l
+ strcoll_l
+ strcpy
+ strcspn
+ strdup
+ strerror
++__strerror_l
+ strerror_l
+ strerror_r
+ strfmon
+ strfmon_l
+ strftime
++__strftime_fmt_1
++__strftime_l
+ strftime_l
+ strlcat
+ strlcpy
+ strlen
+ strncasecmp
++__strncasecmp_l
+ strncasecmp_l
+ strncat
+ strncmp
+@@ -1194,21 +1061,31 @@ strsignal
+ strspn
+ strstr
+ strtod
++__strtod_l
+ strtod_l
+ strtof
++__strtof_l
+ strtof_l
+ strtoimax
++__strtoimax_internal
+ strtok
+ strtok_r
+ strtol
+ strtold
++__strtold_l
+ strtold_l
++__strtol_internal
+ strtoll
++__strtoll_internal
+ strtoul
++__strtoul_internal
+ strtoull
++__strtoull_internal
+ strtoumax
++__strtoumax_internal
+ strverscmp
+ strxfrm
++__strxfrm_l
+ strxfrm_l
+ swab
+ swprintf
+@@ -1216,15 +1093,21 @@ swscanf
+ symlink
+ symlinkat
+ sysconf
++__sysinfo
++__sysv_signal
++__tan
+ tan
++__tandf
+ tanf
+ tanh
+ tanhf
+ tanhl
++__tanl
+ tanl
+ tdelete
+ tdestroy
+ telldir
++__testcancel
+ tfind
+ tgamma
+ tgammaf
+@@ -1237,32 +1120,60 @@ time
+ timegm
+ times
+ timespec_get
++__timezone
++timezone
++__timezone_lockptr
++__tl_lock
++__tl_unlock
++__tm_to_secs
++__tm_to_tzname
+ toascii
+ tolower
++__tolower_l
+ tolower_l
++__toread
++__toread_needs_stdio_exit
+ toupper
++__toupper_l
+ toupper_l
+ towctrans
++__towctrans_l
+ towctrans_l
+ towlower
++__towlower_l
+ towlower_l
++__towrite
++__towrite_needs_stdio_exit
+ towupper
++__towupper_l
+ towupper_l
++__tre_mem_alloc_impl
++__tre_mem_destroy
++__tre_mem_new_impl
+ trunc
+ truncate
+ truncf
+ truncl
+ tsearch
++__tsearch_balance
+ tss_get
+ twalk
++__tzname
++tzname
++__tzset
++tzset
++__uflow
+ uname
+ ungetc
+ ungetwc
+ unlink
+ unlinkat
++__unlist_locked_file
+ unsetenv
++__uselocale
+ uselocale
+ usleep
++__utc
+ utime
+ utimensat
+ utimes
+@@ -1283,6 +1194,95 @@ vswprintf
+ vswscanf
+ vwprintf
+ vwscanf
++__wasi_args_get
++__wasi_args_sizes_get
++__wasi_clock_res_get
++__wasi_clock_time_get
++__wasi_environ_get
++__wasi_environ_sizes_get
++__wasi_fd_advise
++__wasi_fd_allocate
++__wasi_fd_close
++__wasi_fd_datasync
++__wasi_fd_fdstat_get
++__wasi_fd_fdstat_set_flags
++__wasi_fd_fdstat_set_rights
++__wasi_fd_filestat_get
++__wasi_fd_filestat_set_size
++__wasi_fd_filestat_set_times
++__wasi_fd_pread
++__wasi_fd_prestat_dir_name
++__wasi_fd_prestat_get
++__wasi_fd_pwrite
++__wasi_fd_read
++__wasi_fd_readdir
++__wasi_fd_renumber
++__wasi_fd_seek
++__wasi_fd_sync
++__wasi_fd_tell
++__wasi_fd_write
++__wasi_init_tp
++__wasilibc_access
++__wasilibc_cwd
++__wasilibc_deinitialize_environ
++__wasilibc_dttoif
++__wasilibc_ensure_environ
++__wasilibc_environ
++__wasilibc_fd_renumber
++__wasilibc_find_abspath
++__wasilibc_find_relpath
++__wasilibc_find_relpath_alloc
++__wasilibc_get_environ
++__wasilibc_iftodt
++__wasilibc_initialize_environ
++__wasilibc_link
++__wasilibc_link_newat
++__wasilibc_link_oldat
++__wasilibc_maybe_reinitialize_environ_eagerly
++__wasilibc_nocwd_faccessat
++__wasilibc_nocwd_fstatat
++__wasilibc_nocwd_linkat
++__wasilibc_nocwd_mkdirat_nomode
++__wasilibc_nocwd_openat_nomode
++__wasilibc_nocwd_opendirat
++__wasilibc_nocwd_readlinkat
++__wasilibc_nocwd_renameat
++__wasilibc_nocwd_scandirat
++__wasilibc_nocwd_symlinkat
++__wasilibc_nocwd_utimensat
++__wasilibc_nocwd___wasilibc_rmdirat
++__wasilibc_nocwd___wasilibc_unlinkat
++__wasilibc_open_nomode
++__wasilibc_populate_preopens
++__wasilibc_pthread_self
++__wasilibc_register_preopened_fd
++__wasilibc_rename_newat
++__wasilibc_rename_oldat
++__wasilibc_reset_preopens
++__wasilibc_rmdirat
++__wasilibc_stat
++__wasilibc_tell
++__wasilibc_unlinkat
++__wasilibc_utimens
++__wasi_path_create_directory
++__wasi_path_filestat_get
++__wasi_path_filestat_set_times
++__wasi_path_link
++__wasi_path_open
++__wasi_path_readlink
++__wasi_path_remove_directory
++__wasi_path_rename
++__wasi_path_symlink
++__wasi_path_unlink_file
++__wasi_poll_oneoff
++__wasi_proc_exit
++__wasi_random_get
++__wasi_sched_yield
++__wasi_sock_accept
++__wasi_sock_recv
++__wasi_sock_send
++__wasi_sock_shutdown
++__wasm_call_dtors
+ wcpcpy
+ wcpncpy
+ wcrtomb
+@@ -1292,11 +1292,13 @@ wcscat
+ wcschr
+ wcscmp
+ wcscoll
++__wcscoll_l
+ wcscoll_l
+ wcscpy
+ wcscspn
+ wcsdup
+ wcsftime
++__wcsftime_l
+ wcsftime_l
+ wcslen
+ wcsncasecmp
+@@ -1325,12 +1327,15 @@ wcstoumax
+ wcswcs
+ wcswidth
+ wcsxfrm
++__wcsxfrm_l
+ wcsxfrm_l
+ wctob
+ wctomb
+ wctrans
++__wctrans_l
+ wctrans_l
+ wctype
++__wctype_l
+ wctype_l
+ wcwidth
+ wmemchr
+@@ -1342,9 +1347,12 @@ wprintf
+ write
+ writev
+ wscanf
++__xpg_basename
++__xpg_strerror_r
+ y0
+ y0f
+ y1
+ y1f
++__year_to_secs
+ yn
+-ynf
+\ No newline at end of file
++ynf__daylight
+diff --git a/expected/wasm32-wasip2/defined-symbols.txt b/expected/wasm32-wasip2/defined-symbols.txt
+index 1b59fe5..b60a63f 100644
+--- a/expected/wasm32-wasip2/defined-symbols.txt
++++ b/expected/wasm32-wasip2/defined-symbols.txt
+@@ -1,371 +1,3 @@
+-NS_PER_S
+-_CLOCK_MONOTONIC
+-_CLOCK_REALTIME
+-_Exit
+-_IO_feof_unlocked
+-_IO_ferror_unlocked
+-_IO_getc
+-_IO_getc_unlocked
+-_IO_putc
+-_IO_putc_unlocked
+-__EINVAL
+-__ENOMEM
+-__SIG_ERR
+-__SIG_IGN
+-__acquire_ptc
+-__asctime_r
+-__assert_fail
+-__c_dot_utf8
+-__c_dot_utf8_locale
+-__c_locale
+-__clock
+-__clock_gettime
+-__clock_nanosleep
+-__component_type_object_force_link_wasip2
+-__component_type_object_force_link_wasip2_public_use_in_this_compilation_unit
+-__cos
+-__cosdf
+-__cosl
+-__crypt_blowfish
+-__crypt_des
+-__crypt_md5
+-__crypt_r
+-__crypt_sha256
+-__crypt_sha512
+-__ctype_b_loc
+-__ctype_get_mb_cur_max
+-__ctype_tolower_loc
+-__ctype_toupper_loc
+-__cxa_atexit
+-__cxa_finalize
+-__default_guardsize
+-__default_stacksize
+-__des_setkey
+-__do_cleanup_pop
+-__do_cleanup_push
+-__do_des
+-__duplocale
+-__env_rm_add
+-__errno_location
+-__exp2f_data
+-__exp_data
+-__expo2
+-__expo2f
+-__fbufsize
+-__fclose_ca
+-__fdopen
+-__fesetround
+-__fgetwc_unlocked
+-__flbf
+-__floatscan
+-__fmodeflags
+-__fopen_rb_ca
+-__fpending
+-__fpurge
+-__fputwc_unlocked
+-__freadable
+-__freadahead
+-__freading
+-__freadptr
+-__freadptrinc
+-__freelocale
+-__fseeko
+-__fseeko_unlocked
+-__fseterr
+-__fsetlocking
+-__fsmu8
+-__ftello
+-__ftello_unlocked
+-__funcs_on_exit
+-__funcs_on_quick_exit
+-__futimesat
+-__fwritable
+-__fwritex
+-__fwriting
+-__get_locale
+-__getdelim
+-__getentropy
+-__getopt_msg
+-__gmtime_r
+-__hwcap
+-__inet_aton
+-__init_ssp
+-__init_tp
+-__intscan
+-__invtrigl_R
+-__isalnum_l
+-__isalpha_l
+-__isatty
+-__isblank_l
+-__iscntrl_l
+-__isdigit_l
+-__isgraph_l
+-__islower_l
+-__isoc99_fscanf
+-__isoc99_fwscanf
+-__isoc99_scanf
+-__isoc99_sscanf
+-__isoc99_swscanf
+-__isoc99_vfscanf
+-__isoc99_vfwscanf
+-__isoc99_vscanf
+-__isoc99_vsscanf
+-__isoc99_vswscanf
+-__isoc99_vwscanf
+-__isoc99_wscanf
+-__isprint_l
+-__ispunct_l
+-__isspace_l
+-__isupper_l
+-__iswalnum_l
+-__iswalpha_l
+-__iswblank_l
+-__iswcntrl_l
+-__iswctype_l
+-__iswdigit_l
+-__iswgraph_l
+-__iswlower_l
+-__iswprint_l
+-__iswpunct_l
+-__iswspace_l
+-__iswupper_l
+-__iswxdigit_l
+-__isxdigit_l
+-__lctrans
+-__lctrans_cur
+-__lctrans_impl
+-__ldexp_cexp
+-__ldexp_cexpf
+-__lgamma_r
+-__lgammaf_r
+-__lgammal_r
+-__libc
+-__libc_calloc
+-__libc_free
+-__libc_malloc
+-__loc_is_allocated
+-__localtime_r
+-__log2_data
+-__log2f_data
+-__log_data
+-__logf_data
+-__lseek
+-__main_void
+-__math_divzero
+-__math_divzerof
+-__math_invalid
+-__math_invalidf
+-__math_invalidl
+-__math_oflow
+-__math_oflowf
+-__math_uflow
+-__math_uflowf
+-__math_xflow
+-__math_xflowf
+-__memrchr
+-__mo_lookup
+-__month_to_secs
+-__newlocale
+-__nl_langinfo
+-__nl_langinfo_l
+-__ofl_add
+-__ofl_lock
+-__ofl_unlock
+-__optpos
+-__optreset
+-__overflow
+-__p1evll
+-__pio2_hi
+-__pio2_lo
+-__pleval
+-__polevll
+-__posix_getopt
+-__pow_log_data
+-__powf_log2_data
+-__progname
+-__progname_full
+-__pthread_cond_timedwait
+-__pthread_create
+-__pthread_join
+-__pthread_key_create
+-__pthread_key_delete
+-__pthread_mutex_lock
+-__pthread_mutex_timedlock
+-__pthread_mutex_trylock
+-__pthread_mutex_unlock
+-__pthread_once
+-__pthread_rwlock_rdlock
+-__pthread_rwlock_timedrdlock
+-__pthread_rwlock_timedwrlock
+-__pthread_rwlock_tryrdlock
+-__pthread_rwlock_trywrlock
+-__pthread_rwlock_unlock
+-__pthread_rwlock_wrlock
+-__pthread_setcancelstate
+-__pthread_testcancel
+-__pthread_tsd_main
+-__pthread_tsd_run_dtors
+-__pthread_tsd_size
+-__putenv
+-__qsort_r
+-__rand48_step
+-__reallocarray
+-__release_ptc
+-__rem_pio2
+-__rem_pio2_large
+-__rem_pio2f
+-__rem_pio2l
+-__rsqrt_tab
+-__secs_to_tm
+-__secs_to_zone
+-__seed48
+-__shgetc
+-__shlim
+-__signgam
+-__sin
+-__sindf
+-__sinl
+-__small_printf
+-__stack_chk_fail
+-__stack_chk_fail_local
+-__stack_chk_guard
+-__stderr_FILE
+-__stderr_used
+-__stdin_FILE
+-__stdin_used
+-__stdio_close
+-__stdio_exit
+-__stdio_exit_needed
+-__stdio_read
+-__stdio_seek
+-__stdio_write
+-__stdout_FILE
+-__stdout_used
+-__stdout_write
+-__stpcpy
+-__stpncpy
+-__strcasecmp_l
+-__strchrnul
+-__strcoll_l
+-__strerror_l
+-__strftime_fmt_1
+-__strftime_l
+-__strncasecmp_l
+-__strtod_l
+-__strtof_l
+-__strtoimax_internal
+-__strtol_internal
+-__strtold_l
+-__strtoll_internal
+-__strtoul_internal
+-__strtoull_internal
+-__strtoumax_internal
+-__strxfrm_l
+-__sysinfo
+-__sysv_signal
+-__tan
+-__tandf
+-__tanl
+-__testcancel
+-__tl_lock
+-__tl_unlock
+-__tm_to_secs
+-__tm_to_tzname
+-__tolower_l
+-__toread
+-__toread_needs_stdio_exit
+-__toupper_l
+-__towctrans_l
+-__towlower_l
+-__towrite
+-__towrite_needs_stdio_exit
+-__towupper_l
+-__tre_mem_alloc_impl
+-__tre_mem_destroy
+-__tre_mem_new_impl
+-__tsearch_balance
+-__uflow
+-__unlist_locked_file
+-__uselocale
+-__utc
+-__wasi_init_tp
+-__wasi_sockets_services_db
+-__wasi_sockets_utils__any_addr
+-__wasi_sockets_utils__borrow_network
+-__wasi_sockets_utils__get_service_entry_by_name
+-__wasi_sockets_utils__get_service_entry_by_port
+-__wasi_sockets_utils__map_error
+-__wasi_sockets_utils__output_addr_validate
+-__wasi_sockets_utils__output_addr_write
+-__wasi_sockets_utils__parse_address
+-__wasi_sockets_utils__parse_port
+-__wasi_sockets_utils__posix_family
+-__wasilibc_access
+-__wasilibc_add_file
+-__wasilibc_add_tcp_socket
+-__wasilibc_add_udp_socket
+-__wasilibc_cwd
+-__wasilibc_deinitialize_environ
+-__wasilibc_dttoif
+-__wasilibc_ensure_environ
+-__wasilibc_environ
+-__wasilibc_fd_renumber
+-__wasilibc_find_abspath
+-__wasilibc_find_relpath
+-__wasilibc_find_relpath_alloc
+-__wasilibc_get_environ
+-__wasilibc_iftodt
+-__wasilibc_init_stdio
+-__wasilibc_initialize_environ
+-__wasilibc_link
+-__wasilibc_link_newat
+-__wasilibc_link_oldat
+-__wasilibc_maybe_reinitialize_environ_eagerly
+-__wasilibc_nocwd___wasilibc_rmdirat
+-__wasilibc_nocwd___wasilibc_unlinkat
+-__wasilibc_nocwd_faccessat
+-__wasilibc_nocwd_fstatat
+-__wasilibc_nocwd_linkat
+-__wasilibc_nocwd_mkdirat_nomode
+-__wasilibc_nocwd_openat_nomode
+-__wasilibc_nocwd_opendirat
+-__wasilibc_nocwd_readlinkat
+-__wasilibc_nocwd_renameat
+-__wasilibc_nocwd_scandirat
+-__wasilibc_nocwd_symlinkat
+-__wasilibc_nocwd_utimensat
+-__wasilibc_open_nomode
+-__wasilibc_poll_add
+-__wasilibc_poll_ready
+-__wasilibc_populate_preopens
+-__wasilibc_pthread_self
+-__wasilibc_random
+-__wasilibc_read_stream
+-__wasilibc_rename_newat
+-__wasilibc_rename_oldat
+-__wasilibc_reset_preopens
+-__wasilibc_rmdirat
+-__wasilibc_stat
+-__wasilibc_tell
+-__wasilibc_unlinkat
+-__wasilibc_utimens
+-__wasilibc_write_stream
+-__wasm_call_dtors
+-__wcscoll_l
+-__wcsftime_l
+-__wcsxfrm_l
+-__wctrans_l
+-__wctype_l
+-__xpg_basename
+-__xpg_strerror_r
+-__year_to_secs
+-_environ
+-_exit
+-_flushlbf
+-_initialize
+-_pthread_cleanup_pop
+-_pthread_cleanup_push
+-_start
+ a64l
+ abort
+ abs
+@@ -378,6 +10,7 @@ acosh
+ acoshf
+ acoshl
+ acosl
++__acquire_ptc
+ aligned_alloc
+ alphasort
+ alphasort64
+@@ -385,6 +18,7 @@ arc4random
+ arc4random_buf
+ arc4random_uniform
+ asctime
++__asctime_r
+ asctime_r
+ asin
+ asinf
+@@ -393,7 +27,7 @@ asinhf
+ asinhl
+ asinl
+ asprintf
+-at_quick_exit
++__assert_fail
+ atan
+ atan2
+ atan2f
+@@ -408,6 +42,7 @@ atof
+ atoi
+ atol
+ atoll
++at_quick_exit
+ basename
+ bcmp
+ bcopy
+@@ -456,6 +91,8 @@ ccosh
+ ccoshf
+ ccoshl
+ ccosl
++__c_dot_utf8
++__c_dot_utf8_locale
+ ceil
+ ceilf
+ ceill
+@@ -470,15 +107,23 @@ cimagl
+ clearenv
+ clearerr
+ clearerr_unlocked
++__c_locale
++__clock
+ clock
+ clock_getres
++__clock_gettime
+ clock_gettime
++_CLOCK_MONOTONIC
++__clock_nanosleep
+ clock_nanosleep
++_CLOCK_REALTIME
+ clog
+ clogf
+ clogl
+ close
+ closedir
++__component_type_object_force_link_wasip2
++__component_type_object_force_link_wasip2_public_use_in_this_compilation_unit
+ confstr
+ conj
+ conjf
+@@ -487,11 +132,14 @@ connect
+ copysign
+ copysignf
+ copysignl
++__cos
+ cos
++__cosdf
+ cosf
+ cosh
+ coshf
+ coshl
++__cosl
+ cosl
+ cpow
+ cpowf
+@@ -505,7 +153,13 @@ creall
+ creat
+ creat64
+ crypt
++__crypt_blowfish
++__crypt_des
++__crypt_md5
++__crypt_r
+ crypt_r
++__crypt_sha256
++__crypt_sha512
+ csin
+ csinf
+ csinh
+@@ -523,25 +177,43 @@ ctanhl
+ ctanl
+ ctime
+ ctime_r
++__ctype_b_loc
++__ctype_get_mb_cur_max
++__ctype_tolower_loc
++__ctype_toupper_loc
++__cxa_atexit
++__cxa_finalize
++daylight
++__default_guardsize
++__default_stacksize
+ descriptor_table_get_ref
+ descriptor_table_insert
+ descriptor_table_remove
+ descriptor_table_renumber
++__des_setkey
+ difftime
+ dirfd
+ dirname
+ div
++__do_cleanup_pop
++__do_cleanup_push
++__do_des
+ dprintf
+ drand48
+ drem
+ dremf
++__duplocale
+ duplocale
+ ecvt
++__EINVAL
+ encrypt
++__ENOMEM
++_environ
+ environ
+ environment_get_arguments
+ environment_get_environment
+ environment_initial_cwd
++__env_rm_add
+ erand48
+ erf
+ erfc
+@@ -550,7 +222,10 @@ erfcl
+ erff
+ erfl
+ errno
++__errno_location
++_exit
+ exit
++_Exit
+ exit_exit
+ exit_result_void_void_free
+ exp
+@@ -559,21 +234,27 @@ exp10f
+ exp10l
+ exp2
+ exp2f
++__exp2f_data
+ exp2l
++__exp_data
+ expf
+ expl
+ explicit_bzero
+ expm1
+ expm1f
+ expm1l
++__expo2
++__expo2f
+ exports_wasi_cli_run_run
+ fabs
+ fabsf
+ fabsl
+ faccessat
++__fbufsize
+ fchmod
+ fchmodat
+ fclose
++__fclose_ca
+ fcntl
+ fcvt
+ fdatasync
+@@ -581,6 +262,7 @@ fdclosedir
+ fdim
+ fdimf
+ fdiml
++__fdopen
+ fdopen
+ fdopendir
+ feclearexcept
+@@ -595,6 +277,7 @@ ferror
+ ferror_unlocked
+ fesetenv
+ fesetexceptflag
++__fesetround
+ fesetround
+ fetestexcept
+ feupdateenv
+@@ -611,6 +294,7 @@ fgetpos64
+ fgets
+ fgets_unlocked
+ fgetwc
++__fgetwc_unlocked
+ fgetwc_unlocked
+ fgetws
+ fgetws_unlocked
+@@ -635,8 +319,8 @@ filesystem_method_descriptor_metadata_hash_at
+ filesystem_method_descriptor_open_at
+ filesystem_method_descriptor_read
+ filesystem_method_descriptor_read_directory
+-filesystem_method_descriptor_read_via_stream
+ filesystem_method_descriptor_readlink_at
++filesystem_method_descriptor_read_via_stream
+ filesystem_method_descriptor_remove_directory_at
+ filesystem_method_descriptor_rename_at
+ filesystem_method_descriptor_set_size
+@@ -673,9 +357,12 @@ filesystem_result_tuple2_list_u8_bool_error_code_free
+ filesystem_result_void_error_code_free
+ finite
+ finitef
++__flbf
++__floatscan
+ floor
+ floorf
+ floorl
++_flushlbf
+ fma
+ fmaf
+ fmal
+@@ -687,6 +374,7 @@ fmin
+ fminf
+ fminl
+ fmod
++__fmodeflags
+ fmodf
+ fmodl
+ fmtmsg
+@@ -694,21 +382,31 @@ fnmatch
+ fopen
+ fopen64
+ fopencookie
++__fopen_rb_ca
+ fpathconf
++__fpending
+ fprintf
++__fpurge
+ fpurge
+ fputc
+ fputc_unlocked
+ fputs
+ fputs_unlocked
+ fputwc
++__fputwc_unlocked
+ fputwc_unlocked
+ fputws
+ fputws_unlocked
+ fread
++__freadable
++__freadahead
++__freading
++__freadptr
++__freadptrinc
+ fread_unlocked
+ free
+ freeaddrinfo
++__freelocale
+ freelocale
+ freopen
+ freopen64
+@@ -717,17 +415,24 @@ frexpf
+ frexpl
+ fscanf
+ fseek
++__fseeko
+ fseeko
+ fseeko64
++__fseeko_unlocked
++__fseterr
++__fsetlocking
+ fsetpos
+ fsetpos64
++__fsmu8
+ fstat
+ fstatat
+ fstatvfs
+ fsync
+ ftell
++__ftello
+ ftello
+ ftello64
++__ftello_unlocked
+ ftime
+ ftruncate
+ fts_children
+@@ -735,29 +440,34 @@ fts_close
+ fts_open
+ fts_read
+ fts_set
++__funcs_on_exit
++__funcs_on_quick_exit
+ futimens
++__futimesat
+ futimesat
+ fwide
+ fwprintf
++__fwritable
+ fwrite
+ fwrite_unlocked
++__fwritex
++__fwriting
+ fwscanf
+ gai_strerror
+ gcvt
+-get_avphys_pages
+-get_nprocs
+-get_nprocs_conf
+-get_phys_pages
+ getaddrinfo
++get_avphys_pages
+ getc
+-getc_unlocked
+ getchar
+ getchar_unlocked
++getc_unlocked
+ getcwd
+ getdate
+ getdate_err
++__getdelim
+ getdelim
+ getdomainname
++__getentropy
+ getentropy
+ getenv
+ gethostbyaddr
+@@ -765,12 +475,17 @@ gethostbyname
+ gethostid
+ gethostname
+ getline
++__get_locale
+ getnameinfo
++get_nprocs
++get_nprocs_conf
+ getopt
+ getopt_long
+ getopt_long_only
++__getopt_msg
+ getpagesize
+ getpeername
++get_phys_pages
+ getpid
+ getprotobyname
+ getrusage
+@@ -782,25 +497,27 @@ getsubopt
+ gettimeofday
+ getw
+ getwc
+-getwc_unlocked
+ getwchar
+ getwchar_unlocked
++getwc_unlocked
+ glob
+ glob64
+ globfree
+ globfree64
+ gmtime
++__gmtime_r
+ gmtime_r
+-h_errno
+ hcreate
+ hcreate_r
+ hdestroy
+ hdestroy_r
++h_errno
+ hsearch
+ hsearch_r
+ hstrerror
+ htonl
+ htons
++__hwcap
+ hypot
+ hypotf
+ hypotl
+@@ -816,6 +533,7 @@ in6addr_any
+ in6addr_loopback
+ index
+ inet_addr
++__inet_aton
+ inet_aton
+ inet_lnaof
+ inet_makeaddr
+@@ -824,74 +542,123 @@ inet_network
+ inet_ntoa
+ inet_ntop
+ inet_pton
++_initialize
++__init_ssp
+ initstate
++__init_tp
+ insque
+ instance_network_instance_network
++__intscan
++__invtrigl_R
++ioctl
+ io_error_borrow_error
+ io_error_error_drop_own
+ io_error_method_error_to_debug_string
+-ioctl
++_IO_feof_unlocked
++_IO_ferror_unlocked
++_IO_getc
++_IO_getc_unlocked
++_IO_putc
++_IO_putc_unlocked
+ ip_name_lookup_borrow_resolve_address_stream
+ ip_name_lookup_ip_address_free
+ ip_name_lookup_method_resolve_address_stream_resolve_next_address
+ ip_name_lookup_method_resolve_address_stream_subscribe
+ ip_name_lookup_option_ip_address_free
+-ip_name_lookup_resolve_address_stream_drop_own
+ ip_name_lookup_resolve_addresses
++ip_name_lookup_resolve_address_stream_drop_own
+ ip_name_lookup_result_option_ip_address_error_code_free
+ ip_name_lookup_result_own_resolve_address_stream_error_code_free
+ iprintf
+ isalnum
++__isalnum_l
+ isalnum_l
+ isalpha
++__isalpha_l
+ isalpha_l
+ isascii
++__isatty
+ isatty
+ isblank
++__isblank_l
+ isblank_l
+ iscntrl
++__iscntrl_l
+ iscntrl_l
+ isdigit
++__isdigit_l
+ isdigit_l
+ isgraph
++__isgraph_l
+ isgraph_l
+ islower
++__islower_l
+ islower_l
++__isoc99_fscanf
++__isoc99_fwscanf
++__isoc99_scanf
++__isoc99_sscanf
++__isoc99_swscanf
++__isoc99_vfscanf
++__isoc99_vfwscanf
++__isoc99_vscanf
++__isoc99_vsscanf
++__isoc99_vswscanf
++__isoc99_vwscanf
++__isoc99_wscanf
+ isprint
++__isprint_l
+ isprint_l
+ ispunct
++__ispunct_l
+ ispunct_l
+ isspace
++__isspace_l
+ isspace_l
+ isupper
++__isupper_l
+ isupper_l
+ iswalnum
++__iswalnum_l
+ iswalnum_l
+ iswalpha
++__iswalpha_l
+ iswalpha_l
+ iswblank
++__iswblank_l
+ iswblank_l
+ iswcntrl
++__iswcntrl_l
+ iswcntrl_l
+ iswctype
++__iswctype_l
+ iswctype_l
+ iswdigit
++__iswdigit_l
+ iswdigit_l
+ iswgraph
++__iswgraph_l
+ iswgraph_l
+ iswlower
++__iswlower_l
+ iswlower_l
+ iswprint
++__iswprint_l
+ iswprint_l
+ iswpunct
++__iswpunct_l
+ iswpunct_l
+ iswspace
++__iswspace_l
+ iswspace_l
+ iswupper
++__iswupper_l
+ iswupper_l
+ iswxdigit
++__iswxdigit_l
+ iswxdigit_l
+ isxdigit
++__isxdigit_l
+ isxdigit_l
+ j0
+ j0f
+@@ -903,17 +670,29 @@ jrand48
+ l64a
+ labs
+ lcong48
++__lctrans
++__lctrans_cur
++__lctrans_impl
+ ldexp
++__ldexp_cexp
++__ldexp_cexpf
+ ldexpf
+ ldexpl
+ ldiv
+ lfind
+ lgamma
+-lgamma_r
+ lgammaf
++__lgammaf_r
+ lgammaf_r
+ lgammal
++__lgammal_r
+ lgammal_r
++__lgamma_r
++lgamma_r
++__libc
++__libc_calloc
++__libc_free
++__libc_malloc
+ link
+ linkat
+ listen
+@@ -927,7 +706,9 @@ llroundf
+ llroundl
+ localeconv
+ localtime
++__localtime_r
+ localtime_r
++__loc_is_allocated
+ log
+ log10
+ log10f
+@@ -936,12 +717,16 @@ log1p
+ log1pf
+ log1pl
+ log2
++__log2_data
+ log2f
++__log2f_data
+ log2l
+ logb
+ logbf
+ logbl
++__log_data
+ logf
++__logf_data
+ logl
+ lrand48
+ lrint
+@@ -951,10 +736,23 @@ lround
+ lroundf
+ lroundl
+ lsearch
++__lseek
+ lseek
+ lstat
++__main_void
+ malloc
+ malloc_usable_size
++__math_divzero
++__math_divzerof
++__math_invalid
++__math_invalidf
++__math_invalidl
++__math_oflow
++__math_oflowf
++__math_uflow
++__math_uflowf
++__math_xflow
++__math_xflowf
+ mblen
+ mbrlen
+ mbrtoc16
+@@ -972,6 +770,7 @@ memcpy
+ memmem
+ memmove
+ mempcpy
++__memrchr
+ memrchr
+ memset
+ mkdir
+@@ -981,10 +780,12 @@ mmap
+ modf
+ modff
+ modfl
++__mo_lookup
+ monotonic_clock_now
+ monotonic_clock_resolution
+ monotonic_clock_subscribe_duration
+ monotonic_clock_subscribe_instant
++__month_to_secs
+ mprotect
+ mrand48
+ munmap
+@@ -999,6 +800,7 @@ network_borrow_network
+ network_ip_address_free
+ network_ip_socket_address_free
+ network_network_drop_own
++__newlocale
+ newlocale
+ nextafter
+ nextafterf
+@@ -1008,24 +810,38 @@ nexttowardf
+ nexttowardl
+ nftw
+ nftw64
++__nl_langinfo
+ nl_langinfo
++__nl_langinfo_l
+ nl_langinfo_l
+ nrand48
++NS_PER_S
+ ntohl
+ ntohs
++__ofl_add
++__ofl_lock
++__ofl_unlock
+ open
+-open_memstream
+-open_wmemstream
+ openat
+ opendir
+ opendirat
++open_memstream
++open_wmemstream
+ optarg
+ opterr
+ optind
+ optopt
++__optpos
++__optreset
+ optreset
++__overflow
++__p1evll
+ pathconf
+ perror
++__pio2_hi
++__pio2_lo
++__pleval
++__polevll
+ poll
+ poll_borrow_pollable
+ poll_list_borrow_pollable_free
+@@ -1036,16 +852,21 @@ poll_pollable_drop_own
+ posix_close
+ posix_fadvise
+ posix_fallocate
++__posix_getopt
+ posix_memalign
+ pow
+ pow10
+ pow10f
+ pow10l
+ powf
++__powf_log2_data
+ powl
++__pow_log_data
+ pread
+ preadv
+ printf
++__progname
++__progname_full
+ program_invocation_name
+ program_invocation_short_name
+ pselect
+@@ -1062,42 +883,41 @@ pthread_attr_setguardsize
+ pthread_attr_setschedparam
+ pthread_attr_setstack
+ pthread_attr_setstacksize
+-pthread_barrier_destroy
+-pthread_barrier_init
+-pthread_barrier_wait
+ pthread_barrierattr_destroy
+ pthread_barrierattr_getpshared
+ pthread_barrierattr_init
+ pthread_barrierattr_setpshared
++pthread_barrier_destroy
++pthread_barrier_init
++pthread_barrier_wait
+ pthread_cancel
+-pthread_cond_broadcast
+-pthread_cond_destroy
+-pthread_cond_init
+-pthread_cond_signal
+-pthread_cond_timedwait
+-pthread_cond_wait
++_pthread_cleanup_pop
++_pthread_cleanup_push
+ pthread_condattr_destroy
+ pthread_condattr_getclock
+ pthread_condattr_getpshared
+ pthread_condattr_init
+ pthread_condattr_setclock
+ pthread_condattr_setpshared
++pthread_cond_broadcast
++pthread_cond_destroy
++pthread_cond_init
++pthread_cond_signal
++__pthread_cond_timedwait
++pthread_cond_timedwait
++pthread_cond_wait
++__pthread_create
+ pthread_create
+ pthread_detach
+ pthread_equal
+ pthread_getattr_np
+ pthread_getspecific
++__pthread_join
+ pthread_join
++__pthread_key_create
+ pthread_key_create
++__pthread_key_delete
+ pthread_key_delete
+-pthread_mutex_consistent
+-pthread_mutex_destroy
+-pthread_mutex_getprioceiling
+-pthread_mutex_init
+-pthread_mutex_lock
+-pthread_mutex_timedlock
+-pthread_mutex_trylock
+-pthread_mutex_unlock
+ pthread_mutexattr_destroy
+ pthread_mutexattr_getprotocol
+ pthread_mutexattr_getpshared
+@@ -1108,21 +928,42 @@ pthread_mutexattr_setprotocol
+ pthread_mutexattr_setpshared
+ pthread_mutexattr_setrobust
+ pthread_mutexattr_settype
++pthread_mutex_consistent
++pthread_mutex_destroy
++pthread_mutex_getprioceiling
++pthread_mutex_init
++__pthread_mutex_lock
++pthread_mutex_lock
++__pthread_mutex_timedlock
++pthread_mutex_timedlock
++__pthread_mutex_trylock
++pthread_mutex_trylock
++__pthread_mutex_unlock
++pthread_mutex_unlock
++__pthread_once
+ pthread_once
++pthread_rwlockattr_destroy
++pthread_rwlockattr_getpshared
++pthread_rwlockattr_init
++pthread_rwlockattr_setpshared
+ pthread_rwlock_destroy
+ pthread_rwlock_init
++__pthread_rwlock_rdlock
+ pthread_rwlock_rdlock
++__pthread_rwlock_timedrdlock
+ pthread_rwlock_timedrdlock
++__pthread_rwlock_timedwrlock
+ pthread_rwlock_timedwrlock
++__pthread_rwlock_tryrdlock
+ pthread_rwlock_tryrdlock
++__pthread_rwlock_trywrlock
+ pthread_rwlock_trywrlock
++__pthread_rwlock_unlock
+ pthread_rwlock_unlock
++__pthread_rwlock_wrlock
+ pthread_rwlock_wrlock
+-pthread_rwlockattr_destroy
+-pthread_rwlockattr_getpshared
+-pthread_rwlockattr_init
+-pthread_rwlockattr_setpshared
+ pthread_self
++__pthread_setcancelstate
+ pthread_setcancelstate
+ pthread_setcanceltype
+ pthread_setspecific
+@@ -1131,40 +972,48 @@ pthread_spin_init
+ pthread_spin_lock
+ pthread_spin_trylock
+ pthread_spin_unlock
++__pthread_testcancel
+ pthread_testcancel
+ pthread_timedjoin_np
+ pthread_tryjoin_np
++__pthread_tsd_main
++__pthread_tsd_run_dtors
++__pthread_tsd_size
+ putc
+-putc_unlocked
+ putchar
+ putchar_unlocked
++putc_unlocked
++__putenv
+ putenv
+ puts
+ putw
+ putwc
+-putwc_unlocked
+ putwchar
+ putwchar_unlocked
++putwc_unlocked
+ pwrite
+ pwritev
+ qsort
++__qsort_r
+ qsort_r
+ quick_exit
+ raise
+ rand
+-rand_r
++__rand48_step
+ random
+ random_get_random_bytes
+ random_get_random_u64
+ random_insecure_get_insecure_random_bytes
+ random_insecure_get_insecure_random_u64
+ random_insecure_seed_insecure_seed
++rand_r
+ read
+ readdir
+ readlink
+ readlinkat
+ readv
+ realloc
++__reallocarray
+ reallocarray
+ realpath
+ recv
+@@ -1173,10 +1022,15 @@ regcomp
+ regerror
+ regexec
+ regfree
++__release_ptc
+ remainder
+ remainderf
+ remainderl
+ remove
++__rem_pio2
++__rem_pio2f
++__rem_pio2l
++__rem_pio2_large
+ remque
+ remquo
+ remquof
+@@ -1193,6 +1047,7 @@ rmdir
+ round
+ roundf
+ roundl
++__rsqrt_tab
+ sbrk
+ scalb
+ scalbf
+@@ -1206,6 +1061,9 @@ scandir
+ scandirat
+ scanf
+ sched_yield
++__secs_to_tm
++__secs_to_zone
++__seed48
+ seed48
+ seekdir
+ select
+@@ -1220,21 +1078,30 @@ setlocale
+ setsockopt
+ setstate
+ setvbuf
++__shgetc
++__shlim
+ shutdown
++__SIG_ERR
++__SIG_IGN
+ signal
++__signgam
+ signgam
+ significand
+ significandf
++__sin
+ sin
+ sincos
+ sincosf
+ sincosl
++__sindf
+ sinf
+ sinh
+ sinhf
+ sinhl
++__sinl
+ sinl
+ sleep
++__small_printf
+ snprintf
+ socket
+ sprintf
+@@ -1245,24 +1112,46 @@ srand
+ srand48
+ srandom
+ sscanf
++__stack_chk_fail
++__stack_chk_fail_local
++__stack_chk_guard
++_start
+ stat
+ statvfs
+ stderr
++__stderr_FILE
+ stderr_get_stderr
++__stderr_used
+ stdin
++__stdin_FILE
+ stdin_get_stdin
++__stdin_used
++__stdio_close
++__stdio_exit
++__stdio_exit_needed
++__stdio_read
++__stdio_seek
++__stdio_write
+ stdout
++__stdout_FILE
+ stdout_get_stdout
++__stdout_used
++__stdout_write
++__stpcpy
+ stpcpy
++__stpncpy
+ stpncpy
+ strcasecmp
++__strcasecmp_l
+ strcasecmp_l
+ strcasestr
+ strcat
+ strchr
++__strchrnul
+ strchrnul
+ strcmp
+ strcoll
++__strcoll_l
+ strcoll_l
+ strcpy
+ strcspn
+@@ -1291,16 +1180,20 @@ streams_result_u64_stream_error_free
+ streams_result_void_stream_error_free
+ streams_stream_error_free
+ strerror
++__strerror_l
+ strerror_l
+ strerror_r
+ strfmon
+ strfmon_l
+ strftime
++__strftime_fmt_1
++__strftime_l
+ strftime_l
+ strlcat
+ strlcpy
+ strlen
+ strncasecmp
++__strncasecmp_l
+ strncasecmp_l
+ strncat
+ strncmp
+@@ -1315,21 +1208,31 @@ strsignal
+ strspn
+ strstr
+ strtod
++__strtod_l
+ strtod_l
+ strtof
++__strtof_l
+ strtof_l
+ strtoimax
++__strtoimax_internal
+ strtok
+ strtok_r
+ strtol
+ strtold
++__strtold_l
+ strtold_l
++__strtol_internal
+ strtoll
++__strtoll_internal
+ strtoul
++__strtoul_internal
+ strtoull
++__strtoull_internal
+ strtoumax
++__strtoumax_internal
+ strverscmp
+ strxfrm
++__strxfrm_l
+ strxfrm_l
+ swab
+ swprintf
+@@ -1337,11 +1240,16 @@ swscanf
+ symlink
+ symlinkat
+ sysconf
++__sysinfo
++__sysv_signal
++__tan
+ tan
++__tandf
+ tanf
+ tanh
+ tanhf
+ tanhl
++__tanl
+ tanl
+ tcp_borrow_tcp_socket
+ tcp_create_socket_create_tcp_socket
+@@ -1400,6 +1308,7 @@ terminal_stdin_get_terminal_stdin
+ terminal_stdin_option_own_terminal_input_free
+ terminal_stdout_get_terminal_stdout
+ terminal_stdout_option_own_terminal_output_free
++__testcancel
+ tfind
+ tgamma
+ tgammaf
+@@ -1412,24 +1321,48 @@ time
+ timegm
+ times
+ timespec_get
++__timezone
++timezone
++__timezone_lockptr
++__tl_lock
++__tl_unlock
++__tm_to_secs
++__tm_to_tzname
+ toascii
+ tolower
++__tolower_l
+ tolower_l
++__toread
++__toread_needs_stdio_exit
+ toupper
++__toupper_l
+ toupper_l
+ towctrans
++__towctrans_l
+ towctrans_l
+ towlower
++__towlower_l
+ towlower_l
++__towrite
++__towrite_needs_stdio_exit
+ towupper
++__towupper_l
+ towupper_l
++__tre_mem_alloc_impl
++__tre_mem_destroy
++__tre_mem_new_impl
+ trunc
+ truncate
+ truncf
+ truncl
+ tsearch
++__tsearch_balance
+ tss_get
+ twalk
++__tzname
++tzname
++__tzset
++tzset
+ udp_borrow_incoming_datagram_stream
+ udp_borrow_outgoing_datagram_stream
+ udp_borrow_udp_socket
+@@ -1468,14 +1401,18 @@ udp_result_u64_error_code_free
+ udp_result_u8_error_code_free
+ udp_result_void_error_code_free
+ udp_udp_socket_drop_own
++__uflow
+ uname
+ ungetc
+ ungetwc
+ unlink
+ unlinkat
++__unlist_locked_file
+ unsetenv
++__uselocale
+ uselocale
+ usleep
++__utc
+ utime
+ utimensat
+ utimes
+@@ -1498,6 +1435,57 @@ vwprintf
+ vwscanf
+ wall_clock_now
+ wall_clock_resolution
++__wasi_init_tp
++__wasilibc_access
++__wasilibc_add_file
++__wasilibc_add_tcp_socket
++__wasilibc_add_udp_socket
++__wasilibc_cwd
++__wasilibc_deinitialize_environ
++__wasilibc_dttoif
++__wasilibc_ensure_environ
++__wasilibc_environ
++__wasilibc_fd_renumber
++__wasilibc_find_abspath
++__wasilibc_find_relpath
++__wasilibc_find_relpath_alloc
++__wasilibc_get_environ
++__wasilibc_iftodt
++__wasilibc_initialize_environ
++__wasilibc_init_stdio
++__wasilibc_link
++__wasilibc_link_newat
++__wasilibc_link_oldat
++__wasilibc_maybe_reinitialize_environ_eagerly
++__wasilibc_nocwd_faccessat
++__wasilibc_nocwd_fstatat
++__wasilibc_nocwd_linkat
++__wasilibc_nocwd_mkdirat_nomode
++__wasilibc_nocwd_openat_nomode
++__wasilibc_nocwd_opendirat
++__wasilibc_nocwd_readlinkat
++__wasilibc_nocwd_renameat
++__wasilibc_nocwd_scandirat
++__wasilibc_nocwd_symlinkat
++__wasilibc_nocwd_utimensat
++__wasilibc_nocwd___wasilibc_rmdirat
++__wasilibc_nocwd___wasilibc_unlinkat
++__wasilibc_open_nomode
++__wasilibc_poll_add
++__wasilibc_poll_ready
++__wasilibc_populate_preopens
++__wasilibc_pthread_self
++__wasilibc_random
++__wasilibc_read_stream
++__wasilibc_rename_newat
++__wasilibc_rename_oldat
++__wasilibc_reset_preopens
++__wasilibc_rmdirat
++__wasilibc_stat
++__wasilibc_tell
++__wasilibc_unlinkat
++__wasilibc_utimens
++__wasilibc_write_stream
+ wasip2_list_string_free
+ wasip2_list_tuple2_string_string_free
+ wasip2_list_u32_free
+@@ -1509,6 +1497,18 @@ wasip2_string_free
+ wasip2_string_from_c
+ wasip2_string_set
+ wasip2_tuple2_string_string_free
++__wasi_sockets_services_db
++__wasi_sockets_utils__any_addr
++__wasi_sockets_utils__borrow_network
++__wasi_sockets_utils__get_service_entry_by_name
++__wasi_sockets_utils__get_service_entry_by_port
++__wasi_sockets_utils__map_error
++__wasi_sockets_utils__output_addr_validate
++__wasi_sockets_utils__output_addr_write
++__wasi_sockets_utils__parse_address
++__wasi_sockets_utils__parse_port
++__wasi_sockets_utils__posix_family
++__wasm_call_dtors
+ wcpcpy
+ wcpncpy
+ wcrtomb
+@@ -1518,11 +1518,13 @@ wcscat
+ wcschr
+ wcscmp
+ wcscoll
++__wcscoll_l
+ wcscoll_l
+ wcscpy
+ wcscspn
+ wcsdup
+ wcsftime
++__wcsftime_l
+ wcsftime_l
+ wcslen
+ wcsncasecmp
+@@ -1551,12 +1553,15 @@ wcstoumax
+ wcswcs
+ wcswidth
+ wcsxfrm
++__wcsxfrm_l
+ wcsxfrm_l
+ wctob
+ wctomb
+ wctrans
++__wctrans_l
+ wctrans_l
+ wctype
++__wctype_l
+ wctype_l
+ wcwidth
+ wmemchr
+@@ -1568,9 +1573,12 @@ wprintf
+ write
+ writev
+ wscanf
++__xpg_basename
++__xpg_strerror_r
+ y0
+ y0f
+ y1
+ y1f
++__year_to_secs
+ yn
+-ynf
+\ No newline at end of file
++ynf__daylight
+diff --git a/expected/wasm32-wasip3/defined-symbols.txt b/expected/wasm32-wasip3/defined-symbols.txt
+index 7b3bc10..bf12493 100644
+--- a/expected/wasm32-wasip3/defined-symbols.txt
++++ b/expected/wasm32-wasip3/defined-symbols.txt
+@@ -1,365 +1,3 @@
+-_CLOCK_MONOTONIC
+-_CLOCK_REALTIME
+-_Exit
+-_IO_feof_unlocked
+-_IO_ferror_unlocked
+-_IO_getc
+-_IO_getc_unlocked
+-_IO_putc
+-_IO_putc_unlocked
+-__EINVAL
+-__ENOMEM
+-__SIG_ERR
+-__SIG_IGN
+-__acquire_ptc
+-__asctime_r
+-__assert_fail
+-__c_dot_utf8
+-__c_dot_utf8_locale
+-__c_locale
+-__clock
+-__clock_gettime
+-__clock_nanosleep
+-__component_type_object_force_link_wasip3
+-__component_type_object_force_link_wasip3_public_use_in_this_compilation_unit
+-__cos
+-__cosdf
+-__cosl
+-__crypt_blowfish
+-__crypt_des
+-__crypt_md5
+-__crypt_r
+-__crypt_sha256
+-__crypt_sha512
+-__ctype_b_loc
+-__ctype_get_mb_cur_max
+-__ctype_tolower_loc
+-__ctype_toupper_loc
+-__cxa_atexit
+-__cxa_finalize
+-__default_guardsize
+-__default_stacksize
+-__des_setkey
+-__do_cleanup_pop
+-__do_cleanup_push
+-__do_des
+-__duplocale
+-__env_rm_add
+-__errno_location
+-__exp2f_data
+-__exp_data
+-__expo2
+-__expo2f
+-__fbufsize
+-__fclose_ca
+-__fdopen
+-__fesetround
+-__fgetwc_unlocked
+-__flbf
+-__floatscan
+-__fmodeflags
+-__fopen_rb_ca
+-__fpending
+-__fpurge
+-__fputwc_unlocked
+-__freadable
+-__freadahead
+-__freading
+-__freadptr
+-__freadptrinc
+-__freelocale
+-__fseeko
+-__fseeko_unlocked
+-__fseterr
+-__fsetlocking
+-__fsmu8
+-__ftello
+-__ftello_unlocked
+-__funcs_on_exit
+-__funcs_on_quick_exit
+-__futimesat
+-__fwritable
+-__fwritex
+-__fwriting
+-__get_locale
+-__getdelim
+-__getentropy
+-__getopt_msg
+-__gmtime_r
+-__hwcap
+-__inet_aton
+-__init_ssp
+-__init_tp
+-__intscan
+-__invtrigl_R
+-__isalnum_l
+-__isalpha_l
+-__isatty
+-__isblank_l
+-__iscntrl_l
+-__isdigit_l
+-__isgraph_l
+-__islower_l
+-__isoc99_fscanf
+-__isoc99_fwscanf
+-__isoc99_scanf
+-__isoc99_sscanf
+-__isoc99_swscanf
+-__isoc99_vfscanf
+-__isoc99_vfwscanf
+-__isoc99_vscanf
+-__isoc99_vsscanf
+-__isoc99_vswscanf
+-__isoc99_vwscanf
+-__isoc99_wscanf
+-__isprint_l
+-__ispunct_l
+-__isspace_l
+-__isupper_l
+-__iswalnum_l
+-__iswalpha_l
+-__iswblank_l
+-__iswcntrl_l
+-__iswctype_l
+-__iswdigit_l
+-__iswgraph_l
+-__iswlower_l
+-__iswprint_l
+-__iswpunct_l
+-__iswspace_l
+-__iswupper_l
+-__iswxdigit_l
+-__isxdigit_l
+-__lctrans
+-__lctrans_cur
+-__lctrans_impl
+-__ldexp_cexp
+-__ldexp_cexpf
+-__lgamma_r
+-__lgammaf_r
+-__lgammal_r
+-__libc
+-__libc_calloc
+-__libc_free
+-__libc_malloc
+-__loc_is_allocated
+-__localtime_r
+-__log2_data
+-__log2f_data
+-__log_data
+-__logf_data
+-__lseek
+-__main_void
+-__math_divzero
+-__math_divzerof
+-__math_invalid
+-__math_invalidf
+-__math_invalidl
+-__math_oflow
+-__math_oflowf
+-__math_uflow
+-__math_uflowf
+-__math_xflow
+-__math_xflowf
+-__memrchr
+-__mo_lookup
+-__month_to_secs
+-__newlocale
+-__nl_langinfo
+-__nl_langinfo_l
+-__ofl_add
+-__ofl_lock
+-__ofl_unlock
+-__optpos
+-__optreset
+-__overflow
+-__p1evll
+-__pio2_hi
+-__pio2_lo
+-__pleval
+-__polevll
+-__posix_getopt
+-__pow_log_data
+-__powf_log2_data
+-__progname
+-__progname_full
+-__pthread_cond_timedwait
+-__pthread_create
+-__pthread_join
+-__pthread_key_create
+-__pthread_key_delete
+-__pthread_mutex_lock
+-__pthread_mutex_timedlock
+-__pthread_mutex_trylock
+-__pthread_mutex_unlock
+-__pthread_once
+-__pthread_rwlock_rdlock
+-__pthread_rwlock_timedrdlock
+-__pthread_rwlock_timedwrlock
+-__pthread_rwlock_tryrdlock
+-__pthread_rwlock_trywrlock
+-__pthread_rwlock_unlock
+-__pthread_rwlock_wrlock
+-__pthread_setcancelstate
+-__pthread_testcancel
+-__pthread_tsd_main
+-__pthread_tsd_run_dtors
+-__pthread_tsd_size
+-__putenv
+-__qsort_r
+-__rand48_step
+-__reallocarray
+-__release_ptc
+-__rem_pio2
+-__rem_pio2_large
+-__rem_pio2f
+-__rem_pio2l
+-__rsqrt_tab
+-__secs_to_tm
+-__secs_to_zone
+-__seed48
+-__shgetc
+-__shlim
+-__signgam
+-__sin
+-__sindf
+-__sinl
+-__small_printf
+-__stack_chk_fail
+-__stack_chk_fail_local
+-__stack_chk_guard
+-__stderr_FILE
+-__stderr_used
+-__stdin_FILE
+-__stdin_used
+-__stdio_close
+-__stdio_exit
+-__stdio_exit_needed
+-__stdio_read
+-__stdio_seek
+-__stdio_write
+-__stdout_FILE
+-__stdout_used
+-__stdout_write
+-__stpcpy
+-__stpncpy
+-__strcasecmp_l
+-__strchrnul
+-__strcoll_l
+-__strerror_l
+-__strftime_fmt_1
+-__strftime_l
+-__strncasecmp_l
+-__strtod_l
+-__strtof_l
+-__strtoimax_internal
+-__strtol_internal
+-__strtold_l
+-__strtoll_internal
+-__strtoul_internal
+-__strtoull_internal
+-__strtoumax_internal
+-__strxfrm_l
+-__sysinfo
+-__sysv_signal
+-__tan
+-__tandf
+-__tanl
+-__testcancel
+-__tl_lock
+-__tl_unlock
+-__tm_to_secs
+-__tm_to_tzname
+-__tolower_l
+-__toread
+-__toread_needs_stdio_exit
+-__toupper_l
+-__towctrans_l
+-__towlower_l
+-__towrite
+-__towrite_needs_stdio_exit
+-__towupper_l
+-__tre_mem_alloc_impl
+-__tre_mem_destroy
+-__tre_mem_new_impl
+-__tsearch_balance
+-__uflow
+-__unlist_locked_file
+-__uselocale
+-__utc
+-__wasi_init_tp
+-__wasi_sockets_services_db
+-__wasi_sockets_utils__any_addr
+-__wasi_sockets_utils__get_service_entry_by_name
+-__wasi_sockets_utils__get_service_entry_by_port
+-__wasi_sockets_utils__map_error
+-__wasi_sockets_utils__output_addr_validate
+-__wasi_sockets_utils__output_addr_write
+-__wasi_sockets_utils__parse_address
+-__wasi_sockets_utils__parse_port
+-__wasi_sockets_utils__posix_family
+-__wasilibc_access
+-__wasilibc_add_file
+-__wasilibc_add_tcp_socket
+-__wasilibc_add_udp_socket
+-__wasilibc_cwd
+-__wasilibc_deinitialize_environ
+-__wasilibc_dttoif
+-__wasilibc_ensure_environ
+-__wasilibc_environ
+-__wasilibc_fd_renumber
+-__wasilibc_find_abspath
+-__wasilibc_find_relpath
+-__wasilibc_find_relpath_alloc
+-__wasilibc_get_environ
+-__wasilibc_iftodt
+-__wasilibc_init_stdio
+-__wasilibc_initialize_environ
+-__wasilibc_link
+-__wasilibc_link_newat
+-__wasilibc_link_oldat
+-__wasilibc_maybe_reinitialize_environ_eagerly
+-__wasilibc_nocwd___wasilibc_rmdirat
+-__wasilibc_nocwd___wasilibc_unlinkat
+-__wasilibc_nocwd_faccessat
+-__wasilibc_nocwd_fstatat
+-__wasilibc_nocwd_linkat
+-__wasilibc_nocwd_mkdirat_nomode
+-__wasilibc_nocwd_openat_nomode
+-__wasilibc_nocwd_opendirat
+-__wasilibc_nocwd_readlinkat
+-__wasilibc_nocwd_renameat
+-__wasilibc_nocwd_scandirat
+-__wasilibc_nocwd_symlinkat
+-__wasilibc_nocwd_utimensat
+-__wasilibc_open_nomode
+-__wasilibc_populate_preopens
+-__wasilibc_pthread_self
+-__wasilibc_random
+-__wasilibc_rename_newat
+-__wasilibc_rename_oldat
+-__wasilibc_reset_preopens
+-__wasilibc_rmdirat
+-__wasilibc_stat
+-__wasilibc_tell
+-__wasilibc_unlinkat
+-__wasilibc_utimens
+-__wasm_call_dtors
+-__wcscoll_l
+-__wcsftime_l
+-__wcsxfrm_l
+-__wctrans_l
+-__wctype_l
+-__xpg_basename
+-__xpg_strerror_r
+-__year_to_secs
+-_environ
+-_exit
+-_flushlbf
+-_initialize
+-_pthread_cleanup_pop
+-_pthread_cleanup_push
+-_start
+ a64l
+ abort
+ abs
+@@ -372,6 +10,7 @@ acosh
+ acoshf
+ acoshl
+ acosl
++__acquire_ptc
+ aligned_alloc
+ alphasort
+ alphasort64
+@@ -379,6 +18,7 @@ arc4random
+ arc4random_buf
+ arc4random_uniform
+ asctime
++__asctime_r
+ asctime_r
+ asin
+ asinf
+@@ -387,7 +27,7 @@ asinhf
+ asinhl
+ asinl
+ asprintf
+-at_quick_exit
++__assert_fail
+ atan
+ atan2
+ atan2f
+@@ -402,6 +42,7 @@ atof
+ atoi
+ atol
+ atoll
++at_quick_exit
+ basename
+ bcmp
+ bcopy
+@@ -450,6 +91,8 @@ ccosh
+ ccoshf
+ ccoshl
+ ccosl
++__c_dot_utf8
++__c_dot_utf8_locale
+ ceil
+ ceilf
+ ceill
+@@ -464,15 +107,23 @@ cimagl
+ clearenv
+ clearerr
+ clearerr_unlocked
++__c_locale
++__clock
+ clock
+ clock_getres
++__clock_gettime
+ clock_gettime
++_CLOCK_MONOTONIC
++__clock_nanosleep
+ clock_nanosleep
++_CLOCK_REALTIME
+ clog
+ clogf
+ clogl
+ close
+ closedir
++__component_type_object_force_link_wasip3
++__component_type_object_force_link_wasip3_public_use_in_this_compilation_unit
+ confstr
+ conj
+ conjf
+@@ -481,11 +132,14 @@ connect
+ copysign
+ copysignf
+ copysignl
++__cos
+ cos
++__cosdf
+ cosf
+ cosh
+ coshf
+ coshl
++__cosl
+ cosl
+ cpow
+ cpowf
+@@ -499,7 +153,13 @@ creall
+ creat
+ creat64
+ crypt
++__crypt_blowfish
++__crypt_des
++__crypt_md5
++__crypt_r
+ crypt_r
++__crypt_sha256
++__crypt_sha512
+ csin
+ csinf
+ csinh
+@@ -517,25 +177,43 @@ ctanhl
+ ctanl
+ ctime
+ ctime_r
++__ctype_b_loc
++__ctype_get_mb_cur_max
++__ctype_tolower_loc
++__ctype_toupper_loc
++__cxa_atexit
++__cxa_finalize
++daylight
++__default_guardsize
++__default_stacksize
+ descriptor_table_get_ref
+ descriptor_table_insert
+ descriptor_table_remove
+ descriptor_table_renumber
++__des_setkey
+ difftime
+ dirfd
+ dirname
+ div
++__do_cleanup_pop
++__do_cleanup_push
++__do_des
+ dprintf
+ drand48
+ drem
+ dremf
++__duplocale
+ duplocale
+ ecvt
++__EINVAL
+ encrypt
++__ENOMEM
++_environ
+ environ
+ environment_get_arguments
+ environment_get_environment
+ environment_get_initial_cwd
++__env_rm_add
+ erand48
+ erf
+ erfc
+@@ -544,7 +222,10 @@ erfcl
+ erff
+ erfl
+ errno
++__errno_location
++_exit
+ exit
++_Exit
+ exit_exit
+ exit_result_void_void_free
+ exp
+@@ -553,20 +234,26 @@ exp10f
+ exp10l
+ exp2
+ exp2f
++__exp2f_data
+ exp2l
++__exp_data
+ expf
+ expl
+ explicit_bzero
+ expm1
+ expm1f
+ expm1l
++__expo2
++__expo2f
+ fabs
+ fabsf
+ fabsl
+ faccessat
++__fbufsize
+ fchmod
+ fchmodat
+ fclose
++__fclose_ca
+ fcntl
+ fcvt
+ fdatasync
+@@ -574,6 +261,7 @@ fdclosedir
+ fdim
+ fdimf
+ fdiml
++__fdopen
+ fdopen
+ fdopendir
+ feclearexcept
+@@ -588,6 +276,7 @@ ferror
+ ferror_unlocked
+ fesetenv
+ fesetexceptflag
++__fesetround
+ fesetround
+ fetestexcept
+ feupdateenv
+@@ -604,6 +293,7 @@ fgetpos64
+ fgets
+ fgets_unlocked
+ fgetwc
++__fgetwc_unlocked
+ fgetwc_unlocked
+ fgetws
+ fgetws_unlocked
+@@ -631,8 +321,8 @@ filesystem_method_descriptor_metadata_hash
+ filesystem_method_descriptor_metadata_hash_at
+ filesystem_method_descriptor_open_at
+ filesystem_method_descriptor_read_directory
+-filesystem_method_descriptor_read_via_stream
+ filesystem_method_descriptor_readlink_at
++filesystem_method_descriptor_read_via_stream
+ filesystem_method_descriptor_remove_directory_at
+ filesystem_method_descriptor_rename_at
+ filesystem_method_descriptor_set_size
+@@ -673,9 +363,12 @@ filesystem_stream_u8_read
+ filesystem_stream_u8_write
+ finite
+ finitef
++__flbf
++__floatscan
+ floor
+ floorf
+ floorl
++_flushlbf
+ fma
+ fmaf
+ fmal
+@@ -687,6 +380,7 @@ fmin
+ fminf
+ fminl
+ fmod
++__fmodeflags
+ fmodf
+ fmodl
+ fmtmsg
+@@ -694,20 +388,30 @@ fnmatch
+ fopen
+ fopen64
+ fopencookie
++__fopen_rb_ca
+ fpathconf
++__fpending
+ fprintf
++__fpurge
+ fpurge
+ fputc
+ fputc_unlocked
+ fputs
+ fputs_unlocked
+ fputwc
++__fputwc_unlocked
+ fputwc_unlocked
+ fputws
+ fputws_unlocked
+ fread
++__freadable
++__freadahead
++__freading
++__freadptr
++__freadptrinc
+ fread_unlocked
+ free
++__freelocale
+ freelocale
+ freopen
+ freopen64
+@@ -716,17 +420,24 @@ frexpf
+ frexpl
+ fscanf
+ fseek
++__fseeko
+ fseeko
+ fseeko64
++__fseeko_unlocked
++__fseterr
++__fsetlocking
+ fsetpos
+ fsetpos64
++__fsmu8
+ fstat
+ fstatat
+ fstatvfs
+ fsync
+ ftell
++__ftello
+ ftello
+ ftello64
++__ftello_unlocked
+ ftime
+ ftruncate
+ fts_children
+@@ -734,38 +445,48 @@ fts_close
+ fts_open
+ fts_read
+ fts_set
++__funcs_on_exit
++__funcs_on_quick_exit
+ futimens
++__futimesat
+ futimesat
+ fwide
+ fwprintf
++__fwritable
+ fwrite
+ fwrite_unlocked
++__fwritex
++__fwriting
+ fwscanf
+ gai_strerror
+ gcvt
+ get_avphys_pages
+-get_nprocs
+-get_nprocs_conf
+-get_phys_pages
+ getc
+-getc_unlocked
+ getchar
+ getchar_unlocked
++getc_unlocked
+ getcwd
+ getdate
+ getdate_err
++__getdelim
+ getdelim
+ getdomainname
++__getentropy
+ getentropy
+ getenv
+ gethostid
+ gethostname
+ getline
++__get_locale
++get_nprocs
++get_nprocs_conf
+ getopt
+ getopt_long
+ getopt_long_only
++__getopt_msg
+ getpagesize
+ getpeername
++get_phys_pages
+ getpid
+ getrusage
+ getsockname
+@@ -774,14 +495,15 @@ getsubopt
+ gettimeofday
+ getw
+ getwc
+-getwc_unlocked
+ getwchar
+ getwchar_unlocked
++getwc_unlocked
+ glob
+ glob64
+ globfree
+ globfree64
+ gmtime
++__gmtime_r
+ gmtime_r
+ hcreate
+ hcreate_r
+@@ -791,6 +513,7 @@ hsearch
+ hsearch_r
+ htonl
+ htons
++__hwcap
+ hypot
+ hypotf
+ hypotl
+@@ -806,6 +529,7 @@ in6addr_any
+ in6addr_loopback
+ index
+ inet_addr
++__inet_aton
+ inet_aton
+ inet_lnaof
+ inet_makeaddr
+@@ -814,65 +538,114 @@ inet_network
+ inet_ntoa
+ inet_ntop
+ inet_pton
++_initialize
++__init_ssp
+ initstate
++__init_tp
+ insque
++__intscan
++__invtrigl_R
+ ioctl
++_IO_feof_unlocked
++_IO_ferror_unlocked
++_IO_getc
++_IO_getc_unlocked
++_IO_putc
++_IO_putc_unlocked
+ ip_name_lookup_ip_address_free
+ ip_name_lookup_list_ip_address_free
+ ip_name_lookup_resolve_addresses
+ ip_name_lookup_result_list_ip_address_error_code_free
+ iprintf
+ isalnum
++__isalnum_l
+ isalnum_l
+ isalpha
++__isalpha_l
+ isalpha_l
+ isascii
++__isatty
+ isatty
+ isblank
++__isblank_l
+ isblank_l
+ iscntrl
++__iscntrl_l
+ iscntrl_l
+ isdigit
++__isdigit_l
+ isdigit_l
+ isgraph
++__isgraph_l
+ isgraph_l
+ islower
++__islower_l
+ islower_l
++__isoc99_fscanf
++__isoc99_fwscanf
++__isoc99_scanf
++__isoc99_sscanf
++__isoc99_swscanf
++__isoc99_vfscanf
++__isoc99_vfwscanf
++__isoc99_vscanf
++__isoc99_vsscanf
++__isoc99_vswscanf
++__isoc99_vwscanf
++__isoc99_wscanf
+ isprint
++__isprint_l
+ isprint_l
+ ispunct
++__ispunct_l
+ ispunct_l
+ isspace
++__isspace_l
+ isspace_l
+ isupper
++__isupper_l
+ isupper_l
+ iswalnum
++__iswalnum_l
+ iswalnum_l
+ iswalpha
++__iswalpha_l
+ iswalpha_l
+ iswblank
++__iswblank_l
+ iswblank_l
+ iswcntrl
++__iswcntrl_l
+ iswcntrl_l
+ iswctype
++__iswctype_l
+ iswctype_l
+ iswdigit
++__iswdigit_l
+ iswdigit_l
+ iswgraph
++__iswgraph_l
+ iswgraph_l
+ iswlower
++__iswlower_l
+ iswlower_l
+ iswprint
++__iswprint_l
+ iswprint_l
+ iswpunct
++__iswpunct_l
+ iswpunct_l
+ iswspace
++__iswspace_l
+ iswspace_l
+ iswupper
++__iswupper_l
+ iswupper_l
+ iswxdigit
++__iswxdigit_l
+ iswxdigit_l
+ isxdigit
++__isxdigit_l
+ isxdigit_l
+ j0
+ j0f
+@@ -884,17 +657,29 @@ jrand48
+ l64a
+ labs
+ lcong48
++__lctrans
++__lctrans_cur
++__lctrans_impl
+ ldexp
++__ldexp_cexp
++__ldexp_cexpf
+ ldexpf
+ ldexpl
+ ldiv
+ lfind
+ lgamma
+-lgamma_r
+ lgammaf
++__lgammaf_r
+ lgammaf_r
+ lgammal
++__lgammal_r
+ lgammal_r
++__lgamma_r
++lgamma_r
++__libc
++__libc_calloc
++__libc_free
++__libc_malloc
+ link
+ linkat
+ listen
+@@ -908,7 +693,9 @@ llroundf
+ llroundl
+ localeconv
+ localtime
++__localtime_r
+ localtime_r
++__loc_is_allocated
+ log
+ log10
+ log10f
+@@ -917,12 +704,16 @@ log1p
+ log1pf
+ log1pl
+ log2
++__log2_data
+ log2f
++__log2f_data
+ log2l
+ logb
+ logbf
+ logbl
++__log_data
+ logf
++__logf_data
+ logl
+ lrand48
+ lrint
+@@ -932,10 +723,23 @@ lround
+ lroundf
+ lroundl
+ lsearch
++__lseek
+ lseek
+ lstat
++__main_void
+ malloc
+ malloc_usable_size
++__math_divzero
++__math_divzerof
++__math_invalid
++__math_invalidf
++__math_invalidl
++__math_oflow
++__math_oflowf
++__math_uflow
++__math_uflowf
++__math_xflow
++__math_xflowf
+ mblen
+ mbrlen
+ mbrtoc16
+@@ -953,6 +757,7 @@ memcpy
+ memmem
+ memmove
+ mempcpy
++__memrchr
+ memrchr
+ memset
+ mkdir
+@@ -962,10 +767,12 @@ mmap
+ modf
+ modff
+ modfl
++__mo_lookup
+ monotonic_clock_get_resolution
+ monotonic_clock_now
+ monotonic_clock_wait_for
+ monotonic_clock_wait_until
++__month_to_secs
+ mprotect
+ mrand48
+ munmap
+@@ -976,6 +783,7 @@ nanosleep
+ nearbyint
+ nearbyintf
+ nearbyintl
++__newlocale
+ newlocale
+ nextafter
+ nextafterf
+@@ -985,38 +793,56 @@ nexttowardf
+ nexttowardl
+ nftw
+ nftw64
++__nl_langinfo
+ nl_langinfo
++__nl_langinfo_l
+ nl_langinfo_l
+ nrand48
+ ntohl
+ ntohs
++__ofl_add
++__ofl_lock
++__ofl_unlock
+ open
+-open_memstream
+-open_wmemstream
+ openat
+ opendir
+ opendirat
++open_memstream
++open_wmemstream
+ optarg
+ opterr
+ optind
+ optopt
++__optpos
++__optreset
+ optreset
++__overflow
++__p1evll
+ pathconf
+ perror
++__pio2_hi
++__pio2_lo
++__pleval
++__polevll
+ poll
+ posix_close
+ posix_fadvise
+ posix_fallocate
++__posix_getopt
+ posix_memalign
+ pow
+ pow10
+ pow10f
+ pow10l
+ powf
++__powf_log2_data
+ powl
++__pow_log_data
+ pread
+ preadv
+ printf
++__progname
++__progname_full
+ program_invocation_name
+ program_invocation_short_name
+ pselect
+@@ -1033,42 +859,41 @@ pthread_attr_setguardsize
+ pthread_attr_setschedparam
+ pthread_attr_setstack
+ pthread_attr_setstacksize
+-pthread_barrier_destroy
+-pthread_barrier_init
+-pthread_barrier_wait
+ pthread_barrierattr_destroy
+ pthread_barrierattr_getpshared
+ pthread_barrierattr_init
+ pthread_barrierattr_setpshared
++pthread_barrier_destroy
++pthread_barrier_init
++pthread_barrier_wait
+ pthread_cancel
+-pthread_cond_broadcast
+-pthread_cond_destroy
+-pthread_cond_init
+-pthread_cond_signal
+-pthread_cond_timedwait
+-pthread_cond_wait
++_pthread_cleanup_pop
++_pthread_cleanup_push
+ pthread_condattr_destroy
+ pthread_condattr_getclock
+ pthread_condattr_getpshared
+ pthread_condattr_init
+ pthread_condattr_setclock
+ pthread_condattr_setpshared
++pthread_cond_broadcast
++pthread_cond_destroy
++pthread_cond_init
++pthread_cond_signal
++__pthread_cond_timedwait
++pthread_cond_timedwait
++pthread_cond_wait
++__pthread_create
+ pthread_create
+ pthread_detach
+ pthread_equal
+ pthread_getattr_np
+ pthread_getspecific
++__pthread_join
+ pthread_join
++__pthread_key_create
+ pthread_key_create
++__pthread_key_delete
+ pthread_key_delete
+-pthread_mutex_consistent
+-pthread_mutex_destroy
+-pthread_mutex_getprioceiling
+-pthread_mutex_init
+-pthread_mutex_lock
+-pthread_mutex_timedlock
+-pthread_mutex_trylock
+-pthread_mutex_unlock
+ pthread_mutexattr_destroy
+ pthread_mutexattr_getprotocol
+ pthread_mutexattr_getpshared
+@@ -1079,21 +904,42 @@ pthread_mutexattr_setprotocol
+ pthread_mutexattr_setpshared
+ pthread_mutexattr_setrobust
+ pthread_mutexattr_settype
++pthread_mutex_consistent
++pthread_mutex_destroy
++pthread_mutex_getprioceiling
++pthread_mutex_init
++__pthread_mutex_lock
++pthread_mutex_lock
++__pthread_mutex_timedlock
++pthread_mutex_timedlock
++__pthread_mutex_trylock
++pthread_mutex_trylock
++__pthread_mutex_unlock
++pthread_mutex_unlock
++__pthread_once
+ pthread_once
++pthread_rwlockattr_destroy
++pthread_rwlockattr_getpshared
++pthread_rwlockattr_init
++pthread_rwlockattr_setpshared
+ pthread_rwlock_destroy
+ pthread_rwlock_init
++__pthread_rwlock_rdlock
+ pthread_rwlock_rdlock
++__pthread_rwlock_timedrdlock
+ pthread_rwlock_timedrdlock
++__pthread_rwlock_timedwrlock
+ pthread_rwlock_timedwrlock
++__pthread_rwlock_tryrdlock
+ pthread_rwlock_tryrdlock
++__pthread_rwlock_trywrlock
+ pthread_rwlock_trywrlock
++__pthread_rwlock_unlock
+ pthread_rwlock_unlock
++__pthread_rwlock_wrlock
+ pthread_rwlock_wrlock
+-pthread_rwlockattr_destroy
+-pthread_rwlockattr_getpshared
+-pthread_rwlockattr_init
+-pthread_rwlockattr_setpshared
+ pthread_self
++__pthread_setcancelstate
+ pthread_setcancelstate
+ pthread_setcanceltype
+ pthread_setspecific
+@@ -1102,40 +948,48 @@ pthread_spin_init
+ pthread_spin_lock
+ pthread_spin_trylock
+ pthread_spin_unlock
++__pthread_testcancel
+ pthread_testcancel
+ pthread_timedjoin_np
+ pthread_tryjoin_np
++__pthread_tsd_main
++__pthread_tsd_run_dtors
++__pthread_tsd_size
+ putc
+-putc_unlocked
+ putchar
+ putchar_unlocked
++putc_unlocked
++__putenv
+ putenv
+ puts
+ putw
+ putwc
+-putwc_unlocked
+ putwchar
+ putwchar_unlocked
++putwc_unlocked
+ pwrite
+ pwritev
+ qsort
++__qsort_r
+ qsort_r
+ quick_exit
+ raise
+ rand
+-rand_r
++__rand48_step
+ random
+ random_get_random_bytes
+ random_get_random_u64
+ random_insecure_get_insecure_random_bytes
+ random_insecure_get_insecure_random_u64
+ random_insecure_seed_get_insecure_seed
++rand_r
+ read
+ readdir
+ readlink
+ readlinkat
+ readv
+ realloc
++__reallocarray
+ reallocarray
+ realpath
+ recv
+@@ -1144,10 +998,15 @@ regcomp
+ regerror
+ regexec
+ regfree
++__release_ptc
+ remainder
+ remainderf
+ remainderl
+ remove
++__rem_pio2
++__rem_pio2f
++__rem_pio2l
++__rem_pio2_large
+ remque
+ remquo
+ remquof
+@@ -1164,6 +1023,7 @@ rmdir
+ round
+ roundf
+ roundl
++__rsqrt_tab
+ sbrk
+ scalb
+ scalbf
+@@ -1177,6 +1037,9 @@ scandir
+ scandirat
+ scanf
+ sched_yield
++__secs_to_tm
++__secs_to_zone
++__seed48
+ seed48
+ seekdir
+ select
+@@ -1191,21 +1054,30 @@ setlocale
+ setsockopt
+ setstate
+ setvbuf
++__shgetc
++__shlim
+ shutdown
++__SIG_ERR
++__SIG_IGN
+ signal
++__signgam
+ signgam
+ significand
+ significandf
++__sin
+ sin
+ sincos
+ sincosf
+ sincosl
++__sindf
+ sinf
+ sinh
+ sinhf
+ sinhl
++__sinl
+ sinl
+ sleep
++__small_printf
+ snprintf
+ socket
+ sockets_borrow_tcp_socket
+@@ -1296,12 +1168,19 @@ srand
+ srand48
+ srandom
+ sscanf
++__stack_chk_fail
++__stack_chk_fail_local
++__stack_chk_guard
++_start
+ stat
+ statvfs
+ stderr
++__stderr_FILE
+ stderr_result_void_error_code_free
++__stderr_used
+ stderr_write_via_stream
+ stdin
++__stdin_FILE
+ stdin_future_result_void_error_code_cancel_read
+ stdin_future_result_void_error_code_cancel_write
+ stdin_future_result_void_error_code_drop_readable
+@@ -1318,34 +1197,53 @@ stdin_stream_u8_drop_writable
+ stdin_stream_u8_new
+ stdin_stream_u8_read
+ stdin_stream_u8_write
++__stdin_used
++__stdio_close
++__stdio_exit
++__stdio_exit_needed
++__stdio_read
++__stdio_seek
++__stdio_write
+ stdout
++__stdout_FILE
+ stdout_result_void_error_code_free
++__stdout_used
++__stdout_write
+ stdout_write_via_stream
++__stpcpy
+ stpcpy
++__stpncpy
+ stpncpy
+ strcasecmp
++__strcasecmp_l
+ strcasecmp_l
+ strcasestr
+ strcat
+ strchr
++__strchrnul
+ strchrnul
+ strcmp
+ strcoll
++__strcoll_l
+ strcoll_l
+ strcpy
+ strcspn
+ strdup
+ strerror
++__strerror_l
+ strerror_l
+ strerror_r
+ strfmon
+ strfmon_l
+ strftime
++__strftime_fmt_1
++__strftime_l
+ strftime_l
+ strlcat
+ strlcpy
+ strlen
+ strncasecmp
++__strncasecmp_l
+ strncasecmp_l
+ strncat
+ strncmp
+@@ -1360,21 +1258,31 @@ strsignal
+ strspn
+ strstr
+ strtod
++__strtod_l
+ strtod_l
+ strtof
++__strtof_l
+ strtof_l
+ strtoimax
++__strtoimax_internal
+ strtok
+ strtok_r
+ strtol
+ strtold
++__strtold_l
+ strtold_l
++__strtol_internal
+ strtoll
++__strtoll_internal
+ strtoul
++__strtoul_internal
+ strtoull
++__strtoull_internal
+ strtoumax
++__strtoumax_internal
+ strverscmp
+ strxfrm
++__strxfrm_l
+ strxfrm_l
+ swab
+ swprintf
+@@ -1382,13 +1290,18 @@ swscanf
+ symlink
+ symlinkat
+ sysconf
++__sysinfo
+ system_clock_get_resolution
+ system_clock_now
++__sysv_signal
++__tan
+ tan
++__tandf
+ tanf
+ tanh
+ tanhf
+ tanhl
++__tanl
+ tanl
+ tdelete
+ tdestroy
+@@ -1403,6 +1316,7 @@ terminal_stdin_get_terminal_stdin
+ terminal_stdin_option_own_terminal_input_free
+ terminal_stdout_get_terminal_stdout
+ terminal_stdout_option_own_terminal_output_free
++__testcancel
+ tfind
+ tgamma
+ tgammaf
+@@ -1415,32 +1329,60 @@ time
+ timegm
+ times
+ timespec_get
++__timezone
++timezone
++__timezone_lockptr
++__tl_lock
++__tl_unlock
++__tm_to_secs
++__tm_to_tzname
+ toascii
+ tolower
++__tolower_l
+ tolower_l
++__toread
++__toread_needs_stdio_exit
+ toupper
++__toupper_l
+ toupper_l
+ towctrans
++__towctrans_l
+ towctrans_l
+ towlower
++__towlower_l
+ towlower_l
++__towrite
++__towrite_needs_stdio_exit
+ towupper
++__towupper_l
+ towupper_l
++__tre_mem_alloc_impl
++__tre_mem_destroy
++__tre_mem_new_impl
+ trunc
+ truncate
+ truncf
+ truncl
+ tsearch
++__tsearch_balance
+ tss_get
+ twalk
++__tzname
++tzname
++__tzset
++tzset
++__uflow
+ uname
+ ungetc
+ ungetwc
+ unlink
+ unlinkat
++__unlist_locked_file
+ unsetenv
++__uselocale
+ uselocale
+ usleep
++__utc
+ utime
+ utimensat
+ utimes
+@@ -1461,6 +1403,53 @@ vswprintf
+ vswscanf
+ vwprintf
+ vwscanf
++__wasi_init_tp
++__wasilibc_access
++__wasilibc_add_file
++__wasilibc_add_tcp_socket
++__wasilibc_add_udp_socket
++__wasilibc_cwd
++__wasilibc_deinitialize_environ
++__wasilibc_dttoif
++__wasilibc_ensure_environ
++__wasilibc_environ
++__wasilibc_fd_renumber
++__wasilibc_find_abspath
++__wasilibc_find_relpath
++__wasilibc_find_relpath_alloc
++__wasilibc_get_environ
++__wasilibc_iftodt
++__wasilibc_initialize_environ
++__wasilibc_init_stdio
++__wasilibc_link
++__wasilibc_link_newat
++__wasilibc_link_oldat
++__wasilibc_maybe_reinitialize_environ_eagerly
++__wasilibc_nocwd_faccessat
++__wasilibc_nocwd_fstatat
++__wasilibc_nocwd_linkat
++__wasilibc_nocwd_mkdirat_nomode
++__wasilibc_nocwd_openat_nomode
++__wasilibc_nocwd_opendirat
++__wasilibc_nocwd_readlinkat
++__wasilibc_nocwd_renameat
++__wasilibc_nocwd_scandirat
++__wasilibc_nocwd_symlinkat
++__wasilibc_nocwd_utimensat
++__wasilibc_nocwd___wasilibc_rmdirat
++__wasilibc_nocwd___wasilibc_unlinkat
++__wasilibc_open_nomode
++__wasilibc_populate_preopens
++__wasilibc_pthread_self
++__wasilibc_random
++__wasilibc_rename_newat
++__wasilibc_rename_oldat
++__wasilibc_reset_preopens
++__wasilibc_rmdirat
++__wasilibc_stat
++__wasilibc_tell
++__wasilibc_unlinkat
++__wasilibc_utimens
+ wasip3_backpressure_dec
+ wasip3_backpressure_inc
+ wasip3_context_get_0
+@@ -1484,6 +1473,17 @@ wasip3_waitable_set_drop
+ wasip3_waitable_set_new
+ wasip3_waitable_set_poll
+ wasip3_waitable_set_wait
++__wasi_sockets_services_db
++__wasi_sockets_utils__any_addr
++__wasi_sockets_utils__get_service_entry_by_name
++__wasi_sockets_utils__get_service_entry_by_port
++__wasi_sockets_utils__map_error
++__wasi_sockets_utils__output_addr_validate
++__wasi_sockets_utils__output_addr_write
++__wasi_sockets_utils__parse_address
++__wasi_sockets_utils__parse_port
++__wasi_sockets_utils__posix_family
++__wasm_call_dtors
+ wcpcpy
+ wcpncpy
+ wcrtomb
+@@ -1493,11 +1493,13 @@ wcscat
+ wcschr
+ wcscmp
+ wcscoll
++__wcscoll_l
+ wcscoll_l
+ wcscpy
+ wcscspn
+ wcsdup
+ wcsftime
++__wcsftime_l
+ wcsftime_l
+ wcslen
+ wcsncasecmp
+@@ -1526,12 +1528,15 @@ wcstoumax
+ wcswcs
+ wcswidth
+ wcsxfrm
++__wcsxfrm_l
+ wcsxfrm_l
+ wctob
+ wctomb
+ wctrans
++__wctrans_l
+ wctrans_l
+ wctype
++__wctype_l
+ wctype_l
+ wcwidth
+ wmemchr
+@@ -1543,9 +1548,12 @@ wprintf
+ write
+ writev
+ wscanf
++__xpg_basename
++__xpg_strerror_r
+ y0
+ y0f
+ y1
+ y1f
++__year_to_secs
+ yn
+-ynf
+\ No newline at end of file
++ynf__daylight
+diff --git a/libc-top-half/musl/src/time/__tz.c b/libc-top-half/musl/src/time/__tz.c
+index 7efb9a9..94bfc4d 100644
+--- a/libc-top-half/musl/src/time/__tz.c
++++ b/libc-top-half/musl/src/time/__tz.c
+@@ -3,10 +3,12 @@
+ #include <limits.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#ifdef __wasilibc_unmodified_upstream // timezone data
++#ifdef __wasilibc_unmodified_upstream // timezone data: replaced mmap with open/read
+ #include <sys/mman.h>
+-#include <ctype.h>
+ #endif
++#include <ctype.h>
++#include <fcntl.h>
++#include <unistd.h>
+ #include "libc.h"
+ #include "lock.h"
+ #include "fork_impl.h"
+@@ -16,7 +18,6 @@
+ #define realloc undef
+ #define free undef
+ 
+-#ifdef __wasilibc_unmodified_upstream // timezone data
+ long  __timezone = 0;
+ int   __daylight = 0;
+ char *__tzname[2] = { 0, 0 };
+@@ -27,14 +28,12 @@ weak_alias(__tzname, tzname);
+ 
+ static char std_name[TZNAME_MAX+1];
+ static char dst_name[TZNAME_MAX+1];
+-#endif
+ const char __utc[] = "UTC";
+ 
+-#ifdef __wasilibc_unmodified_upstream // timezone data
+ static int dst_off;
+ static int r0[5], r1[5];
+ 
+-static const unsigned char *zi, *trans, *index, *types, *abbrevs, *abbrevs_end;
++static const unsigned char *zi, *trans, *tz_index, *types, *abbrevs, *abbrevs_end;
+ static size_t map_size;
+ 
+ static char old_tz_buf[32];
+@@ -44,6 +43,24 @@ static size_t old_tz_size = sizeof old_tz_buf;
+ static volatile int lock[1];
+ volatile int *const __timezone_lockptr = lock;
+ 
++#ifndef __wasilibc_unmodified_upstream
++/* WarpGrid: load TZif data via open/read/close instead of mmap.
++ * Uses a static buffer to avoid pulling in malloc/free. */
++#define WARPGRID_TZ_BUF_SIZE 8192
++static unsigned char tz_buf[WARPGRID_TZ_BUF_SIZE];
++
++static const unsigned char *warpgrid_load_file(const char *path, size_t *size)
++{
++	int fd = open(path, O_RDONLY);
++	if (fd < 0) return 0;
++	ssize_t n = read(fd, tz_buf, WARPGRID_TZ_BUF_SIZE);
++	close(fd);
++	if (n <= 0) return 0;
++	*size = (size_t)n;
++	return tz_buf;
++}
++#endif
++
+ static int getint(const char **p)
+ {
+ 	unsigned x;
+@@ -145,7 +162,12 @@ static void do_tzset()
+ 
+ 	for (i=0; i<5; i++) r0[i] = r1[i] = 0;
+ 
++#ifdef __wasilibc_unmodified_upstream // timezone data: mmap cleanup
+ 	if (zi) __munmap((void *)zi, map_size);
++#else
++	/* WarpGrid: static buffer, no munmap needed */
++	zi = 0;
++#endif
+ 
+ 	/* Cache the old value of TZ to check if it has changed. Avoid
+ 	 * free so as not to pull it into static programs. Growth
+@@ -169,7 +191,7 @@ static void do_tzset()
+ 		             || !strcmp(dummy_name, "UTC")
+ 		             || !strcmp(dummy_name, "GMT")))
+ 			posix_form = 1;
+-	}	
++	}
+ 
+ 	/* Non-suid can use an absolute tzfile pathname or a relative
+ 	 * pathame beginning with "."; in secure mode, only the
+@@ -177,8 +199,12 @@ static void do_tzset()
+ 	if (!posix_form) {
+ 		if (*s == ':') s++;
+ 		if (*s == '/' || *s == '.') {
++#ifdef __wasilibc_unmodified_upstream // timezone data: suid check
+ 			if (!libc.secure || !strcmp(s, "/etc/localtime"))
+ 				map = __map_file(s, &map_size);
++#else
++			map = warpgrid_load_file(s, &map_size);
++#endif
+ 		} else {
+ 			size_t l = strlen(s);
+ 			if (l <= NAME_MAX && !strchr(s, '.')) {
+@@ -187,14 +213,20 @@ static void do_tzset()
+ 				for (try=search; !map && *try; try+=l+1) {
+ 					l = strlen(try);
+ 					memcpy(pathname-l, try, l);
++#ifdef __wasilibc_unmodified_upstream // timezone data: mmap
+ 					map = __map_file(pathname-l, &map_size);
++#else
++					map = warpgrid_load_file(pathname-l, &map_size);
++#endif
+ 				}
+ 			}
+ 		}
+ 		if (!map) s = __utc;
+ 	}
+ 	if (map && (map_size < 44 || memcmp(map, "TZif", 4))) {
++#ifdef __wasilibc_unmodified_upstream // timezone data: munmap
+ 		__munmap((void *)map, map_size);
++#endif
+ 		map = 0;
+ 		s = __utc;
+ 	}
+@@ -209,8 +241,8 @@ static void do_tzset()
+ 		} else {
+ 			trans = zi+44;
+ 		}
+-		index = trans + (zi_read32(trans-12) << scale);
+-		types = index + zi_read32(trans-12);
++		tz_index = trans + (zi_read32(trans-12) << scale);
++		types = tz_index + zi_read32(trans-12);
+ 		abbrevs = types + 6*zi_read32(trans-8);
+ 		abbrevs_end = abbrevs + zi_read32(trans-4);
+ 		if (zi[map_size-1] == '\n') {
+@@ -271,7 +303,7 @@ static size_t scan_trans(long long t, int local, size_t *alt)
+ 	uint64_t x;
+ 	int off = 0;
+ 
+-	size_t a = 0, n = (index-trans)>>scale, m;
++	size_t a = 0, n = (tz_index-trans)>>scale, m;
+ 
+ 	if (!n) {
+ 		if (alt) *alt = 0;
+@@ -284,7 +316,7 @@ static size_t scan_trans(long long t, int local, size_t *alt)
+ 		x = zi_read32(trans + (m<<scale));
+ 		if (scale == 3) x = x<<32 | zi_read32(trans + (m<<scale) + 4);
+ 		else x = (int32_t)x;
+-		if (local) off = (int32_t)zi_read32(types + 6 * index[m-1]);
++		if (local) off = (int32_t)zi_read32(types + 6 * tz_index[m-1]);
+ 		if (t - off < (int64_t)x) {
+ 			n /= 2;
+ 		} else {
+@@ -295,7 +327,7 @@ static size_t scan_trans(long long t, int local, size_t *alt)
+ 
+ 	/* First and last entry are special. First means to use lowest-index
+ 	 * non-DST type. Last means to apply POSIX-style rule if available. */
+-	n = (index-trans)>>scale;
++	n = (tz_index-trans)>>scale;
+ 	if (a == n-1) return -1;
+ 	if (a == 0) {
+ 		x = zi_read32(trans);
+@@ -310,22 +342,22 @@ static size_t scan_trans(long long t, int local, size_t *alt)
+ 		/* If t is before first transition, use the above-found type
+ 		 * and the index-zero (after transition) type as the alt. */
+ 		if (t - off < (int64_t)x) {
+-			if (alt) *alt = index[0];
++			if (alt) *alt = tz_index[0];
+ 			return j/6;
+ 		}
+ 	}
+ 
+ 	/* Try to find a neighboring opposite-DST-status rule. */
+ 	if (alt) {
+-		if (a && types[6*index[a-1]+4] != types[6*index[a]+4])
+-			*alt = index[a-1];
+-		else if (a+1<n && types[6*index[a+1]+4] != types[6*index[a]+4])
+-			*alt = index[a+1];
++		if (a && types[6*tz_index[a-1]+4] != types[6*tz_index[a]+4])
++			*alt = tz_index[a-1];
++		else if (a+1<n && types[6*tz_index[a+1]+4] != types[6*tz_index[a]+4])
++			*alt = tz_index[a+1];
+ 		else
+-			*alt = index[a];
++			*alt = tz_index[a];
+ 	}
+ 
+-	return index[a];
++	return tz_index[a];
+ }
+ 
+ static int days_in_month(int m, int is_leap)
+@@ -367,7 +399,11 @@ static long long rule_to_secs(const int *rule, int year)
+  * enables a caller to efficiently adjust for the case where an explicit
+  * DST specification mismatches what would be in effect at the time. */
+ 
++#ifdef __wasilibc_unmodified_upstream // type of offset parameter
+ void __secs_to_zone(long long t, int local, int *isdst, long *offset, long *oppoff, const char **zonename)
++#else
++void __secs_to_zone(long long t, int local, int *isdst, int *offset, long *oppoff, const char **zonename)
++#endif
+ {
+ 	LOCK(lock);
+ 
+@@ -430,31 +466,15 @@ static void __tzset()
+ }
+ 
+ weak_alias(__tzset, tzset);
+-#else
+-void __secs_to_zone(long long t, int local, int *isdst, int *offset, long *oppoff, const char **zonename)
+-{
+-	// Minimalist implementation for now.
+-	if (isdst)
+-		*isdst = 0;
+-	if (offset)
+-		*offset = 0;
+-	if (oppoff)
+-		*oppoff = 0;
+-	if (zonename)
+-		*zonename = __utc;
+-}
+-#endif
+ 
+ const char *__tm_to_tzname(const struct tm *tm)
+ {
+ 	const void *p = tm->__tm_zone;
+-#ifdef __wasilibc_unmodified_upstream // timezone data
+ 	LOCK(lock);
+ 	do_tzset();
+ 	if (p != __utc && p != __tzname[0] && p != __tzname[1] &&
+ 	    (!zi || (uintptr_t)p-(uintptr_t)abbrevs >= abbrevs_end - abbrevs))
+ 		p = "";
+ 	UNLOCK(lock);
+-#endif
+ 	return p;
+ }
+-- 
+2.48.1
+
