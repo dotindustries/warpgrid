@@ -1,8 +1,12 @@
-# Implementation Plan: US-602 — Define and validate WarpGridHandler Bun interface
+# Implementation Plan: US-705 — TypeScript HTTP + Postgres Integration Test (T4)
 
 ## Task List
 
-- [x] **Write `validateHandler()` runtime tests** — Created `packages/warpgrid-bun-sdk/tests/validate-handler.test.ts` (14 tests)
-- [x] **Add `WarpGridHandlerValidationError` tests to `errors.test.ts`** (3 tests)
-- [x] **Run `bun test` and `bun run typecheck` to verify all tests pass** — 184 tests pass, typecheck clean
-- [x] **Create PR referencing issue #71** — PR #122
+- [x] **Task 1: Install dependencies and verify test infrastructure** — `npm install` succeeds, `tsx` and `typescript` available
+- [x] **Task 2: Fix TypeScript type errors** — `npm run typecheck` (tsc --noEmit) passes clean, no errors
+- [x] **Task 3: Fix and pass all unit tests** — `npm test` passes: 62 tests, 0 failures across 21 suites (pg-wire, pg-client, handler, e2e)
+- [x] **Task 4: Verify process.env.APP_NAME in response headers** — handler-standalone.js sets X-App-Name from `globalThis.process?.env?.APP_NAME` with fallback; test.sh test 6 validates
+- [x] **Task 5: Verify warpgrid.database.connect() usage** — handler.js imports from `warpgrid:shim/database-proxy@0.1.0`; Rust test `test_t4_db_proxy_not_raw_tcp` confirms pool stats prove shim usage
+- [x] **Task 6: Verify GET /users and POST /users routes** — Both handlers implement GET /users (200), POST /users (201 with RETURNING), GET /users/:id (200/404), all with proper validation
+- [x] **Task 7: Run full test suite and fix any remaining issues** — Both `npm run typecheck` and `npm test` pass clean
+- [ ] **Task 8: Create PR referencing issue #89** (in progress)
