@@ -7,8 +7,16 @@ use std::path::Path;
 use warp_core::{AnalysisReport, OverallVerdict};
 
 /// Run a full analysis on a project directory or Dockerfile.
-pub fn analyze(path: &Path) -> Result<AnalysisReport> {
-    let language = analyzers::detect_language(path)?;
+///
+/// If `lang_override` is provided, it is used instead of auto-detection.
+pub fn analyze(path: &Path, lang_override: Option<&str>) -> Result<AnalysisReport> {
+    let language = match lang_override {
+        Some(lang) => {
+            tracing::info!(language = %lang, "Using language override");
+            lang.to_string()
+        }
+        None => analyzers::detect_language(path)?,
+    };
 
     tracing::info!(language = %language, "Detected project language");
 
@@ -16,6 +24,7 @@ pub fn analyze(path: &Path) -> Result<AnalysisReport> {
         "rust" => analyzers::rust::analyze_cargo_toml(path)?,
         "go" => analyzers::go::analyze_go_mod(path)?,
         "typescript" => analyzers::typescript::analyze_package_json(path)?,
+        "bun" => analyzers::bun::analyze_package_json(path)?,
         _ => {
             tracing::warn!("Unsupported language: {language}");
             vec![]
@@ -47,7 +56,7 @@ pub fn analyze(path: &Path) -> Result<AnalysisReport> {
         match language.as_str() {
             "rust" => "src/main.rs",
             "go" => "main.go",
-            "typescript" => "src/index.ts",
+            "typescript" | "bun" => "src/index.ts",
             _ => "src/main",
         },
     );
