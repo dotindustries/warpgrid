@@ -277,6 +277,11 @@ impl ConnectionPoolManager {
         self.draining.load(Ordering::Relaxed)
     }
 
+    /// Check if the pool manager has an async connection factory configured.
+    pub fn has_async_factory(&self) -> bool {
+        self.async_factory.is_some()
+    }
+
     /// Allocate the next connection handle.
     async fn allocate_handle(&self) -> u64 {
         let mut handle = self.next_handle.lock().await;
