@@ -166,6 +166,22 @@ enum Command {
         /// Metrics snapshot interval in seconds.
         #[arg(long, default_value = "60")]
         metrics_interval: u64,
+
+        /// This agent's region identifier (for deployment filtering).
+        #[arg(long, default_value = "iad")]
+        region: String,
+
+        /// Turso database URL for cloud metadata replication.
+        #[arg(long, env = "TURSO_DATABASE_URL")]
+        turso_url: Option<String>,
+
+        /// Turso auth token for database access.
+        #[arg(long, env = "TURSO_AUTH_TOKEN")]
+        turso_auth_token: Option<String>,
+
+        /// Runtime sync interval in seconds (how often to push state to Turso).
+        #[arg(long, default_value = "30")]
+        sync_interval: u64,
     },
 }
 
@@ -249,6 +265,10 @@ async fn main() -> anyhow::Result<()> {
             capacity_memory_bytes,
             capacity_cpu_weight,
             metrics_interval,
+            region,
+            turso_url,
+            turso_auth_token,
+            sync_interval,
         } => {
             agent_mode::run_agent(
                 control_plane,
@@ -258,6 +278,10 @@ async fn main() -> anyhow::Result<()> {
                 capacity_memory_bytes,
                 capacity_cpu_weight,
                 metrics_interval,
+                region,
+                turso_url,
+                turso_auth_token,
+                sync_interval,
             )
             .await
         }

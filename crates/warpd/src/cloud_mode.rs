@@ -26,6 +26,7 @@ use crate::cloud::landing::landing_router;
 use crate::cloud::provisioner::FlyProvisioner;
 use crate::cloud::registry::WasmRegistry;
 use crate::cloud::routes::{cloud_router, CloudState};
+use crate::cloud::sync::RuntimeSync;
 use crate::cloud::teams::TeamStore;
 use crate::cloud::usage::UsageTracker;
 
@@ -132,6 +133,17 @@ pub async fn run_cloud(
         metrics.run(metrics_shutdown).await;
     });
 
+    // Runtime-to-Turso sync (batch-write local state to global Turso every 30s).
+    let sync_shutdown = shutdown_rx.clone();
+    let sync_state = state.clone();
+    let sync_conn = cloud_db.connect()?;
+    let sync_region = regions.first().cloned().unwrap_or_else(|| "local".to_string());
+    let sync_handle = tokio::spawn(async move {
+        let sync = RuntimeSync::new(&sync_region, sync_state, sync_conn);
+        sync.run(std::time::Duration::from_secs(30), sync_shutdown).await;
+    });
+    info!("runtime sync started (every 30s → Turso)");
+
     // ── Analytics ────────────────────────────────────────────────
 
     let analytics = AnalyticsService::from_env(posthog_api_key.as_deref());
@@ -215,6 +227,7 @@ pub async fn run_cloud(
 
     // Wait for background tasks.
     let _ = metrics_handle.await;
+    let _ = sync_handle.await;
 
     info!("WarpGrid cloud daemon stopped");
     Ok(())
