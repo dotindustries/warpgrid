@@ -27,12 +27,12 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::config::ShimConfig;
-use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::db_proxy::PoolConfig;
+use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::engine::WarpGridEngine;
 
 // ── Postgres protocol helpers (same as T1) ──────────────────────────
@@ -233,8 +233,7 @@ impl StatefulMockRedisServer {
 
         std::thread::spawn(move || {
             // Shared state across all connections to the same server instance.
-            let store: Arc<Mutex<HashMap<String, String>>> =
-                Arc::new(Mutex::new(HashMap::new()));
+            let store: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
 
             while let Ok((mut stream, _)) = listener.accept() {
                 let store = Arc::clone(&store);
@@ -248,10 +247,7 @@ impl StatefulMockRedisServer {
         Self { addr }
     }
 
-    fn handle_connection(
-        stream: &mut std::net::TcpStream,
-        store: &Mutex<HashMap<String, String>>,
-    ) {
+    fn handle_connection(stream: &mut std::net::TcpStream, store: &Mutex<HashMap<String, String>>) {
         let mut buf = [0u8; 8192];
         loop {
             match stream.read(&mut buf) {
@@ -402,12 +398,7 @@ fn build_guest_component() -> &'static [u8] {
         let guest_dir = root.join("tests/fixtures/rust-http-redis-postgres-guest");
 
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for guest fixture");
@@ -420,8 +411,7 @@ fn build_guest_component() -> &'static [u8] {
         let core_wasm_path = guest_dir
             .join("target/wasm32-unknown-unknown/release/rust_http_redis_postgres_guest.wasm");
 
-        let component_path =
-            guest_dir.join("target/rust-http-redis-postgres-guest.component.wasm");
+        let component_path = guest_dir.join("target/rust-http-redis-postgres-guest.component.wasm");
         let status = Command::new("wasm-tools")
             .args([
                 "component",
@@ -523,10 +513,7 @@ async fn test_cold_cache_queries_postgres_and_caches() {
     let (mut store, instance) = fresh_instance(&engine, &component).await;
 
     let func = instance
-        .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(
-            &mut store,
-            "test-cold-cache",
-        )
+        .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(&mut store, "test-cold-cache")
         .unwrap();
 
     let (result,) = func
@@ -587,10 +574,7 @@ async fn test_warm_cache_skips_postgres() {
     let (mut store, instance) = fresh_instance(&engine, &component).await;
 
     let func = instance
-        .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(
-            &mut store,
-            "test-warm-cache",
-        )
+        .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(&mut store, "test-warm-cache")
         .unwrap();
 
     let (result,) = func
@@ -733,10 +717,7 @@ async fn test_full_cache_aside_lifecycle() {
     {
         let (mut store, instance) = fresh_instance(&engine, &component).await;
         let func = instance
-            .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(
-                &mut store,
-                "test-cold-cache",
-            )
+            .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(&mut store, "test-cold-cache")
             .unwrap();
         let (result,) = func
             .call_async(
@@ -753,10 +734,7 @@ async fn test_full_cache_aside_lifecycle() {
     {
         let (mut store, instance) = fresh_instance(&engine, &component).await;
         let func = instance
-            .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(
-                &mut store,
-                "test-warm-cache",
-            )
+            .get_typed_func::<(u16, u16), (Result<Vec<u8>, String>,)>(&mut store, "test-warm-cache")
             .unwrap();
         let (result,) = func
             .call_async(
@@ -767,7 +745,11 @@ async fn test_full_cache_aside_lifecycle() {
             .unwrap();
         result.expect("warm cache step should succeed");
         // Postgres query count should still be 1 from step 1.
-        assert_eq!(pg_server.query_count(), 1, "step 2: still one PG query (cached)");
+        assert_eq!(
+            pg_server.query_count(),
+            1,
+            "step 2: still one PG query (cached)"
+        );
     }
 
     // Step 3: Cache flush + re-query — Postgres queried again.

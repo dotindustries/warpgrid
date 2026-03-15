@@ -15,9 +15,13 @@ warp-analyzer.workspace = true
 warp-pack.workspace = true
 clap.workspace = true
 anyhow.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+dirs = "6"
+toml_edit = "0.22"
 
 [dev-dependencies]
 tempfile = "3"

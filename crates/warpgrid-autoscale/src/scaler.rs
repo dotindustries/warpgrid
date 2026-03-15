@@ -26,9 +26,7 @@ pub enum ScaleDecision {
 /// The autoscaler calls this with (deployment_id, target_instances).
 pub type ScaleCallback = Box<dyn Fn(&str, u32) -> BoxFuture + Send + Sync>;
 
-type BoxFuture = std::pin::Pin<
-    Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>,
->;
+type BoxFuture = std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>>;
 
 /// Per-deployment scaling state.
 struct ScaleState {
@@ -76,11 +74,7 @@ impl Autoscaler {
     /// Evaluate a single deployment and return a scaling decision.
     ///
     /// Compares the latest metrics against the deployment's scaling config.
-    pub fn evaluate(
-        &mut self,
-        spec: &DeploymentSpec,
-        snapshot: &MetricsSnapshot,
-    ) -> ScaleDecision {
+    pub fn evaluate(&mut self, spec: &DeploymentSpec, snapshot: &MetricsSnapshot) -> ScaleDecision {
         let scaling = match &spec.scaling {
             Some(s) => s,
             None => return ScaleDecision::NoChange,
@@ -128,9 +122,7 @@ impl Autoscaler {
         }
 
         // Scale up: current value exceeds target (10% headroom).
-        if current_value > target * 1.1
-            && now - scale_state.last_scale_up >= scale_up_cooldown
-        {
+        if current_value > target * 1.1 && now - scale_state.last_scale_up >= scale_up_cooldown {
             let ratio = current_value / target;
             let desired = ((current_instances as f64) * ratio).ceil() as u32;
             let clamped = desired.min(spec.instances.max);
@@ -190,9 +182,7 @@ impl Autoscaler {
                 continue;
             }
 
-            let snapshots = self
-                .state
-                .list_metrics_for_deployment(&spec.id, 1)?;
+            let snapshots = self.state.list_metrics_for_deployment(&spec.id, 1)?;
 
             let snapshot = match snapshots.first() {
                 Some(s) => s,
@@ -225,10 +215,7 @@ impl Autoscaler {
         interval: Duration,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) {
-        info!(
-            interval_secs = interval.as_secs(),
-            "autoscaler started"
-        );
+        info!(interval_secs = interval.as_secs(), "autoscaler started");
 
         loop {
             tokio::select! {
@@ -285,7 +272,7 @@ mod tests {
             scaling: Some(ScalingConfig {
                 metric: metric.to_string(),
                 target_value: target,
-                scale_up_window: "0s".to_string(),   // No cooldown for tests.
+                scale_up_window: "0s".to_string(), // No cooldown for tests.
                 scale_down_window: "0s".to_string(),
             }),
             health: None,

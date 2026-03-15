@@ -94,8 +94,7 @@ impl RaftLogReader<TypeConfig> for LogReader {
 
         for item in iter {
             let (_, val) = item.map_err(read_err)?;
-            let entry: Entry<TypeConfig> =
-                serde_json::from_slice(val.value()).map_err(read_err)?;
+            let entry: Entry<TypeConfig> = serde_json::from_slice(val.value()).map_err(read_err)?;
             entries.push(entry);
         }
 

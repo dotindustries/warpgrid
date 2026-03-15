@@ -17,8 +17,8 @@
 //!     → Queue empty     → None
 //! ```
 
-use crate::bindings::warpgrid::shim::signals::{Host, SignalType};
 use super::SignalQueue;
+use crate::bindings::warpgrid::shim::signals::{Host, SignalType};
 
 /// Host-side implementation of the `warpgrid:shim/signals` interface.
 ///
@@ -172,8 +172,8 @@ mod tests {
 
         // Deliver all three types
         host.deliver_signal(SignalType::Terminate); // ignored
-        host.deliver_signal(SignalType::Hangup);    // enqueued
-        host.deliver_signal(SignalType::Interrupt);  // ignored
+        host.deliver_signal(SignalType::Hangup); // enqueued
+        host.deliver_signal(SignalType::Interrupt); // ignored
 
         // Only hangup should be retrievable
         assert!(matches!(host.poll_signal(), Some(SignalType::Hangup)));
@@ -190,9 +190,9 @@ mod tests {
         host.on_signal(SignalType::Hangup).unwrap();
         host.on_signal(SignalType::Interrupt).unwrap();
 
-        host.deliver_signal(SignalType::Terminate);  // [Terminate]
-        host.deliver_signal(SignalType::Hangup);     // [Terminate, Hangup]
-        host.deliver_signal(SignalType::Interrupt);  // [Hangup, Interrupt]
+        host.deliver_signal(SignalType::Terminate); // [Terminate]
+        host.deliver_signal(SignalType::Hangup); // [Terminate, Hangup]
+        host.deliver_signal(SignalType::Interrupt); // [Hangup, Interrupt]
 
         assert!(matches!(host.poll_signal(), Some(SignalType::Hangup)));
         assert!(matches!(host.poll_signal(), Some(SignalType::Interrupt)));

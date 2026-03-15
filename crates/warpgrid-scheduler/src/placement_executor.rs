@@ -116,10 +116,7 @@ fn epoch_secs() -> u64 {
 mod tests {
     use super::*;
 
-    fn make_plan(
-        deployment_id: &str,
-        assignments: Vec<(&str, u32)>,
-    ) -> PlacementPlan {
+    fn make_plan(deployment_id: &str, assignments: Vec<(&str, u32)>) -> PlacementPlan {
         PlacementPlan {
             deployment_id: deployment_id.to_string(),
             assignments: assignments
@@ -157,8 +154,7 @@ mod tests {
 
         for cmd in &result.remote_commands {
             assert_eq!(cmd.command_type, "schedule");
-            let payload: SchedulePayload =
-                serde_json::from_str(&cmd.payload).unwrap();
+            let payload: SchedulePayload = serde_json::from_str(&cmd.payload).unwrap();
             assert_eq!(payload.deployment_id, "deploy/a");
         }
     }
@@ -186,9 +182,7 @@ mod tests {
 
         execute(&plan, "node-1", &state).unwrap();
 
-        let instances = state
-            .list_instances_for_deployment("deploy/a")
-            .unwrap();
+        let instances = state.list_instances_for_deployment("deploy/a").unwrap();
         assert_eq!(instances.len(), 3);
 
         let local_count = instances.iter().filter(|i| i.node_id == "node-1").count();
@@ -204,9 +198,7 @@ mod tests {
 
         execute(&plan, "node-1", &state).unwrap();
 
-        let instances = state
-            .list_instances_for_deployment("deploy/a")
-            .unwrap();
+        let instances = state.list_instances_for_deployment("deploy/a").unwrap();
         assert_eq!(instances[0].status, InstanceStatus::Starting);
         assert_eq!(instances[0].health, HealthStatus::Unknown);
     }
@@ -230,8 +222,7 @@ mod tests {
         let result = execute(&plan, "node-1", &state).unwrap();
         let cmd = &result.remote_commands[0];
 
-        let payload: SchedulePayload =
-            serde_json::from_str(&cmd.payload).unwrap();
+        let payload: SchedulePayload = serde_json::from_str(&cmd.payload).unwrap();
         assert_eq!(payload.deployment_id, "deploy/svc");
         assert_eq!(payload.instance_count, 5);
     }

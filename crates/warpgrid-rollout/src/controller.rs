@@ -444,13 +444,7 @@ mod tests {
 
     #[test]
     fn blue_green_switches_on_healthy() {
-        let mut rollout = Rollout::new(
-            "deploy/a",
-            RolloutStrategy::BlueGreen,
-            5,
-            "v1",
-            "v2",
-        );
+        let mut rollout = Rollout::new("deploy/a", RolloutStrategy::BlueGreen, 5, "v1", "v2");
 
         rollout.start();
         assert_eq!(rollout.phase, RolloutPhase::HealthGate);

@@ -269,9 +269,7 @@ async fn percentile_computation_across_distribution() {
 
     // Record 100 requests with latencies from 1ms to 100ms (in microseconds).
     for i in 1..=100 {
-        collector
-            .record_request("deploy-1", i * 1000, false)
-            .await;
+        collector.record_request("deploy-1", i * 1000, false).await;
     }
 
     let snapshots = collector.snapshot().await.unwrap();

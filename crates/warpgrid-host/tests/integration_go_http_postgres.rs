@@ -30,12 +30,12 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::config::ShimConfig;
-use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::db_proxy::PoolConfig;
+use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::engine::WarpGridEngine;
 
 // ── Postgres protocol helpers ─────────────────────────────────────
@@ -356,12 +356,7 @@ fn build_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module.
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for guest fixture");
@@ -371,8 +366,8 @@ fn build_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/go_http_postgres_guest.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/go_http_postgres_guest.wasm");
 
         // Step 2: Convert core module to component with wasm-tools.
         let component_path = guest_dir.join("target/go-http-postgres-guest.component.wasm");
@@ -526,8 +521,7 @@ async fn test_get_users_returns_seed_users() {
     // Response should end with ReadyForQuery.
     let last_6 = &response[response.len() - 6..];
     assert_eq!(
-        last_6,
-        &READY_FOR_QUERY,
+        last_6, &READY_FOR_QUERY,
         "response should end with ReadyForQuery"
     );
 
@@ -561,10 +555,7 @@ async fn test_post_user_returns_201_get_reflects_new_user() {
         .unwrap();
 
     let func = instance
-        .get_typed_func::<(u16,), (Result<Vec<u8>, String>,)>(
-            &mut store,
-            "test-post-and-get-users",
-        )
+        .get_typed_func::<(u16,), (Result<Vec<u8>, String>,)>(&mut store, "test-post-and-get-users")
         .unwrap();
     let (result,) = func
         .call_async(&mut store, (server.addr.port(),))
@@ -648,10 +639,7 @@ async fn test_proxy_roundtrip_routes_through_database_proxy() {
         .unwrap();
 
     let func = instance
-        .get_typed_func::<(u16,), (Result<Vec<u8>, String>,)>(
-            &mut store,
-            "test-proxy-roundtrip",
-        )
+        .get_typed_func::<(u16,), (Result<Vec<u8>, String>,)>(&mut store, "test-proxy-roundtrip")
         .unwrap();
     let (result,) = func
         .call_async(&mut store, (server.addr.port(),))

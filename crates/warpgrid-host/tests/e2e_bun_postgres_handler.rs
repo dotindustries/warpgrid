@@ -22,13 +22,15 @@ use http_body_util::{BodyExt, Full};
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
-use wasmtime_wasi_http::bindings::http::types::Scheme;
 use wasmtime_wasi_http::bindings::ProxyPre;
+use wasmtime_wasi_http::bindings::http::types::Scheme;
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
 
 use warpgrid_host::bindings::warpgrid::shim;
 use warpgrid_host::db_proxy::host::DbProxyHost;
-use warpgrid_host::db_proxy::{ConnectionBackend, ConnectionFactory, ConnectionPoolManager, PoolConfig, PoolKey};
+use warpgrid_host::db_proxy::{
+    ConnectionBackend, ConnectionFactory, ConnectionPoolManager, PoolConfig, PoolKey,
+};
 
 // ── Composite host state ────────────────────────────────────────────
 
@@ -102,7 +104,10 @@ impl ConnectionBackend for MockTcpBackend {
 
     fn recv(&mut self, max: usize) -> Result<Vec<u8>, String> {
         let mut buf = vec![0u8; max];
-        let n = self.stream.read(&mut buf).map_err(|e| format!("recv: {e}"))?;
+        let n = self
+            .stream
+            .read(&mut buf)
+            .map_err(|e| format!("recv: {e}"))?;
         buf.truncate(n);
         Ok(buf)
     }
@@ -138,11 +143,8 @@ impl ConnectionFactory for MockRedirectFactory {
         _key: &PoolKey,
         _password: Option<&str>,
     ) -> Result<Box<dyn ConnectionBackend>, String> {
-        let stream = std::net::TcpStream::connect_timeout(
-            &self.target,
-            Duration::from_secs(2),
-        )
-        .map_err(|e| format!("connect to mock: {e}"))?;
+        let stream = std::net::TcpStream::connect_timeout(&self.target, Duration::from_secs(2))
+            .map_err(|e| format!("connect to mock: {e}"))?;
         stream
             .set_read_timeout(Some(self.recv_timeout))
             .map_err(|e| format!("set timeout: {e}"))?;
@@ -410,9 +412,7 @@ fn test_pool_config() -> PoolConfig {
 }
 
 /// Create engine, linker, and ProxyPre for the E2E test.
-fn setup_engine_and_linker(
-    wasm_bytes: &[u8],
-) -> anyhow::Result<(Engine, ProxyPre<E2eState>)> {
+fn setup_engine_and_linker(wasm_bytes: &[u8]) -> anyhow::Result<(Engine, ProxyPre<E2eState>)> {
     let mut config = Config::new();
     config.async_support(true);
     config.wasm_component_model(true);
@@ -442,10 +442,7 @@ fn setup_engine_and_linker(
 }
 
 /// Create a Store<E2eState> with the mock redirect factory.
-fn create_store(
-    engine: &Engine,
-    mock_addr: std::net::SocketAddr,
-) -> Store<E2eState> {
+fn create_store(engine: &Engine, mock_addr: std::net::SocketAddr) -> Store<E2eState> {
     let factory = Arc::new(MockRedirectFactory {
         target: mock_addr,
         recv_timeout: Duration::from_secs(5),
@@ -453,9 +450,7 @@ fn create_store(
     let pool_manager = Arc::new(ConnectionPoolManager::new(test_pool_config(), factory));
     let runtime_handle = tokio::runtime::Handle::current();
 
-    let wasi = WasiCtx::builder()
-        .inherit_stderr()
-        .build();
+    let wasi = WasiCtx::builder().inherit_stderr().build();
 
     let state = E2eState {
         wasi,
@@ -479,9 +474,7 @@ async fn send_request(
     let request_body = Full::new(body_bytes).map_err(|never| match never {});
 
     let uri = format!("http://localhost{path}");
-    let mut builder = hyper::Request::builder()
-        .method(method)
-        .uri(&uri);
+    let mut builder = hyper::Request::builder().method(method).uri(&uri);
 
     if body.is_some() {
         builder = builder.header("content-type", "application/json");
@@ -489,7 +482,9 @@ async fn send_request(
 
     let request = builder.body(request_body)?;
 
-    let req = store.data_mut().new_incoming_request(Scheme::Http, request)?;
+    let req = store
+        .data_mut()
+        .new_incoming_request(Scheme::Http, request)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let out = store.data_mut().new_response_outparam(tx)?;
 
@@ -519,8 +514,8 @@ async fn send_request(
 async fn test_post_users_returns_201() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_bun_component();
-    let (engine, proxy_pre) = setup_engine_and_linker(wasm_bytes)
-        .expect("engine and linker setup should succeed");
+    let (engine, proxy_pre) =
+        setup_engine_and_linker(wasm_bytes).expect("engine and linker setup should succeed");
 
     let mut store = create_store(&engine, mock_pg.addr);
 
@@ -547,20 +542,14 @@ async fn test_post_users_returns_201() {
 async fn test_get_user_by_id_returns_200() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_bun_component();
-    let (engine, proxy_pre) = setup_engine_and_linker(wasm_bytes)
-        .expect("engine and linker setup should succeed");
+    let (engine, proxy_pre) =
+        setup_engine_and_linker(wasm_bytes).expect("engine and linker setup should succeed");
 
     let mut store = create_store(&engine, mock_pg.addr);
 
-    let (status, body) = send_request(
-        &proxy_pre,
-        &mut store,
-        "GET",
-        "/users/1",
-        None,
-    )
-    .await
-    .expect("GET /users/1 should succeed");
+    let (status, body) = send_request(&proxy_pre, &mut store, "GET", "/users/1", None)
+        .await
+        .expect("GET /users/1 should succeed");
 
     assert_eq!(status, 200, "GET /users/1 should return 200, body: {body}");
     assert!(
@@ -578,20 +567,14 @@ async fn test_get_user_by_id_returns_200() {
 async fn test_unknown_route_returns_404() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_bun_component();
-    let (engine, proxy_pre) = setup_engine_and_linker(wasm_bytes)
-        .expect("engine and linker setup should succeed");
+    let (engine, proxy_pre) =
+        setup_engine_and_linker(wasm_bytes).expect("engine and linker setup should succeed");
 
     let mut store = create_store(&engine, mock_pg.addr);
 
-    let (status, body) = send_request(
-        &proxy_pre,
-        &mut store,
-        "GET",
-        "/nonexistent",
-        None,
-    )
-    .await
-    .expect("GET /nonexistent should succeed");
+    let (status, body) = send_request(&proxy_pre, &mut store, "GET", "/nonexistent", None)
+        .await
+        .expect("GET /nonexistent should succeed");
 
     assert_eq!(status, 404, "unknown route should return 404, body: {body}");
     assert!(
@@ -605,8 +588,8 @@ async fn test_unknown_route_returns_404() {
 async fn test_post_users_missing_fields_returns_400() {
     let mock_pg = MockPostgresServer::start();
     let wasm_bytes = build_bun_component();
-    let (engine, proxy_pre) = setup_engine_and_linker(wasm_bytes)
-        .expect("engine and linker setup should succeed");
+    let (engine, proxy_pre) =
+        setup_engine_and_linker(wasm_bytes).expect("engine and linker setup should succeed");
 
     let mut store = create_store(&engine, mock_pg.addr);
 

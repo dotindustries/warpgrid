@@ -20,20 +20,20 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::db_proxy::host::DbProxyHost;
 use warpgrid_host::db_proxy::redis::RedisConnectionFactory;
 use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::db_proxy::{ConnectionPoolManager, PoolConfig};
+use warpgrid_host::dns::cache::DnsCacheConfig;
 use warpgrid_host::dns::host::DnsHost;
 use warpgrid_host::dns::{CachedDnsResolver, DnsResolver};
-use warpgrid_host::dns::cache::DnsCacheConfig;
-use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
-use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
+use warpgrid_host::filesystem::host::FilesystemHost;
 
 // ── Workspace helpers ─────────────────────────────────────────────
 
@@ -60,12 +60,7 @@ fn build_component(svc_name: &str) -> Vec<u8> {
 
     // Step 1: Build the guest crate to a core Wasm module.
     let status = Command::new("cargo")
-        .args([
-            "build",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--release",
-        ])
+        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
         .current_dir(&svc_dir)
         .status()
         .unwrap_or_else(|e| panic!("failed to run cargo build for {svc_name}: {e}"));
@@ -77,8 +72,9 @@ fn build_component(svc_name: &str) -> Vec<u8> {
 
     // Derive the Wasm artifact name from the crate name (hyphens → underscores).
     let wasm_name = svc_name.replace('-', "_");
-    let core_wasm_path = svc_dir
-        .join(format!("target/wasm32-unknown-unknown/release/{wasm_name}.wasm"));
+    let core_wasm_path = svc_dir.join(format!(
+        "target/wasm32-unknown-unknown/release/{wasm_name}.wasm"
+    ));
 
     // Step 2: Convert core module to component with wasm-tools.
     let component_path = svc_dir.join(format!("target/{svc_name}.component.wasm"));
@@ -218,9 +214,7 @@ impl MockRedisServer {
                 Ok(n) => {
                     let received = &buf[..n];
 
-                    if received == b"PING\r\n"
-                        || received.starts_with(b"*1\r\n$4\r\nPING\r\n")
-                    {
+                    if received == b"PING\r\n" || received.starts_with(b"*1\r\n$4\r\nPING\r\n") {
                         if stream.write_all(b"+PONG\r\n").is_err() {
                             break;
                         }
@@ -636,11 +630,7 @@ async fn multi_service_full_flow() {
         let (result,) = func
             .call_async(
                 &mut store,
-                (
-                    "GET".to_string(),
-                    "/users".to_string(),
-                    String::new(),
-                ),
+                ("GET".to_string(), "/users".to_string(), String::new()),
             )
             .await
             .unwrap();
@@ -749,21 +739,14 @@ async fn service_error_includes_source_service_header() {
         .unwrap();
 
     let func = instance
-        .get_typed_func::<HandleRequestParams, HandleRequestResult>(
-            &mut store,
-            "handle-request",
-        )
+        .get_typed_func::<HandleRequestParams, HandleRequestResult>(&mut store, "handle-request")
         .unwrap();
 
     // Request to unknown path → 404 with no error_source.
     let (result,) = func
         .call_async(
             &mut store,
-            (
-                "GET".to_string(),
-                "/unknown".to_string(),
-                String::new(),
-            ),
+            ("GET".to_string(), "/unknown".to_string(), String::new()),
         )
         .await
         .unwrap();
@@ -809,21 +792,14 @@ async fn dns_failure_populates_error_source() {
         .unwrap();
 
     let func = instance
-        .get_typed_func::<HandleRequestParams, HandleRequestResult>(
-            &mut store,
-            "handle-request",
-        )
+        .get_typed_func::<HandleRequestParams, HandleRequestResult>(&mut store, "handle-request")
         .unwrap();
 
     // Request to /users path — DNS resolution should fail.
     let (result,) = func
         .call_async(
             &mut store,
-            (
-                "POST".to_string(),
-                "/users".to_string(),
-                "test".to_string(),
-            ),
+            ("POST".to_string(), "/users".to_string(), "test".to_string()),
         )
         .await
         .unwrap();

@@ -23,12 +23,12 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::config::ShimConfig;
-use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::db_proxy::PoolConfig;
+use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::engine::WarpGridEngine;
 
 // ── Postgres protocol helpers ─────────────────────────────────────
@@ -326,11 +326,7 @@ impl StatefulMockPostgresServer {
             name: name_val,
             email: email_val,
         };
-        state
-            .tables
-            .entry(table_name)
-            .or_default()
-            .push(row);
+        state.tables.entry(table_name).or_default().push(row);
 
         let mut resp = Vec::new();
         resp.extend(pg_command_complete("INSERT 0 1"));
@@ -348,14 +344,14 @@ impl StatefulMockPostgresServer {
 
         let mut resp = Vec::new();
         // INT4 OID = 23, TEXT OID = 25
-        resp.extend(pg_row_description(&[("id", 23), ("name", 25), ("email", 25)]));
+        resp.extend(pg_row_description(&[
+            ("id", 23),
+            ("name", 25),
+            ("email", 25),
+        ]));
 
         for row in &rows {
-            resp.extend(pg_data_row(&[
-                &row.id.to_string(),
-                &row.name,
-                &row.email,
-            ]));
+            resp.extend(pg_data_row(&[&row.id.to_string(), &row.name, &row.email]));
         }
 
         resp.extend(pg_command_complete(&format!("SELECT {row_count}")));
@@ -459,12 +455,7 @@ fn build_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module.
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for guest fixture");
@@ -474,8 +465,8 @@ fn build_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/rust_sqlx_postgres_guest.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/rust_sqlx_postgres_guest.wasm");
 
         // Step 2: Convert core module to component with wasm-tools.
         let component_path = guest_dir.join("target/rust-sqlx-postgres-guest.component.wasm");

@@ -29,13 +29,23 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true
+serde.workspace = true
 serde_json.workspace = true
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
 tonic = "0.12"
 redb = "3.1"
 openraft = { version = "0.9", features = ["serde"] }
+rand = "0.8"
+reqwest = { version = "0.12", features = ["json"] }
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+libsql = "0.9"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 axum = { version = "0.8", features = ["tokio"] }
 warpgrid-placement = { path = "../warpgrid-placement" }
+tempfile = "3"

@@ -212,7 +212,9 @@ fn parse_duration(s: &str) -> Option<Duration> {
             secs.parse::<u64>().ok().map(Duration::from_secs)
         }
     } else if let Some(mins) = s.strip_suffix('m') {
-        mins.parse::<u64>().ok().map(|m| Duration::from_secs(m * 60))
+        mins.parse::<u64>()
+            .ok()
+            .map(|m| Duration::from_secs(m * 60))
     } else {
         s.parse::<u64>().ok().map(Duration::from_secs)
     }
@@ -287,8 +289,7 @@ mod tests {
 
     #[test]
     fn tracker_exponential_backoff() {
-        let mut tracker =
-            HealthTracker::with_thresholds(3, 1, Duration::from_secs(1));
+        let mut tracker = HealthTracker::with_thresholds(3, 1, Duration::from_secs(1));
 
         // Base interval.
         assert_eq!(tracker.next_interval(), Duration::from_secs(1));
@@ -306,8 +307,7 @@ mod tests {
 
     #[test]
     fn tracker_backoff_caps_at_max() {
-        let mut tracker =
-            HealthTracker::with_thresholds(100, 1, Duration::from_secs(1));
+        let mut tracker = HealthTracker::with_thresholds(100, 1, Duration::from_secs(1));
 
         // Drive failures until backoff exceeds 60s.
         for _ in 0..10 {
@@ -319,8 +319,7 @@ mod tests {
 
     #[test]
     fn tracker_backoff_resets_on_success() {
-        let mut tracker =
-            HealthTracker::with_thresholds(3, 1, Duration::from_secs(1));
+        let mut tracker = HealthTracker::with_thresholds(3, 1, Duration::from_secs(1));
 
         tracker.record(ProbeResult::Unhealthy);
         tracker.record(ProbeResult::Unhealthy);
@@ -364,8 +363,7 @@ mod tests {
 
     #[test]
     fn custom_thresholds() {
-        let mut tracker =
-            HealthTracker::with_thresholds(5, 3, Duration::from_secs(1));
+        let mut tracker = HealthTracker::with_thresholds(5, 3, Duration::from_secs(1));
 
         // Need 5 failures for unhealthy.
         for _ in 0..4 {

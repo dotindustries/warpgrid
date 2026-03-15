@@ -10,7 +10,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use tracing::info;
 use warp_core::WarpConfig;
 
@@ -18,12 +18,18 @@ use warp_core::WarpConfig;
 ///
 /// Reads `warp.toml` to detect language, then spawns the appropriate dev server.
 pub fn dev(path: &str, port: u16, native: bool) -> Result<()> {
-    let project_path = Path::new(path).canonicalize().unwrap_or_else(|_| Path::new(path).to_path_buf());
+    let project_path = Path::new(path)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(path).to_path_buf());
 
     // Try to read warp.toml for language detection
     let lang = detect_language(&project_path)?;
 
-    info!("Starting dev server for {} project at {}", lang, project_path.display());
+    info!(
+        "Starting dev server for {} project at {}",
+        lang,
+        project_path.display()
+    );
 
     match lang.as_str() {
         "bun" => dev_bun(&project_path, port, native),
@@ -90,9 +96,7 @@ fn dev_bun(project_path: &Path, port: u16, native: bool) -> Result<()> {
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .context(
-            "Failed to execute 'bun'. Is Bun installed? Install from https://bun.sh"
-        )?;
+        .context("Failed to execute 'bun'. Is Bun installed? Install from https://bun.sh")?;
 
     if !status.success() {
         let code = status.code().unwrap_or(-1);
@@ -198,6 +202,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let result = resolve_dev_cli(dir.path());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("@warpgrid/bun-sdk"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("@warpgrid/bun-sdk")
+        );
     }
 }

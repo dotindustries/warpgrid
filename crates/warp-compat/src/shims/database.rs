@@ -15,6 +15,14 @@
 
 pub struct DatabaseShim;
 
+impl Default for DatabaseShim {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DatabaseShim {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }

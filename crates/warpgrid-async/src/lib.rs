@@ -30,7 +30,7 @@ mod header;
 mod request;
 mod response;
 
-pub use body::{ByteStream, InfallibleByteStream, DEFAULT_CHUNK_SIZE};
+pub use body::{ByteStream, DEFAULT_CHUNK_SIZE, InfallibleByteStream};
 pub use error::Error;
 pub use header::{Header, HeaderMap};
 pub use request::Request;

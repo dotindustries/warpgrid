@@ -33,7 +33,13 @@ fn blank_entry(term: u64, node: u64, index: u64) -> Entry<TypeConfig> {
     }
 }
 
-fn put_deployment_entry(term: u64, node: u64, index: u64, key: &str, value: &str) -> Entry<TypeConfig> {
+fn put_deployment_entry(
+    term: u64,
+    node: u64,
+    index: u64,
+    key: &str,
+    value: &str,
+) -> Entry<TypeConfig> {
     Entry {
         log_id: LogId::new(leader(term, node), index),
         payload: EntryPayload::Normal(Request::PutDeployment {
@@ -166,7 +172,10 @@ async fn state_machine_multi_operation_sequence() {
 
     // Node persisted.
     let val = table.get("node-1").unwrap().unwrap();
-    assert_eq!(String::from_utf8_lossy(val.value()), r#"{"addr":"10.0.0.1"}"#);
+    assert_eq!(
+        String::from_utf8_lossy(val.value()),
+        r#"{"addr":"10.0.0.1"}"#
+    );
 
     // Instance was deleted.
     assert!(table.get("prod/api:inst-0").unwrap().is_none());
@@ -235,10 +244,7 @@ async fn membership_change_persisted() {
     assert!(membership.log_id().is_none());
 
     // Apply a membership change entry.
-    let membership_config = Membership::new(
-        vec![BTreeSet::from([1u64, 2u64, 3u64])],
-        None,
-    );
+    let membership_config = Membership::new(vec![BTreeSet::from([1u64, 2u64, 3u64])], None);
 
     let entry = Entry::<TypeConfig> {
         log_id: LogId::new(leader(1, 1), 1),
@@ -255,7 +261,10 @@ async fn membership_change_persisted() {
     assert!(stored_membership.log_id().is_some());
 
     // The membership should contain our 3 voter node IDs.
-    let voter_ids = stored_membership.membership().voter_ids().collect::<Vec<_>>();
+    let voter_ids = stored_membership
+        .membership()
+        .voter_ids()
+        .collect::<Vec<_>>();
     assert_eq!(voter_ids.len(), 3);
     assert!(voter_ids.contains(&1));
     assert!(voter_ids.contains(&2));
@@ -283,11 +292,14 @@ async fn log_store_committed_survives_reopen() {
     {
         let mut store = LogStore::new(Arc::clone(&db));
 
-        write_entries_direct(&db, &[
-            blank_entry(1, 1, 0),
-            blank_entry(1, 1, 1),
-            blank_entry(1, 1, 2),
-        ]);
+        write_entries_direct(
+            &db,
+            &[
+                blank_entry(1, 1, 0),
+                blank_entry(1, 1, 1),
+                blank_entry(1, 1, 2),
+            ],
+        );
 
         let committed = LogId::new(leader(1, 1), 2);
         store.save_committed(Some(committed)).await.unwrap();
@@ -323,10 +335,7 @@ async fn concurrent_reader_writer_safety() {
     let mut store = LogStore::new(Arc::clone(&db));
 
     // Pre-populate some entries.
-    write_entries_direct(&db, &[
-        blank_entry(1, 1, 0),
-        blank_entry(1, 1, 1),
-    ]);
+    write_entries_direct(&db, &[blank_entry(1, 1, 0), blank_entry(1, 1, 1)]);
 
     // Obtain a reader before writing more entries.
     let mut reader = store.get_log_reader().await;
@@ -338,11 +347,14 @@ async fn concurrent_reader_writer_safety() {
     // Write more entries in a separate task.
     let db_clone = Arc::clone(&db);
     let writer_handle = tokio::spawn(async move {
-        write_entries_direct(&db_clone, &[
-            blank_entry(1, 1, 2),
-            blank_entry(1, 1, 3),
-            blank_entry(1, 1, 4),
-        ]);
+        write_entries_direct(
+            &db_clone,
+            &[
+                blank_entry(1, 1, 2),
+                blank_entry(1, 1, 3),
+                blank_entry(1, 1, 4),
+            ],
+        );
     });
     writer_handle.await.unwrap();
 

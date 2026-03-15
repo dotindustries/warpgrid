@@ -6,8 +6,8 @@ use warp_core::OverallVerdict;
 /// Test full analysis of the t5-bun-http-postgres fixture using --lang bun override.
 #[test]
 fn test_analyze_t5_bun_fixture_with_lang_override() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test-apps/t5-bun-http-postgres");
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-apps/t5-bun-http-postgres");
 
     let report = warp_analyzer::analyze(&fixture, Some("bun")).unwrap();
 
@@ -102,9 +102,15 @@ fn test_bun_report_contains_compat_table() {
     let report = warp_analyzer::analyze(tmp.path(), None).unwrap();
     let formatted = warp_analyzer::report::format_report(&report);
 
-    assert!(formatted.contains("Bun Compatibility Table"), "Should contain Bun table header");
+    assert!(
+        formatted.contains("Bun Compatibility Table"),
+        "Should contain Bun table header"
+    );
     assert!(formatted.contains("hono"), "Should contain hono in table");
-    assert!(formatted.contains("pass"), "Should show pass status for hono");
+    assert!(
+        formatted.contains("pass"),
+        "Should show pass status for hono"
+    );
 }
 
 /// Test JSON output is valid and parseable.
@@ -124,7 +130,7 @@ fn test_bun_json_output() {
     // Verify it's valid JSON by parsing it back
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["language"], "bun");
-    assert!(parsed["dependencies"].as_array().unwrap().len() > 0);
+    assert!(!parsed["dependencies"].as_array().unwrap().is_empty());
 }
 
 /// Test --lang bun override on a project without bunfig.toml.

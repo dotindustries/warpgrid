@@ -2,10 +2,10 @@
 //!
 //! Each handler reads/writes via `StateStore` and returns JSON responses.
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use warpgrid_state::*;
 
@@ -268,11 +268,7 @@ mod tests {
         state.store.put_deployment(&spec).unwrap();
 
         let req = ScaleRequest { target: 100 };
-        let resp = scale_deployment(
-            State(state),
-            Path("default/api".to_string()),
-            Json(req),
-        ).await;
+        let resp = scale_deployment(State(state), Path("default/api".to_string()), Json(req)).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
@@ -291,7 +287,12 @@ mod tests {
         let resp = prometheus_metrics(State(state)).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), StatusCode::OK);
-        let content_type = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(content_type.contains("text/plain"));
     }
 }

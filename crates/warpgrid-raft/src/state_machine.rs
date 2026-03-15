@@ -187,8 +187,7 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
         snapshot: Box<Cursor<Vec<u8>>>,
     ) -> Result<(), StorageError<u64>> {
         let data = snapshot.into_inner();
-        let kv_pairs: BTreeMap<String, String> =
-            serde_json::from_slice(&data).map_err(read_err)?;
+        let kv_pairs: BTreeMap<String, String> = serde_json::from_slice(&data).map_err(read_err)?;
 
         // Clear current state and load from snapshot.
         let txn = self.db.begin_write().map_err(write_err)?;
@@ -206,20 +205,16 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
             }
 
             for (k, v) in &kv_pairs {
-                table
-                    .insert(k.as_str(), v.as_bytes())
-                    .map_err(write_err)?;
+                table.insert(k.as_str(), v.as_bytes()).map_err(write_err)?;
             }
         }
         txn.commit().map_err(write_err)?;
 
         // Update metadata from snapshot.
-        let applied_data =
-            serde_json::to_vec(&meta.last_log_id).map_err(write_err)?;
+        let applied_data = serde_json::to_vec(&meta.last_log_id).map_err(write_err)?;
         self.save_meta(APPLIED_KEY, &applied_data)?;
 
-        let membership_data =
-            serde_json::to_vec(&meta.last_membership).map_err(write_err)?;
+        let membership_data = serde_json::to_vec(&meta.last_membership).map_err(write_err)?;
         self.save_meta(MEMBERSHIP_KEY, &membership_data)?;
 
         info!("installed snapshot");
@@ -258,21 +253,17 @@ impl RaftSnapshotBuilder<TypeConfig> for SmSnapshotBuilder {
 
         let meta_table = txn.open_table(SM_META_TABLE).map_err(read_err)?;
 
-        let last_applied: Option<LogId<u64>> = match meta_table
-            .get(APPLIED_KEY)
-            .map_err(read_err)?
-        {
-            Some(val) => Some(serde_json::from_slice(val.value()).map_err(read_err)?),
-            None => None,
-        };
+        let last_applied: Option<LogId<u64>> =
+            match meta_table.get(APPLIED_KEY).map_err(read_err)? {
+                Some(val) => Some(serde_json::from_slice(val.value()).map_err(read_err)?),
+                None => None,
+            };
 
-        let membership: StoredMembership<u64, openraft::BasicNode> = match meta_table
-            .get(MEMBERSHIP_KEY)
-            .map_err(read_err)?
-        {
-            Some(val) => serde_json::from_slice(val.value()).map_err(read_err)?,
-            None => StoredMembership::default(),
-        };
+        let membership: StoredMembership<u64, openraft::BasicNode> =
+            match meta_table.get(MEMBERSHIP_KEY).map_err(read_err)? {
+                Some(val) => serde_json::from_slice(val.value()).map_err(read_err)?,
+                None => StoredMembership::default(),
+            };
 
         drop(meta_table);
         drop(table);
@@ -334,10 +325,7 @@ mod tests {
         let txn = db.begin_read().unwrap();
         let table = txn.open_table(SM_TABLE).unwrap();
         let val = table.get("ns/app").unwrap().unwrap();
-        assert_eq!(
-            String::from_utf8_lossy(val.value()),
-            r#"{"name":"app"}"#
-        );
+        assert_eq!(String::from_utf8_lossy(val.value()), r#"{"name":"app"}"#);
     }
 
     #[tokio::test]

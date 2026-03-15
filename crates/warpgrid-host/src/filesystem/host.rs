@@ -17,8 +17,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::bindings::warpgrid::shim::filesystem::{FileStat, Host};
 use super::{VirtualContent, VirtualFileMap};
+use crate::bindings::warpgrid::shim::filesystem::{FileStat, Host};
 
 /// Distinguishes special virtual files from regular buffered content.
 #[derive(Debug)]
@@ -161,8 +161,7 @@ impl Host for FilesystemHost {
             }
             OpenFileKind::DevUrandom => {
                 let mut buf = vec![0u8; len];
-                getrandom::getrandom(&mut buf)
-                    .map_err(|e| format!("getrandom failed: {e}"))?;
+                getrandom::getrandom(&mut buf).map_err(|e| format!("getrandom failed: {e}"))?;
                 tracing::debug!(
                     handle = handle,
                     bytes = len,
@@ -348,9 +347,7 @@ mod tests {
 
     #[test]
     fn read_past_eof_returns_empty() {
-        let map = VirtualFileMap::builder()
-            .with_resolv_conf("short")
-            .build();
+        let map = VirtualFileMap::builder().with_resolv_conf("short").build();
         let mut host = host_with_map(map);
         let handle = host.open_virtual("/etc/resolv.conf".into()).unwrap();
         let _ = host.read_virtual(handle, 100).unwrap();
@@ -594,8 +591,14 @@ mod tests {
         assert_eq!(data[4], b'2', "expected TZif version 2");
 
         // Must contain EST and EDT abbreviations.
-        assert!(data.windows(3).any(|w| w == b"EST"), "missing EST abbreviation");
-        assert!(data.windows(3).any(|w| w == b"EDT"), "missing EDT abbreviation");
+        assert!(
+            data.windows(3).any(|w| w == b"EST"),
+            "missing EST abbreviation"
+        );
+        assert!(
+            data.windows(3).any(|w| w == b"EDT"),
+            "missing EDT abbreviation"
+        );
 
         // Footer must contain the POSIX TZ string.
         assert_eq!(data[data.len() - 1], b'\n', "footer must end with newline");
@@ -641,7 +644,10 @@ mod tests {
         }
 
         // All handles closed — open_files map should be empty.
-        assert!(host.open_files.is_empty(), "fd leak: open_files not empty after 1000 cycles");
+        assert!(
+            host.open_files.is_empty(),
+            "fd leak: open_files not empty after 1000 cycles"
+        );
 
         // 1001st open should still work.
         let handle = host.open_virtual("/etc/hosts".into()).unwrap();
@@ -654,9 +660,7 @@ mod tests {
     fn partial_reads_16_byte_chunks() {
         // Content > 16 bytes to exercise multiple partial reads.
         let content = "0123456789ABCDEF0123456789abcdef_end";
-        let map = VirtualFileMap::builder()
-            .with_resolv_conf(content)
-            .build();
+        let map = VirtualFileMap::builder().with_resolv_conf(content).build();
         let mut host = host_with_map(map);
         let handle = host.open_virtual("/etc/resolv.conf".into()).unwrap();
 
@@ -681,9 +685,7 @@ mod tests {
     #[test]
     fn partial_reads_1_byte_stress() {
         let content = "Hello, WarpGrid virtual filesystem!";
-        let map = VirtualFileMap::builder()
-            .with_etc_hosts(content)
-            .build();
+        let map = VirtualFileMap::builder().with_etc_hosts(content).build();
         let mut host = host_with_map(map);
         let handle = host.open_virtual("/etc/hosts".into()).unwrap();
 

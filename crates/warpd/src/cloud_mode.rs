@@ -1,0 +1,327 @@
+//! Cloud mode — hosted WarpGrid platform control plane.
+//!
+//! Runs as a multi-tenant control plane that:
+//! - Authenticates users via API keys
+//! - Manages deployment lifecycle (create, scale, delete)
+//! - Stores Wasm components in a registry
+//! - Provisions edge `warpd agent` nodes via Fly Machines API
+//! - Serves the web console and cloud API
+//!
+//! ```text
+//! warpd cloud --api-port 8443 --data-dir /var/lib/warpgrid
+//! ```
+
+use std::net::SocketAddr;
+use std::path::PathBuf;
+
+use tokio::sync::watch;
+use tracing::{info, warn};
+
+use crate::cloud::analytics::AnalyticsService;
+use crate::cloud::auth::AuthStore;
+use crate::cloud::billing::BillingService;
+use crate::cloud::console::console_router;
+use crate::cloud::domains::DomainStore;
+use crate::cloud::landing::landing_router;
+use crate::cloud::provisioner::FlyProvisioner;
+use crate::cloud::registry::WasmRegistry;
+use crate::cloud::routes::{CloudState, cloud_router};
+use crate::cloud::sync::RuntimeSync;
+use crate::cloud::teams::TeamStore;
+use crate::cloud::usage::UsageTracker;
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_cloud(
+    api_port: u16,
+    data_dir: PathBuf,
+    turso_url: Option<String>,
+    turso_auth_token: Option<String>,
+    fly_api_token: Option<String>,
+    _registry_bucket: String,
+    edge_regions: String,
+    metrics_interval: u64,
+    posthog_api_key: Option<String>,
+    stripe_secret_key: Option<String>,
+) -> anyhow::Result<()> {
+    info!("WarpGrid daemon starting in cloud mode");
+
+    // ── Initialize data directory ───────────────────────────────
+    std::fs::create_dir_all(&data_dir)?;
+    let db_path = data_dir.join("warpgrid-cloud.redb");
+
+    // ── Initialize subsystems ───────────────────────────────────
+
+    // State store (redb for runtime state — deployments, instances, metrics).
+    let state = warpgrid_state::StateStore::open(&db_path)?;
+    info!(path = ?db_path, "runtime state store opened (redb)");
+
+    // Cloud metadata database (libSQL — users, teams, domains, billing).
+    // If Turso credentials are provided, open as a syncing replica;
+    // otherwise, open as a standalone local file.
+    let cloud_db_path = data_dir.join("cloud.db").to_string_lossy().to_string();
+    let cloud_db = match (&turso_url, &turso_auth_token) {
+        (Some(url), Some(token)) => {
+            info!(url = %url, "connecting to Turso Cloud (embedded replica)");
+            crate::cloud::db::open_replica(&cloud_db_path, url, token).await?
+        }
+        (Some(_), None) => {
+            anyhow::bail!("TURSO_DATABASE_URL is set but TURSO_AUTH_TOKEN is missing");
+        }
+        _ => crate::cloud::db::open_local(&cloud_db_path).await?,
+    };
+    let cloud_conn = cloud_db.connect()?;
+    crate::cloud::db::migrate(&cloud_conn).await?;
+    let mode_label = if turso_url.is_some() {
+        "turso replica"
+    } else {
+        "local"
+    };
+    info!(path = %cloud_db_path, mode = mode_label, "cloud metadata store opened (libSQL)");
+
+    // Auth store (backed by libSQL — persists across restarts).
+    let auth = AuthStore::with_libsql(cloud_conn.clone());
+    info!("auth store initialized (persistent)");
+
+    // Wasm component registry (local filesystem for beta, Tigris S3 for production).
+    let registry_dir = data_dir.join("registry");
+    let registry = WasmRegistry::local(&registry_dir);
+    info!(path = ?registry_dir, "wasm registry initialized");
+
+    // Parse edge regions.
+    let regions: Vec<String> = edge_regions
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    info!(?regions, "edge regions configured");
+
+    // Fly Machines provisioner (optional — only if FLY_API_TOKEN is set).
+    if let Some(ref token) = fly_api_token {
+        let provisioner =
+            FlyProvisioner::new(token, "warpgrid-edge", "registry.fly.io/warpgrid:latest");
+        let control_plane_url = format!("http://localhost:{api_port}");
+        info!("Fly provisioner initialized, checking edge regions...");
+
+        match provisioner
+            .provision_regions(&regions, &control_plane_url)
+            .await
+        {
+            Ok(machines) => {
+                for m in &machines {
+                    info!(id = %m.id, region = %m.region, state = %m.state, "edge machine ready");
+                }
+                if machines.is_empty() {
+                    info!("all edge regions already provisioned");
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "edge provisioning failed (will retry on next deploy)");
+            }
+        }
+    } else {
+        info!("no FLY_API_TOKEN set — running in local-only mode (no edge provisioning)");
+    }
+
+    // Metrics collector.
+    let metrics = warpgrid_metrics::MetricsCollector::new(
+        state.clone(),
+        std::time::Duration::from_secs(metrics_interval),
+    );
+    info!(interval = metrics_interval, "metrics collector initialized");
+
+    // ── Shutdown signal ─────────────────────────────────────────
+
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let metrics_shutdown = shutdown_rx.clone();
+
+    // ── Background tasks ────────────────────────────────────────
+
+    let metrics_handle = tokio::spawn(async move {
+        metrics.run(metrics_shutdown).await;
+    });
+
+    // Runtime-to-Turso sync (batch-write local state to global Turso every 30s).
+    let sync_shutdown = shutdown_rx.clone();
+    let sync_state = state.clone();
+    let sync_conn = cloud_db.connect()?;
+    let sync_region = regions
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "local".to_string());
+    let sync_handle = tokio::spawn(async move {
+        let sync = RuntimeSync::new(&sync_region, sync_state, sync_conn);
+        sync.run(std::time::Duration::from_secs(30), sync_shutdown)
+            .await;
+    });
+    info!("runtime sync started (every 30s → Turso)");
+
+    // ── Analytics ────────────────────────────────────────────────
+
+    let analytics = AnalyticsService::from_env(posthog_api_key.as_deref());
+    match &analytics {
+        AnalyticsService::Active(_) => info!("PostHog analytics enabled"),
+        AnalyticsService::Noop => info!("PostHog analytics disabled (no POSTHOG_API_KEY)"),
+    }
+
+    // ── Billing ──────────────────────────────────────────────────
+
+    let billing = BillingService::from_env_with_libsql(stripe_secret_key, cloud_conn.clone());
+    match &billing {
+        BillingService::Active(_) => info!("Stripe billing enabled"),
+        BillingService::Mock(_) => {
+            info!("Stripe billing disabled (mock mode, no STRIPE_SECRET_KEY)")
+        }
+    }
+
+    // ── Usage tracker ───────────────────────────────────────────
+
+    let usage = UsageTracker::new();
+    info!("usage tracker initialized");
+
+    // ── Usage→billing pipeline ──────────────────────────────────
+    // Every hour: snapshot metered usage per namespace and report
+    // to billing for non-Free plans.
+
+    let mut billing_shutdown = shutdown_rx.clone();
+    let billing_usage = usage.clone();
+    let billing_svc = billing.clone();
+    let billing_conn = cloud_db.connect()?;
+    let billing_handle = tokio::spawn(async move {
+        let interval = std::time::Duration::from_secs(3600);
+        info!(interval_secs = 3600, "usage→billing pipeline started");
+
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(interval) => {
+                    if let Err(e) = report_usage_for_active_namespaces(
+                        &billing_conn,
+                        &billing_usage,
+                        &billing_svc,
+                    ).await {
+                        warn!(error = %e, "usage→billing report failed");
+                    }
+                }
+                _ = billing_shutdown.changed() => {
+                    info!("usage→billing pipeline shutting down");
+                    break;
+                }
+            }
+        }
+    });
+    info!("usage→billing pipeline initialized (every 1h)");
+
+    // ── Build API router ────────────────────────────────────────
+
+    // Merge existing warpgrid-api routes (dashboard, deployments, metrics)
+    // with cloud-specific routes (auth, deploy, domains).
+    let base_router = warpgrid_api::build_router(state.clone());
+    let cloud_state = CloudState {
+        auth,
+        registry,
+        state_store: state,
+        cloud_db: cloud_conn.clone(),
+        teams: TeamStore::with_libsql(cloud_conn.clone()),
+        analytics,
+        domains: DomainStore::with_libsql(cloud_conn.clone()),
+        billing,
+        usage,
+        logs: crate::cloud::routes::new_log_buffer(),
+    };
+    let console_routes = console_router(cloud_state.clone());
+    let cloud_routes = cloud_router(cloud_state);
+    let landing_routes = landing_router();
+
+    // Landing pages (/, /benchmarks, /pricing) are the fallback so that
+    // /console/*, /api/*, and /dashboard routes always take priority.
+    let router = base_router
+        .merge(cloud_routes)
+        .merge(console_routes)
+        .fallback_service(landing_routes);
+
+    // ── Start server ────────────────────────────────────────────
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], api_port));
+    info!(%addr, mode = "cloud", "API server starting");
+    info!("Dashboard: http://localhost:{}/dashboard", api_port);
+    info!("Cloud API: http://localhost:{}/api/v1/status", api_port);
+    info!("Console:   http://localhost:{}/console/", api_port);
+    info!("Landing:   http://localhost:{}/", api_port);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    let server = axum::serve(listener, router).with_graceful_shutdown(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install CTRL+C handler");
+        info!("shutdown signal received");
+        let _ = shutdown_tx.send(true);
+    });
+
+    server.await?;
+
+    // Wait for background tasks.
+    let _ = metrics_handle.await;
+    let _ = sync_handle.await;
+    let _ = billing_handle.await;
+
+    info!("WarpGrid cloud daemon stopped");
+    Ok(())
+}
+
+/// Query distinct active namespaces, snapshot their usage, and report
+/// to billing for non-Free plans.
+async fn report_usage_for_active_namespaces(
+    conn: &libsql::Connection,
+    usage: &UsageTracker,
+    billing: &BillingService,
+) -> anyhow::Result<()> {
+    // Find all namespaces with at least one active deployment.
+    let mut rows = conn
+        .query(
+            "SELECT DISTINCT namespace FROM cloud_deployments WHERE status = 'active'",
+            (),
+        )
+        .await?;
+
+    let mut namespaces = Vec::new();
+    while let Ok(Some(row)) = rows.next().await {
+        if let Ok(ns) = row.get::<String>(0) {
+            namespaces.push(ns);
+        }
+    }
+
+    for namespace in &namespaces {
+        // Check plan — skip Free tier (no metered billing).
+        let plan = billing.get_plan(namespace).await;
+        if plan == crate::cloud::billing::Plan::Free {
+            continue;
+        }
+
+        // Snapshot resets the counters for a new billing period.
+        let record = usage.snapshot(namespace);
+
+        // Skip empty periods (no activity).
+        if record.request_count == 0 && record.compute_seconds == 0.0 && record.egress_bytes == 0 {
+            continue;
+        }
+
+        info!(
+            namespace = %namespace,
+            plan = ?plan,
+            request_count = record.request_count,
+            compute_seconds = record.compute_seconds,
+            egress_bytes = record.egress_bytes,
+            "reporting usage to billing"
+        );
+
+        if let Err(e) = billing.report_usage(namespace, &record).await {
+            warn!(
+                namespace = %namespace,
+                error = %e,
+                "failed to report usage to billing"
+            );
+        }
+    }
+
+    Ok(())
+}

@@ -8,23 +8,17 @@ use std::collections::HashMap;
 
 use warpgrid_autoscale::{Autoscaler, ScaleDecision};
 use warpgrid_state::{
-    DeploymentSpec, InstanceConstraints, MetricsSnapshot, ResourceLimits,
-    ScalingConfig, ShimsEnabled, StateStore, TriggerConfig,
+    DeploymentSpec, InstanceConstraints, MetricsSnapshot, ResourceLimits, ScalingConfig,
+    ShimsEnabled, StateStore, TriggerConfig,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-fn make_spec(
-    id: &str,
-    metric: &str,
-    target: f64,
-    min: u32,
-    max: u32,
-) -> DeploymentSpec {
+fn make_spec(id: &str, metric: &str, target: f64, min: u32, max: u32) -> DeploymentSpec {
     DeploymentSpec {
         id: id.to_string(),
         namespace: "default".to_string(),
-        name: id.split('/').last().unwrap_or(id).to_string(),
+        name: id.split('/').next_back().unwrap_or(id).to_string(),
         source: "file://test.wasm".to_string(),
         trigger: TriggerConfig::Http { port: Some(8080) },
         instances: InstanceConstraints { min, max },
@@ -63,11 +57,7 @@ fn make_spec_with_cooldown(
     spec
 }
 
-fn make_snapshot(
-    deployment_id: &str,
-    rps: f64,
-    active_instances: u32,
-) -> MetricsSnapshot {
+fn make_snapshot(deployment_id: &str, rps: f64, active_instances: u32) -> MetricsSnapshot {
     MetricsSnapshot {
         deployment_id: deployment_id.to_string(),
         epoch: 1000,

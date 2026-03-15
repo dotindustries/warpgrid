@@ -1,0 +1,12 @@
+[package]
+name = "bun-json-api"
+version = "0.1.0"
+description = "Minimal Bun REST API example for WarpGrid"
+
+[build]
+lang = "bun"
+entry = "src/handler.ts"
+target = "wasip2"
+
+[runtime]
+trigger = "http"

@@ -31,17 +31,18 @@ pub async fn scale_deployment(
     let spec = match state.store.get_deployment(&id) {
         Ok(Some(spec)) => spec,
         Ok(None) => {
-            return Html(format!(
+            return Html(
                 r#"<div class="text-rose-400 text-sm font-mono">Deployment not found</div>"#
-            ))
-            .into_response()
+                    .to_string(),
+            )
+            .into_response();
         }
         Err(e) => {
             return Html(format!(
                 r#"<div class="text-rose-400 text-sm font-mono">Error: {}</div>"#,
                 e
             ))
-            .into_response()
+            .into_response();
         }
     };
 
@@ -76,17 +77,18 @@ pub async fn start_rollout(
     let spec = match state.store.get_deployment(&id) {
         Ok(Some(spec)) => spec,
         Ok(None) => {
-            return Html(format!(
+            return Html(
                 r#"<div class="text-rose-400 text-sm font-mono">Deployment not found</div>"#
-            ))
-            .into_response()
+                    .to_string(),
+            )
+            .into_response();
         }
         Err(e) => {
             return Html(format!(
                 r#"<div class="text-rose-400 text-sm font-mono">Error: {}</div>"#,
                 e
             ))
-            .into_response()
+            .into_response();
         }
     };
 
@@ -136,8 +138,7 @@ pub async fn pause_rollout(
         Some(rollout) => {
             rollout.pause();
             Html(
-                r#"<div class="text-amber-400 text-sm font-mono">Rollout paused</div>"#
-                    .to_string(),
+                r#"<div class="text-amber-400 text-sm font-mono">Rollout paused</div>"#.to_string(),
             )
         }
         None => Html(
@@ -459,7 +460,9 @@ mod tests {
         let state = test_state();
         let resp = deploy_demo(
             State(state.clone()),
-            axum::extract::Form(DeployForm { instance_count: Some(10) }),
+            axum::extract::Form(DeployForm {
+                instance_count: Some(10),
+            }),
         )
         .await;
         let resp = resp.into_response();
@@ -467,7 +470,10 @@ mod tests {
         assert_eq!(resp.status(), 303);
 
         // Verify deployment was created
-        let dep = state.store.get_deployment(DENSITY_DEMO_DEPLOYMENT_ID).unwrap();
+        let dep = state
+            .store
+            .get_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+            .unwrap();
         assert!(dep.is_some());
 
         // Verify instances were created
@@ -484,7 +490,9 @@ mod tests {
         // Deploy first
         deploy_demo(
             State(state.clone()),
-            axum::extract::Form(DeployForm { instance_count: Some(5) }),
+            axum::extract::Form(DeployForm {
+                instance_count: Some(5),
+            }),
         )
         .await;
 
@@ -494,7 +502,10 @@ mod tests {
         assert_eq!(resp.status(), 303);
 
         // Verify deployment is gone
-        let dep = state.store.get_deployment(DENSITY_DEMO_DEPLOYMENT_ID).unwrap();
+        let dep = state
+            .store
+            .get_deployment(DENSITY_DEMO_DEPLOYMENT_ID)
+            .unwrap();
         assert!(dep.is_none());
 
         // Verify instances are gone
@@ -511,12 +522,16 @@ mod tests {
         // Deploy twice
         deploy_demo(
             State(state.clone()),
-            axum::extract::Form(DeployForm { instance_count: Some(10) }),
+            axum::extract::Form(DeployForm {
+                instance_count: Some(10),
+            }),
         )
         .await;
         let resp = deploy_demo(
             State(state.clone()),
-            axum::extract::Form(DeployForm { instance_count: Some(50) }),
+            axum::extract::Form(DeployForm {
+                instance_count: Some(50),
+            }),
         )
         .await;
         let resp = resp.into_response();

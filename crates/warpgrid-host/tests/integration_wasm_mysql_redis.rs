@@ -32,8 +32,8 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::config::ShimConfig;
 use warpgrid_host::db_proxy::mysql::MysqlConnectionFactory;
@@ -226,8 +226,7 @@ impl StatefulMockMysqlServer {
         let addr = listener.local_addr().expect("local addr");
 
         std::thread::spawn(move || {
-            let state: Arc<Mutex<MysqlServerState>> =
-                Arc::new(Mutex::new(MysqlServerState::new()));
+            let state: Arc<Mutex<MysqlServerState>> = Arc::new(Mutex::new(MysqlServerState::new()));
 
             while let Ok((mut stream, _)) = listener.accept() {
                 let state = Arc::clone(&state);
@@ -273,10 +272,7 @@ impl StatefulMockMysqlServer {
         Self { addr }
     }
 
-    fn handle_connection(
-        stream: &mut std::net::TcpStream,
-        state: &Mutex<MysqlServerState>,
-    ) {
+    fn handle_connection(stream: &mut std::net::TcpStream, state: &Mutex<MysqlServerState>) {
         // 1. Send server greeting.
         let greeting = mysql_server_greeting();
         if stream.write_all(&greeting).is_err() {
@@ -308,9 +304,8 @@ impl StatefulMockMysqlServer {
                 break;
             }
 
-            let payload_len = header[0] as usize
-                | ((header[1] as usize) << 8)
-                | ((header[2] as usize) << 16);
+            let payload_len =
+                header[0] as usize | ((header[1] as usize) << 8) | ((header[2] as usize) << 16);
             let _seq_id = header[3];
 
             if payload_len == 0 {
@@ -413,12 +408,7 @@ impl StatefulMockMysqlServer {
             let cols_str = &sql[start + 1..end];
             return cols_str
                 .split(',')
-                .map(|c| {
-                    c.split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_string()
-                })
+                .map(|c| c.split_whitespace().next().unwrap_or("").to_string())
                 .collect();
         }
         Vec::new()
@@ -462,10 +452,7 @@ impl StatefulMockMysqlServer {
             return Vec::new();
         };
         let cols_str = &sql[select_len..from_pos];
-        cols_str
-            .split(',')
-            .map(|c| c.trim().to_string())
-            .collect()
+        cols_str.split(',').map(|c| c.trim().to_string()).collect()
     }
 
     /// Build a MySQL result set response: column_count + column_defs + EOF + rows + EOF.
@@ -525,8 +512,7 @@ impl StatefulMockRedisServer {
         let addr = listener.local_addr().expect("local addr");
 
         std::thread::spawn(move || {
-            let store: Arc<Mutex<HashMap<String, String>>> =
-                Arc::new(Mutex::new(HashMap::new()));
+            let store: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
 
             while let Ok((mut stream, _)) = listener.accept() {
                 let store = Arc::clone(&store);
@@ -555,10 +541,7 @@ impl StatefulMockRedisServer {
         Self { addr }
     }
 
-    fn handle_connection(
-        stream: &mut std::net::TcpStream,
-        store: &Mutex<HashMap<String, String>>,
-    ) {
+    fn handle_connection(stream: &mut std::net::TcpStream, store: &Mutex<HashMap<String, String>>) {
         let mut buf = [0u8; 8192];
         loop {
             match stream.read(&mut buf) {
@@ -677,8 +660,7 @@ impl StatefulMockRedisServer {
     }
 
     fn find_crlf(data: &[u8], start: usize) -> Option<usize> {
-        (start..data.len().saturating_sub(1))
-            .find(|&i| data[i] == b'\r' && data[i + 1] == b'\n')
+        (start..data.len().saturating_sub(1)).find(|&i| data[i] == b'\r' && data[i + 1] == b'\n')
     }
 
     fn pool_key(&self) -> PoolKey {
@@ -705,12 +687,7 @@ fn build_guest_component() -> &'static [u8] {
         let guest_dir = root.join("tests/fixtures/rust-mysql-redis-integration-guest");
 
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for guest fixture");
@@ -904,10 +881,7 @@ async fn test_mysql_crud_via_wasm() {
     let (mut store, instance) = fresh_instance(&engine, &component).await;
 
     let func = instance
-        .get_typed_func::<(u16,), (Result<String, String>,)>(
-            &mut store,
-            "test-mysql-crud",
-        )
+        .get_typed_func::<(u16,), (Result<String, String>,)>(&mut store, "test-mysql-crud")
         .unwrap();
 
     let (result,) = func
@@ -939,10 +913,7 @@ async fn test_redis_crud_via_wasm() {
     let (mut store, instance) = fresh_instance(&engine, &component).await;
 
     let func = instance
-        .get_typed_func::<(u16,), (Result<String, String>,)>(
-            &mut store,
-            "test-redis-crud",
-        )
+        .get_typed_func::<(u16,), (Result<String, String>,)>(&mut store, "test-redis-crud")
         .unwrap();
 
     let (result,) = func
@@ -971,10 +942,7 @@ async fn test_mysql_pool_reuse_via_wasm() {
     let (mut store, instance) = fresh_instance(&engine, &component).await;
 
     let func = instance
-        .get_typed_func::<(u16,), (Result<String, String>,)>(
-            &mut store,
-            "test-mysql-pool-reuse",
-        )
+        .get_typed_func::<(u16,), (Result<String, String>,)>(&mut store, "test-mysql-pool-reuse")
         .unwrap();
 
     let (result,) = func
@@ -1001,10 +969,7 @@ async fn test_redis_pool_reuse_via_wasm() {
     let (mut store, instance) = fresh_instance(&engine, &component).await;
 
     let func = instance
-        .get_typed_func::<(u16,), (Result<String, String>,)>(
-            &mut store,
-            "test-redis-pool-reuse",
-        )
+        .get_typed_func::<(u16,), (Result<String, String>,)>(&mut store, "test-redis-pool-reuse")
         .unwrap();
 
     let (result,) = func

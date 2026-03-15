@@ -5,8 +5,8 @@
 //! - 1 MB chunked transform: request → uppercase → streaming response
 //! - Memory bound: streaming path buffers at most 2× chunk size
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -46,9 +46,7 @@ async fn streaming_response_10mb_correct_byte_count_and_chunk_ordering() {
 #[tokio::test]
 async fn chunked_transform_1mb_uppercase() {
     // Generate 1 MB of lowercase ASCII
-    let body_data: Vec<u8> = (0u32..1024 * 1024)
-        .map(|i| b'a' + (i % 26) as u8)
-        .collect();
+    let body_data: Vec<u8> = (0u32..1024 * 1024).map(|i| b'a' + (i % 26) as u8).collect();
     let expected: Vec<u8> = body_data.iter().map(|b| b.to_ascii_uppercase()).collect();
 
     let request = Request::new("POST", "/transform", HeaderMap::new(), body_data);
@@ -59,7 +57,12 @@ async fn chunked_transform_1mb_uppercase() {
 
     let transformed = input_stream.map(|chunk_result| {
         let chunk = chunk_result.expect("chunk should be Ok");
-        Bytes::from(chunk.iter().map(|b| b.to_ascii_uppercase()).collect::<Vec<_>>())
+        Bytes::from(
+            chunk
+                .iter()
+                .map(|b| b.to_ascii_uppercase())
+                .collect::<Vec<_>>(),
+        )
     });
 
     let response = Response::streaming(200, HeaderMap::new(), transformed);
@@ -227,7 +230,8 @@ async fn full_pipeline_request_to_streaming_response() {
 
         let expected_reversed: Vec<u8> = original_chunk.iter().rev().copied().collect();
         assert_eq!(
-            result_chunk, &expected_reversed[..],
+            result_chunk,
+            &expected_reversed[..],
             "chunk at offset {offset} not correctly reversed"
         );
         offset = end;

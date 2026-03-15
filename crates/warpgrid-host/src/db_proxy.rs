@@ -174,7 +174,11 @@ pub trait ConnectionBackend: Send + std::fmt::Debug {
 /// Factory for creating new connections — injected for testability.
 pub trait ConnectionFactory: Send + Sync {
     /// Establish a new connection to the given target.
-    fn connect(&self, key: &PoolKey, password: Option<&str>) -> Result<Box<dyn ConnectionBackend>, String>;
+    fn connect(
+        &self,
+        key: &PoolKey,
+        password: Option<&str>,
+    ) -> Result<Box<dyn ConnectionBackend>, String>;
 }
 
 /// Per-key connection pool holding idle connections and a semaphore for bounding.
@@ -297,11 +301,7 @@ impl ConnectionPoolManager {
     /// If an idle connection is available, it is returned immediately.
     /// If the pool is exhausted, waits up to `connect_timeout` for one to become available.
     /// If no connection becomes available in time, creates a new one (if under limit) or errors.
-    pub async fn checkout(
-        &self,
-        key: &PoolKey,
-        password: Option<&str>,
-    ) -> Result<u64, String> {
+    pub async fn checkout(&self, key: &PoolKey, password: Option<&str>) -> Result<u64, String> {
         if self.draining.load(Ordering::Relaxed) {
             return Err("connection pool is draining — no new connections accepted".to_string());
         }
@@ -503,9 +503,7 @@ impl ConnectionPoolManager {
         password: Option<&str>,
     ) -> Result<u64, String> {
         if self.draining.load(Ordering::Relaxed) {
-            return Err(
-                "connection pool is draining — no new connections accepted".to_string(),
-            );
+            return Err("connection pool is draining — no new connections accepted".to_string());
         }
 
         let async_factory = self
@@ -622,7 +620,10 @@ impl ConnectionPoolManager {
             let conn = checked_out
                 .get_mut(&handle)
                 .ok_or_else(|| format!("invalid handle: {handle}"))?;
-            (conn.async_connection_data.take(), conn.connection_data.take())
+            (
+                conn.async_connection_data.take(),
+                conn.connection_data.take(),
+            )
         };
         // Mutex released — I/O proceeds without blocking other connections.
 
@@ -655,18 +656,17 @@ impl ConnectionPoolManager {
     /// Receive query results asynchronously without holding the connection lock during I/O.
     ///
     /// See [`send_query()`] for the concurrency benefits of the async path.
-    pub async fn receive_results(
-        &self,
-        handle: u64,
-        max_bytes: usize,
-    ) -> Result<Vec<u8>, String> {
+    pub async fn receive_results(&self, handle: u64, max_bytes: usize) -> Result<Vec<u8>, String> {
         // Take the backend(s) out (brief lock).
         let (mut async_backend, mut sync_backend) = {
             let mut checked_out = self.checked_out.lock().await;
             let conn = checked_out
                 .get_mut(&handle)
                 .ok_or_else(|| format!("invalid handle: {handle}"))?;
-            (conn.async_connection_data.take(), conn.connection_data.take())
+            (
+                conn.async_connection_data.take(),
+                conn.connection_data.take(),
+            )
         };
 
         let result = if let Some(ref mut backend) = async_backend {
@@ -701,9 +701,8 @@ impl ConnectionPoolManager {
 
         for (key, pool) in pools.iter_mut() {
             let before = pool.idle.len();
-            pool.idle.retain(|conn| {
-                conn.last_used.elapsed() < idle_timeout
-            });
+            pool.idle
+                .retain(|conn| conn.last_used.elapsed() < idle_timeout);
             let reaped = before - pool.idle.len();
             pool.total_count = pool.total_count.saturating_sub(reaped);
             // Return permits for reaped connections.
@@ -785,10 +784,7 @@ impl ConnectionPoolManager {
         let checked_out = self.checked_out.lock().await;
         let wait_counts = self.wait_counts.lock().await;
 
-        let active = checked_out
-            .values()
-            .filter(|c| c.pool_key == *key)
-            .count();
+        let active = checked_out.values().filter(|c| c.pool_key == *key).count();
 
         let (idle, total) = pools
             .get(key)
@@ -887,10 +883,7 @@ impl ConnectionPoolManager {
         let wait_counts = self.wait_counts.lock().await;
 
         for (key, pool) in pools.iter() {
-            let active = checked_out
-                .values()
-                .filter(|c| c.pool_key == *key)
-                .count();
+            let active = checked_out.values().filter(|c| c.pool_key == *key).count();
             let wait_count = wait_counts.get(key).copied().unwrap_or(0);
 
             tracing::info!(
@@ -921,6 +914,7 @@ impl std::fmt::Debug for ConnectionPoolManager {
 }
 
 #[cfg(test)]
+#[allow(dead_code, clippy::type_complexity)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -1352,7 +1346,9 @@ mod tests {
             }
         }
 
-        let factory = Arc::new(HealthFactory { healthy: health_clone });
+        let factory = Arc::new(HealthFactory {
+            healthy: health_clone,
+        });
         let mgr = ConnectionPoolManager::new(test_config(), factory);
         let key = test_key();
 
@@ -1386,12 +1382,15 @@ mod tests {
     async fn stats_empty_pool() {
         let (mgr, _) = make_manager(test_config());
         let stats = mgr.stats(&test_key()).await;
-        assert_eq!(stats, PoolStats {
-            active: 0,
-            idle: 0,
-            total: 0,
-            wait_count: 0,
-        });
+        assert_eq!(
+            stats,
+            PoolStats {
+                active: 0,
+                idle: 0,
+                total: 0,
+                wait_count: 0,
+            }
+        );
     }
 
     #[tokio::test]
@@ -1534,7 +1533,10 @@ mod tests {
     fn pool_key_different_protocol_not_equal() {
         let pg = PoolKey::with_protocol("host", 5432, "db", "user", Protocol::Postgres);
         let mysql = PoolKey::with_protocol("host", 5432, "db", "user", Protocol::MySQL);
-        assert_ne!(pg, mysql, "same host:port with different protocols must be separate pools");
+        assert_ne!(
+            pg, mysql,
+            "same host:port with different protocols must be separate pools"
+        );
     }
 
     #[test]
@@ -1611,9 +1613,7 @@ mod tests {
 
         // Start drain in background.
         let mgr_clone = Arc::clone(&mgr);
-        let drain_handle = tokio::spawn(async move {
-            mgr_clone.drain().await
-        });
+        let drain_handle = tokio::spawn(async move { mgr_clone.drain().await });
 
         // Give drain a moment to start, then release.
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -1655,17 +1655,21 @@ mod tests {
         // Drain should close idle connections too.
         let force_closed = mgr.drain().await;
         assert_eq!(force_closed, 0, "no active connections to force-close");
-        assert_eq!(mgr.stats(&key).await.idle, 0, "idle connections should be closed");
+        assert_eq!(
+            mgr.stats(&key).await.idle,
+            0,
+            "idle connections should be closed"
+        );
     }
 
     // ══════════════════════════════════════════════════════════════
     // Async I/O tests (US-506)
     // ══════════════════════════════════════════════════════════════
 
+    use async_io::{AsyncConnectionBackend, AsyncConnectionFactory};
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::atomic::AtomicUsize;
-    use async_io::{AsyncConnectionBackend, AsyncConnectionFactory};
 
     // ── Mock async backend and factory ────────────────────────────
 
@@ -1774,14 +1778,15 @@ mod tests {
 
     fn make_async_manager(
         config: PoolConfig,
-    ) -> (ConnectionPoolManager, Arc<MockFactory>, Arc<MockAsyncFactory>) {
+    ) -> (
+        ConnectionPoolManager,
+        Arc<MockFactory>,
+        Arc<MockAsyncFactory>,
+    ) {
         let factory = Arc::new(MockFactory::new());
         let async_factory = Arc::new(MockAsyncFactory::new());
-        let mgr = ConnectionPoolManager::new_with_async(
-            config,
-            factory.clone(),
-            async_factory.clone(),
-        );
+        let mgr =
+            ConnectionPoolManager::new_with_async(config, factory.clone(), async_factory.clone());
         (mgr, factory, async_factory)
     }
 
@@ -1800,7 +1805,11 @@ mod tests {
         let (mgr, sync_factory, async_factory) = make_async_manager(test_config());
         mgr.checkout_async(&test_key(), None).await.unwrap();
         assert_eq!(async_factory.connects(), 1);
-        assert_eq!(sync_factory.connects(), 0, "sync factory should not be called");
+        assert_eq!(
+            sync_factory.connects(),
+            0,
+            "sync factory should not be called"
+        );
     }
 
     #[tokio::test]

@@ -41,8 +41,7 @@ pub async fn run_control_plane(
     // ── Raft storage (separate redb for Raft log + state machine) ─
     let raft_db_path = data_dir.join("raft.redb");
     let raft_db = Arc::new(
-        redb::Database::create(&raft_db_path)
-            .map_err(|e| anyhow::anyhow!("open raft db: {e}"))?,
+        redb::Database::create(&raft_db_path).map_err(|e| anyhow::anyhow!("open raft db: {e}"))?,
     );
     info!(path = ?raft_db_path, "raft storage opened");
 

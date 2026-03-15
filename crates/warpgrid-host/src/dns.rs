@@ -59,10 +59,7 @@ impl EtcHosts {
                 if hostname.starts_with('#') {
                     break;
                 }
-                entries
-                    .entry(hostname.to_lowercase())
-                    .or_default()
-                    .push(ip);
+                entries.entry(hostname.to_lowercase()).or_default().push(ip);
             }
         }
 
@@ -97,10 +94,7 @@ impl DnsResolver {
     /// # Arguments
     /// - `service_registry` — map of service names to their IP addresses
     /// - `etc_hosts_content` — content of the virtual `/etc/hosts` file
-    pub fn new(
-        service_registry: HashMap<String, Vec<IpAddr>>,
-        etc_hosts_content: &str,
-    ) -> Self {
+    pub fn new(service_registry: HashMap<String, Vec<IpAddr>>, etc_hosts_content: &str) -> Self {
         Self {
             service_registry,
             etc_hosts: EtcHosts::parse(etc_hosts_content),
@@ -401,10 +395,7 @@ mod tests {
     async fn resolve_from_service_registry() {
         let mut registry = HashMap::new();
         let expected_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5));
-        registry.insert(
-            "db.production.warp.local".to_string(),
-            vec![expected_ip],
-        );
+        registry.insert("db.production.warp.local".to_string(), vec![expected_ip]);
         let resolver = DnsResolver::new(registry, "");
 
         let result = resolver.resolve("db.production.warp.local").await;
@@ -657,7 +648,10 @@ mod tests {
         let cached = make_cached_resolver(registry, "", DnsCacheConfig::default());
 
         for _ in 0..5 {
-            let result = cached.resolve_round_robin("single.warp.local").await.unwrap();
+            let result = cached
+                .resolve_round_robin("single.warp.local")
+                .await
+                .unwrap();
             assert_eq!(result, addr);
         }
     }
@@ -678,9 +672,7 @@ mod tests {
         let cached = make_cached_resolver(HashMap::new(), "", DnsCacheConfig::default());
 
         // Failed resolutions should not be cached
-        let _ = cached
-            .resolve("nonexistent.invalid")
-            .await;
+        let _ = cached.resolve("nonexistent.invalid").await;
 
         let (hits, _, _) = cached.cache_stats();
         assert_eq!(hits, 0);

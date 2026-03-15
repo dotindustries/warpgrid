@@ -64,8 +64,14 @@ pub fn build_router_with_rollouts(store: StateStore, rollouts: RolloutStore) -> 
     };
 
     let api_routes = Router::new()
-        .route("/deployments", get(handlers::list_deployments).post(handlers::create_deployment))
-        .route("/deployments/{id}", get(handlers::get_deployment).delete(handlers::delete_deployment))
+        .route(
+            "/deployments",
+            get(handlers::list_deployments).post(handlers::create_deployment),
+        )
+        .route(
+            "/deployments/{id}",
+            get(handlers::get_deployment).delete(handlers::delete_deployment),
+        )
         .route("/deployments/{id}/scale", post(handlers::scale_deployment))
         .route("/deployments/{id}/instances", get(handlers::list_instances))
         .route("/deployments/{id}/metrics", get(handlers::get_metrics))
@@ -73,16 +79,31 @@ pub fn build_router_with_rollouts(store: StateStore, rollouts: RolloutStore) -> 
         .with_state(api_state.clone());
 
     let rollout_routes = Router::new()
-        .route("/deployments/{id}/rollout", post(rollout_handlers::start_rollout))
+        .route(
+            "/deployments/{id}/rollout",
+            post(rollout_handlers::start_rollout),
+        )
         .route("/rollouts", get(rollout_handlers::list_rollouts))
         .route("/rollouts/{id}", get(rollout_handlers::get_rollout))
-        .route("/rollouts/{id}/pause", post(rollout_handlers::pause_rollout))
-        .route("/rollouts/{id}/resume", post(rollout_handlers::resume_rollout))
+        .route(
+            "/rollouts/{id}/pause",
+            post(rollout_handlers::pause_rollout),
+        )
+        .route(
+            "/rollouts/{id}/resume",
+            post(rollout_handlers::resume_rollout),
+        )
         .with_state(rollout_state);
 
     Router::new()
         .nest("/api/v1", api_routes)
         .nest("/api/v1", rollout_routes)
-        .nest("/dashboard", warpgrid_dashboard::dashboard_router(dashboard_state))
-        .route("/metrics", get(handlers::prometheus_metrics).with_state(api_state))
+        .nest(
+            "/dashboard",
+            warpgrid_dashboard::dashboard_router(dashboard_state),
+        )
+        .route(
+            "/metrics",
+            get(handlers::prometheus_metrics).with_state(api_state),
+        )
 }

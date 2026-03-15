@@ -61,13 +61,11 @@ pub fn generate_node_cert(
     // Add IP SANs for the node addresses.
     for addr in addresses {
         if let Ok(ip) = addr.parse::<std::net::IpAddr>() {
-            params.subject_alt_names.push(
-                rcgen::SanType::IpAddress(ip),
-            );
+            params.subject_alt_names.push(rcgen::SanType::IpAddress(ip));
         } else {
-            params.subject_alt_names.push(
-                rcgen::SanType::DnsName(addr.clone().try_into()?),
-            );
+            params
+                .subject_alt_names
+                .push(rcgen::SanType::DnsName(addr.clone().try_into()?));
         }
     }
 
@@ -122,13 +120,9 @@ mod tests {
         params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
         let ca_cert = params.self_signed(&ca_key).unwrap();
 
-        let node_pair = generate_node_cert(
-            &ca_key,
-            &ca_cert,
-            "node-2",
-            &["192.168.1.100".to_string()],
-        )
-        .unwrap();
+        let node_pair =
+            generate_node_cert(&ca_key, &ca_cert, "node-2", &["192.168.1.100".to_string()])
+                .unwrap();
 
         assert!(node_pair.cert_pem.contains("BEGIN CERTIFICATE"));
     }
@@ -143,13 +137,8 @@ mod tests {
         params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
         let ca_cert = params.self_signed(&ca_key).unwrap();
 
-        let node_pair = generate_node_cert(
-            &ca_key,
-            &ca_cert,
-            "node-1",
-            &["10.0.0.1".to_string()],
-        )
-        .unwrap();
+        let node_pair =
+            generate_node_cert(&ca_key, &ca_cert, "node-1", &["10.0.0.1".to_string()]).unwrap();
 
         assert_ne!(ca_pair.cert_pem, node_pair.cert_pem);
     }

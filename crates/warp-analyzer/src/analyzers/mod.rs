@@ -1,8 +1,8 @@
 pub mod bun;
-pub mod rust;
-pub mod go;
-pub mod typescript;
 pub mod dockerfile;
+pub mod go;
+pub mod rust;
+pub mod typescript;
 
 use anyhow::{Result, bail};
 use std::path::Path;
@@ -23,7 +23,9 @@ pub fn detect_language(path: &Path) -> Result<String> {
     } else if path.join("Dockerfile").exists() {
         dockerfile::detect_language_from_dockerfile(&path.join("Dockerfile"))
     } else {
-        bail!("Could not detect project language. No Cargo.toml, go.mod, bunfig.toml, package.json, or Dockerfile found.")
+        bail!(
+            "Could not detect project language. No Cargo.toml, go.mod, bunfig.toml, package.json, or Dockerfile found."
+        )
     }
 }
 

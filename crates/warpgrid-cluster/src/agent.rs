@@ -68,8 +68,7 @@ impl NodeAgent {
 
         let resp = response.into_inner();
         self.node_id = Some(resp.node_id.clone());
-        self.heartbeat_interval =
-            Duration::from_secs(resp.heartbeat_interval_secs as u64);
+        self.heartbeat_interval = Duration::from_secs(resp.heartbeat_interval_secs as u64);
 
         info!(
             node_id = %resp.node_id,
@@ -83,9 +82,10 @@ impl NodeAgent {
 
     /// Leave the cluster gracefully.
     pub async fn leave(&self) -> anyhow::Result<()> {
-        let node_id = self.node_id.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("not joined — call join() first")
-        })?;
+        let node_id = self
+            .node_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not joined — call join() first"))?;
 
         let mut client = self.connect().await?;
 
@@ -109,9 +109,10 @@ impl NodeAgent {
         used_cpu_weight: u32,
         mut shutdown: watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
-        let node_id = self.node_id.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("not joined — call join() first")
-        })?;
+        let node_id = self
+            .node_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("not joined — call join() first"))?;
 
         let mut client = self.connect().await?;
 
@@ -190,7 +191,9 @@ mod tests {
     #[test]
     fn agent_config_with_labels() {
         let mut config = test_config();
-        config.labels.insert("region".to_string(), "us-east-1".to_string());
+        config
+            .labels
+            .insert("region".to_string(), "us-east-1".to_string());
 
         let agent = NodeAgent::new(config);
         assert!(agent.node_id().is_none());

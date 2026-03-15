@@ -452,7 +452,9 @@ mod tests {
     #[test]
     fn deployment_delete() {
         let store = StateStore::open_in_memory().unwrap();
-        store.put_deployment(&test_deployment("default", "api")).unwrap();
+        store
+            .put_deployment(&test_deployment("default", "api"))
+            .unwrap();
 
         assert!(store.delete_deployment("default/api").unwrap());
         assert!(!store.delete_deployment("default/api").unwrap());
@@ -504,9 +506,20 @@ mod tests {
 
         let deleted = store.delete_instances_for_deployment("deploy-1").unwrap();
         assert_eq!(deleted, 2);
-        assert!(store.list_instances_for_deployment("deploy-1").unwrap().is_empty());
+        assert!(
+            store
+                .list_instances_for_deployment("deploy-1")
+                .unwrap()
+                .is_empty()
+        );
         // deploy-2 untouched
-        assert_eq!(store.list_instances_for_deployment("deploy-2").unwrap().len(), 1);
+        assert_eq!(
+            store
+                .list_instances_for_deployment("deploy-2")
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     // ── Node CRUD ──────────────────────────────────────────────────
@@ -595,7 +608,9 @@ mod tests {
 
         {
             let store = StateStore::open(&db_path).unwrap();
-            store.put_deployment(&test_deployment("prod", "api")).unwrap();
+            store
+                .put_deployment(&test_deployment("prod", "api"))
+                .unwrap();
         }
 
         // Reopen the same database file.
@@ -613,8 +628,18 @@ mod tests {
 
         assert!(store.list_deployments().unwrap().is_empty());
         assert!(store.list_nodes().unwrap().is_empty());
-        assert!(store.list_instances_for_deployment("any").unwrap().is_empty());
-        assert!(store.list_metrics_for_deployment("any", 10).unwrap().is_empty());
+        assert!(
+            store
+                .list_instances_for_deployment("any")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            store
+                .list_metrics_for_deployment("any", 10)
+                .unwrap()
+                .is_empty()
+        );
         assert!(!store.delete_deployment("nope").unwrap());
         assert!(!store.delete_instance("nope").unwrap());
         assert!(!store.delete_node("nope").unwrap());

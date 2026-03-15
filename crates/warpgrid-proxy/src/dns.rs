@@ -91,10 +91,7 @@ mod tests {
     #[test]
     fn fqdn_format() {
         let dns = DnsResolver::new("warpgrid");
-        assert_eq!(
-            dns.fqdn("api", "default"),
-            "api.default.svc.warpgrid"
-        );
+        assert_eq!(dns.fqdn("api", "default"), "api.default.svc.warpgrid");
     }
 
     #[test]

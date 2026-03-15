@@ -140,48 +140,228 @@ world handler {
 fn wit_dep_files() -> Vec<TemplateFile> {
     vec![
         // CLI
-        TemplateFile { path: "wit/deps/cli/command.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/command.wit") },
-        TemplateFile { path: "wit/deps/cli/environment.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/environment.wit") },
-        TemplateFile { path: "wit/deps/cli/exit.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/exit.wit") },
-        TemplateFile { path: "wit/deps/cli/imports.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/imports.wit") },
-        TemplateFile { path: "wit/deps/cli/run.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/run.wit") },
-        TemplateFile { path: "wit/deps/cli/stdio.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/stdio.wit") },
-        TemplateFile { path: "wit/deps/cli/terminal.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/terminal.wit") },
+        TemplateFile {
+            path: "wit/deps/cli/command.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/command.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/cli/environment.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/environment.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/cli/exit.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/exit.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/cli/imports.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/imports.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/cli/run.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/run.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/cli/stdio.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/stdio.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/cli/terminal.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/cli/terminal.wit"
+            ),
+        },
         // Clocks
-        TemplateFile { path: "wit/deps/clocks/monotonic-clock.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/monotonic-clock.wit") },
-        TemplateFile { path: "wit/deps/clocks/timezone.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/timezone.wit") },
-        TemplateFile { path: "wit/deps/clocks/wall-clock.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/wall-clock.wit") },
-        TemplateFile { path: "wit/deps/clocks/world.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/world.wit") },
+        TemplateFile {
+            path: "wit/deps/clocks/monotonic-clock.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/monotonic-clock.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/clocks/timezone.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/timezone.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/clocks/wall-clock.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/wall-clock.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/clocks/world.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/clocks/world.wit"
+            ),
+        },
         // Filesystem
-        TemplateFile { path: "wit/deps/filesystem/preopens.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/filesystem/preopens.wit") },
-        TemplateFile { path: "wit/deps/filesystem/types.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/filesystem/types.wit") },
-        TemplateFile { path: "wit/deps/filesystem/world.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/filesystem/world.wit") },
+        TemplateFile {
+            path: "wit/deps/filesystem/preopens.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/filesystem/preopens.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/filesystem/types.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/filesystem/types.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/filesystem/world.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/filesystem/world.wit"
+            ),
+        },
         // HTTP
-        TemplateFile { path: "wit/deps/http/handler.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/http/handler.wit") },
-        TemplateFile { path: "wit/deps/http/proxy.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/http/proxy.wit") },
-        TemplateFile { path: "wit/deps/http/types.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/http/types.wit") },
+        TemplateFile {
+            path: "wit/deps/http/handler.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/http/handler.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/http/proxy.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/http/proxy.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/http/types.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/http/types.wit"
+            ),
+        },
         // IO
-        TemplateFile { path: "wit/deps/io/error.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/error.wit") },
-        TemplateFile { path: "wit/deps/io/poll.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/poll.wit") },
-        TemplateFile { path: "wit/deps/io/streams.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/streams.wit") },
-        TemplateFile { path: "wit/deps/io/world.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/world.wit") },
+        TemplateFile {
+            path: "wit/deps/io/error.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/error.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/io/poll.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/poll.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/io/streams.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/streams.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/io/world.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/io/world.wit"
+            ),
+        },
         // Random
-        TemplateFile { path: "wit/deps/random/insecure-seed.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/insecure-seed.wit") },
-        TemplateFile { path: "wit/deps/random/insecure.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/insecure.wit") },
-        TemplateFile { path: "wit/deps/random/random.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/random.wit") },
-        TemplateFile { path: "wit/deps/random/world.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/world.wit") },
+        TemplateFile {
+            path: "wit/deps/random/insecure-seed.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/insecure-seed.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/random/insecure.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/insecure.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/random/random.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/random.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/random/world.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/random/world.wit"
+            ),
+        },
         // WarpGrid shims
-        TemplateFile { path: "wit/deps/shim/database-proxy.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/shim/database-proxy.wit") },
-        TemplateFile { path: "wit/deps/shim/dns.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/shim/dns.wit") },
-        TemplateFile { path: "wit/deps/shim/filesystem.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/shim/filesystem.wit") },
+        TemplateFile {
+            path: "wit/deps/shim/database-proxy.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/shim/database-proxy.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/shim/dns.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/shim/dns.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/shim/filesystem.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/shim/filesystem.wit"
+            ),
+        },
         // Sockets
-        TemplateFile { path: "wit/deps/sockets/instance-network.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/instance-network.wit") },
-        TemplateFile { path: "wit/deps/sockets/ip-name-lookup.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/ip-name-lookup.wit") },
-        TemplateFile { path: "wit/deps/sockets/network.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/network.wit") },
-        TemplateFile { path: "wit/deps/sockets/tcp-create-socket.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/tcp-create-socket.wit") },
-        TemplateFile { path: "wit/deps/sockets/tcp.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/tcp.wit") },
-        TemplateFile { path: "wit/deps/sockets/udp-create-socket.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/udp-create-socket.wit") },
-        TemplateFile { path: "wit/deps/sockets/udp.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/udp.wit") },
-        TemplateFile { path: "wit/deps/sockets/world.wit", content: include_str!("../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/world.wit") },
+        TemplateFile {
+            path: "wit/deps/sockets/instance-network.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/instance-network.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/ip-name-lookup.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/ip-name-lookup.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/network.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/network.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/tcp-create-socket.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/tcp-create-socket.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/tcp.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/tcp.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/udp-create-socket.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/udp-create-socket.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/udp.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/udp.wit"
+            ),
+        },
+        TemplateFile {
+            path: "wit/deps/sockets/world.wit",
+            content: include_str!(
+                "../../../../tests/fixtures/js-warpgrid-handler/wit/deps/sockets/world.wit"
+            ),
+        },
     ]
 }

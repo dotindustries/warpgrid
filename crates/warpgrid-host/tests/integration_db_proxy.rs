@@ -110,8 +110,7 @@ impl MockPostgresServer {
 
         // Verify protocol version 3.0 (196608 = 0x00030000).
         if payload.len() >= 4 {
-            let version =
-                u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+            let version = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
             assert_eq!(version, 196608, "expected Postgres v3.0 protocol");
         }
 
@@ -221,7 +220,10 @@ async fn mock_postgres_server_responds_to_startup_handshake() {
         "response too short for AuthenticationOk: {} bytes",
         response.len()
     );
-    assert_eq!(response[0], b'R', "first byte should be 'R' (Authentication)");
+    assert_eq!(
+        response[0], b'R',
+        "first byte should be 'R' (Authentication)"
+    );
     assert_eq!(
         &response[..AUTH_OK.len()],
         &AUTH_OK,
@@ -280,7 +282,10 @@ async fn connect_close_reconnect_reuses_pooled_connection() {
     let sent = mgr.send(h2, query).await.unwrap();
     assert_eq!(sent, query.len());
     let echoed = mgr.recv(h2, 1024).await.unwrap();
-    assert_eq!(echoed, query, "reused connection should still pass bytes through");
+    assert_eq!(
+        echoed, query,
+        "reused connection should still pass bytes through"
+    );
 
     mgr.release(h2).await.unwrap();
 }
@@ -333,15 +338,25 @@ async fn idle_connections_reaped_after_configured_timeout() {
     do_handshake(&mgr, h).await;
     mgr.release(h).await.unwrap();
 
-    assert_eq!(mgr.stats(&key).await.idle, 1, "should have 1 idle connection");
+    assert_eq!(
+        mgr.stats(&key).await.idle,
+        1,
+        "should have 1 idle connection"
+    );
 
     // Wait for idle timeout to expire.
     tokio::time::sleep(Duration::from_millis(100)).await;
     mgr.reap_idle().await;
 
     let stats = mgr.stats(&key).await;
-    assert_eq!(stats.idle, 0, "idle connection should be reaped after timeout");
-    assert_eq!(stats.total, 0, "total count should reflect the reaped connection");
+    assert_eq!(
+        stats.idle, 0,
+        "idle connection should be reaped after timeout"
+    );
+    assert_eq!(
+        stats.total, 0,
+        "total count should reflect the reaped connection"
+    );
 }
 
 /// Health check removes connections that fail the ping.
@@ -383,8 +398,8 @@ async fn send_recv_pass_bytes_through_without_modification() {
 
     // Send Postgres-like SimpleQuery message: 'Q' + Int32(len) + "SELECT 1\0"
     let query_bytes: Vec<u8> = vec![
-        b'Q',                                              // Message type
-        0, 0, 0, 14,                                       // Length (14 including self)
+        b'Q', // Message type
+        0, 0, 0, 14, // Length (14 including self)
         b'S', b'E', b'L', b'E', b'C', b'T', b' ', b'1', 0, // "SELECT 1\0"
     ];
 
@@ -465,7 +480,11 @@ async fn multiple_send_recv_cycles() {
         assert_eq!(sent, msg.len());
 
         let received = mgr.recv(h, 1024).await.unwrap();
-        assert_eq!(received, msg.as_bytes(), "cycle {i}: echoed data should match");
+        assert_eq!(
+            received,
+            msg.as_bytes(),
+            "cycle {i}: echoed data should match"
+        );
     }
 
     mgr.release(h).await.unwrap();

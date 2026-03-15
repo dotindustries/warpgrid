@@ -6,8 +6,7 @@
 //! combine start, advance, pause, resume, and rollback transitions.
 
 use warpgrid_rollout::{
-    BatchAction, HealthMetrics, Rollout, RolloutPhase,
-    CanaryConfig, RollingConfig, RolloutStrategy,
+    BatchAction, CanaryConfig, HealthMetrics, RollingConfig, Rollout, RolloutPhase, RolloutStrategy,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -385,13 +384,7 @@ fn pause_preserves_batch_position_and_resumes_via_health_gate() {
 
 #[test]
 fn pause_is_noop_when_completed() {
-    let mut rollout = Rollout::new(
-        "deploy/done",
-        RolloutStrategy::BlueGreen,
-        5,
-        "v1",
-        "v2",
-    );
+    let mut rollout = Rollout::new("deploy/done", RolloutStrategy::BlueGreen, 5, "v1", "v2");
 
     rollout.start();
     rollout.advance(&healthy());
@@ -404,13 +397,7 @@ fn pause_is_noop_when_completed() {
 
 #[test]
 fn pause_is_noop_when_rolled_back() {
-    let mut rollout = Rollout::new(
-        "deploy/failed",
-        RolloutStrategy::BlueGreen,
-        5,
-        "v1",
-        "v2",
-    );
+    let mut rollout = Rollout::new("deploy/failed", RolloutStrategy::BlueGreen, 5, "v1", "v2");
 
     rollout.start();
     rollout.advance(&unhealthy());
@@ -505,9 +492,6 @@ fn rollout_phase_serialization_roundtrip() {
     for phase in &phases {
         let json = serde_json::to_string(phase).unwrap();
         let deserialized: RolloutPhase = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            &deserialized, phase,
-            "phase roundtrip failed for {phase:?}"
-        );
+        assert_eq!(&deserialized, phase, "phase roundtrip failed for {phase:?}");
     }
 }

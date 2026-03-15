@@ -15,13 +15,13 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::dns::cache::DnsCacheConfig;
 use warpgrid_host::dns::host::DnsHost;
 use warpgrid_host::dns::{CachedDnsResolver, DnsResolver};
-use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 use warpgrid_host::signals::host::SignalsHost;
 
@@ -47,12 +47,7 @@ fn build_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for guest fixture");
@@ -139,10 +134,7 @@ async fn test_wasm_resolves_service_registry_name() {
     let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
-    let host_state = test_host_state(
-        test_service_registry(),
-        "10.0.1.10 cache.test.warp.local\n",
-    );
+    let host_state = test_host_state(test_service_registry(), "10.0.1.10 cache.test.warp.local\n");
     let mut store = Store::new(engine.engine(), host_state);
 
     let instance = engine
@@ -170,10 +162,7 @@ async fn test_wasm_resolves_etc_hosts_hostname() {
     let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
     let component = Component::new(engine.engine(), wasm_bytes).unwrap();
 
-    let host_state = test_host_state(
-        test_service_registry(),
-        "10.0.1.10 cache.test.warp.local\n",
-    );
+    let host_state = test_host_state(test_service_registry(), "10.0.1.10 cache.test.warp.local\n");
     let mut store = Store::new(engine.engine(), host_state);
 
     let instance = engine
@@ -331,37 +320,36 @@ async fn test_wasm_ttl_caching_within_and_after_expiry() {
     let cached_resolver = Arc::new(CachedDnsResolver::new(resolver, cache_config));
 
     // Helper closure: create a fresh store+instance sharing the same resolver
-    let call_resolve = |engine: &WarpGridEngine,
-                        component: &Component,
-                        cached: &Arc<CachedDnsResolver>| {
-        let runtime_handle = tokio::runtime::Handle::current();
-        let host_state = HostState {
-            filesystem: None,
-            dns: Some(DnsHost::new(Arc::clone(cached), runtime_handle)),
-            db_proxy: None,
-            signals: SignalsHost::new(),
-            threading_model: None,
-            limiter: None,
+    let call_resolve =
+        |engine: &WarpGridEngine, component: &Component, cached: &Arc<CachedDnsResolver>| {
+            let runtime_handle = tokio::runtime::Handle::current();
+            let host_state = HostState {
+                filesystem: None,
+                dns: Some(DnsHost::new(Arc::clone(cached), runtime_handle)),
+                db_proxy: None,
+                signals: SignalsHost::new(),
+                threading_model: None,
+                limiter: None,
+            };
+            let engine = engine.clone();
+            let component = component.clone();
+            async move {
+                let mut store = Store::new(engine.engine(), host_state);
+                let instance = engine
+                    .linker()
+                    .instantiate_async(&mut store, &component)
+                    .await
+                    .unwrap();
+                let func = instance
+                    .get_typed_func::<(), (Result<String, String>,)>(
+                        &mut store,
+                        "test-resolve-registry",
+                    )
+                    .unwrap();
+                let (result,) = func.call_async(&mut store, ()).await.unwrap();
+                result.expect("resolve should succeed")
+            }
         };
-        let engine = engine.clone();
-        let component = component.clone();
-        async move {
-            let mut store = Store::new(engine.engine(), host_state);
-            let instance = engine
-                .linker()
-                .instantiate_async(&mut store, &component)
-                .await
-                .unwrap();
-            let func = instance
-                .get_typed_func::<(), (Result<String, String>,)>(
-                    &mut store,
-                    "test-resolve-registry",
-                )
-                .unwrap();
-            let (result,) = func.call_async(&mut store, ()).await.unwrap();
-            result.expect("resolve should succeed")
-        }
-    };
 
     // First call: should resolve (cache miss)
     let address = call_resolve(&engine, &component, &cached_resolver).await;
@@ -410,10 +398,7 @@ async fn test_wasm_nonexistent_hostname_returns_error() {
         .unwrap();
 
     let func = instance
-        .get_typed_func::<(), (Result<String, String>,)>(
-            &mut store,
-            "test-resolve-nonexistent",
-        )
+        .get_typed_func::<(), (Result<String, String>,)>(&mut store, "test-resolve-nonexistent")
         .unwrap();
     let (result,) = func.call_async(&mut store, ()).await.unwrap();
 

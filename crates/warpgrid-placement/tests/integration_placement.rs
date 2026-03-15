@@ -7,15 +7,12 @@
 use std::collections::HashMap;
 
 use warpgrid_placement::{
-    RunningState,
-    compute_placement, compute_placement_with_preemption,
-    NodeResources, PlacementRequirements, ScoringWeights,
+    NodeResources, PlacementRequirements, RunningState, ScoringWeights, compute_placement,
+    compute_placement_with_preemption, deployment_to_requirements, node_info_to_resources,
     rank_nodes,
-    deployment_to_requirements, node_info_to_resources,
 };
 use warpgrid_state::{
-    DeploymentSpec, InstanceConstraints, NodeInfo, ResourceLimits,
-    ShimsEnabled, TriggerConfig,
+    DeploymentSpec, InstanceConstraints, NodeInfo, ResourceLimits, ShimsEnabled, TriggerConfig,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -61,9 +58,9 @@ fn default_req(mem: u64, count: u32) -> PlacementRequirements {
 fn heterogeneous_cluster_placement_distributes_across_varied_nodes() {
     // Three nodes with different sizes: large, medium, small.
     let nodes = vec![
-        simple_node("large", 4096, 0),   // Fits 16 instances of 256 bytes
-        simple_node("medium", 1024, 0),  // Fits 4 instances
-        simple_node("small", 512, 0),    // Fits 2 instances
+        simple_node("large", 4096, 0),  // Fits 16 instances of 256 bytes
+        simple_node("medium", 1024, 0), // Fits 4 instances
+        simple_node("small", 512, 0),   // Fits 2 instances
     ];
 
     let req = default_req(256, 10);
@@ -87,10 +84,7 @@ fn heterogeneous_cluster_placement_distributes_across_varied_nodes() {
 fn heterogeneous_cluster_partial_placement_when_capacity_insufficient() {
     // Total cluster capacity: 256 + 512 = 768 bytes. Each instance needs 256.
     // Can fit 3 total. Requesting 5.
-    let nodes = vec![
-        simple_node("tiny-1", 256, 0),
-        simple_node("tiny-2", 512, 0),
-    ];
+    let nodes = vec![simple_node("tiny-1", 256, 0), simple_node("tiny-2", 512, 0)];
 
     let req = default_req(256, 5);
     let weights = ScoringWeights::default();
@@ -225,13 +219,8 @@ fn preemption_evicts_lowest_priority_workload() {
     ];
 
     let weights = ScoringWeights::default();
-    let plan = compute_placement_with_preemption(
-        &req,
-        "deploy/critical",
-        &nodes,
-        &running,
-        &weights,
-    );
+    let plan =
+        compute_placement_with_preemption(&req, "deploy/critical", &nodes, &running, &weights);
 
     // Should have preempted the lowest-priority workload first.
     assert!(
@@ -251,7 +240,10 @@ fn preemption_evicts_lowest_priority_workload() {
     );
 
     let placed: u32 = plan.assignments.values().sum();
-    assert_eq!(placed, 2, "all requested instances should be placed via preemption");
+    assert_eq!(
+        placed, 2,
+        "all requested instances should be placed via preemption"
+    );
 }
 
 #[test]
@@ -277,13 +269,8 @@ fn no_preemption_when_requestor_is_lower_priority() {
     }];
 
     let weights = ScoringWeights::default();
-    let plan = compute_placement_with_preemption(
-        &req,
-        "deploy/low-priority",
-        &nodes,
-        &running,
-        &weights,
-    );
+    let plan =
+        compute_placement_with_preemption(&req, "deploy/low-priority", &nodes, &running, &weights);
 
     assert!(
         plan.preemptions.is_empty(),
@@ -301,7 +288,7 @@ fn convert_state_types_and_place_successfully() {
         port: 8443,
         capacity_memory_bytes: 4 * 1024 * 1024 * 1024,
         capacity_cpu_weight: 1000,
-        used_memory_bytes: 1 * 1024 * 1024 * 1024,
+        used_memory_bytes: 1024 * 1024 * 1024,
         used_cpu_weight: 200,
         labels: {
             let mut m = HashMap::new();
@@ -340,12 +327,7 @@ fn convert_state_types_and_place_successfully() {
 
     // Use converted types in actual placement.
     let weights = ScoringWeights::default();
-    let plan = compute_placement(
-        &requirements,
-        &spec.id,
-        &[node_resources],
-        &weights,
-    );
+    let plan = compute_placement(&requirements, &spec.id, &[node_resources], &weights);
 
     let total_placed: u32 = plan.assignments.values().sum();
     assert!(
@@ -392,8 +374,8 @@ fn convert_draining_node_is_excluded_from_placement() {
 fn bin_packing_weights_prefer_fuller_nodes() {
     let nodes = vec![
         simple_node("nearly-full", 1024, 800),  // ~78% used
-        simple_node("half-full", 1024, 500),     // ~49% used
-        simple_node("mostly-empty", 1024, 100),  // ~10% used
+        simple_node("half-full", 1024, 500),    // ~49% used
+        simple_node("mostly-empty", 1024, 100), // ~10% used
     ];
 
     let req = default_req(128, 1);

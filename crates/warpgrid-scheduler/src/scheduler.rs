@@ -74,11 +74,7 @@ impl Scheduler {
     }
 
     /// Create a new scheduler in distributed (multi-node) mode.
-    pub fn new_distributed(
-        runtime: Arc<Runtime>,
-        state: StateStore,
-        node_id: String,
-    ) -> Self {
+    pub fn new_distributed(runtime: Arc<Runtime>, state: StateStore, node_id: String) -> Self {
         Self {
             runtime,
             state,
@@ -102,9 +98,7 @@ impl Scheduler {
         {
             let slots = self.slots.read().await;
             if slots.contains_key(deployment_id) {
-                return Err(SchedulerError::AlreadyScheduled(
-                    deployment_id.to_string(),
-                ));
+                return Err(SchedulerError::AlreadyScheduled(deployment_id.to_string()));
             }
         }
 
@@ -127,9 +121,7 @@ impl Scheduler {
         let pool = self.runtime.create_pool(module, pool_config);
 
         // Warm up to min instances.
-        pool.warm_up()
-            .await
-            .map_err(SchedulerError::Runtime)?;
+        pool.warm_up().await.map_err(SchedulerError::Runtime)?;
 
         // Record instance states in the store.
         let now = epoch_secs();
@@ -245,16 +237,14 @@ impl Scheduler {
     /// Get the next instance index via round-robin for a deployment.
     ///
     /// Used by the HTTP trigger to select which instance handles a request.
-    pub async fn next_instance_index(
-        &self,
-        deployment_id: &str,
-    ) -> SchedulerResult<usize> {
+    pub async fn next_instance_index(&self, deployment_id: &str) -> SchedulerResult<usize> {
         let slots = self.slots.read().await;
         let slot = slots
             .get(deployment_id)
             .ok_or_else(|| SchedulerError::DeploymentNotFound(deployment_id.to_string()))?;
 
-        let count = slot.pool.available_count().await + (slot.pool.total_count().await as usize - slot.pool.available_count().await);
+        let count = slot.pool.available_count().await
+            + (slot.pool.total_count().await as usize - slot.pool.available_count().await);
         slot.balancer
             .next(count)
             .ok_or_else(|| SchedulerError::NoInstancesAvailable(deployment_id.to_string()))
@@ -293,10 +283,7 @@ impl Scheduler {
             .map_err(SchedulerError::State)?
             .ok_or_else(|| SchedulerError::DeploymentNotFound(deployment_id.to_string()))?;
 
-        let nodes = self
-            .state
-            .list_nodes()
-            .map_err(SchedulerError::State)?;
+        let nodes = self.state.list_nodes().map_err(SchedulerError::State)?;
 
         if nodes.is_empty() {
             return Err(SchedulerError::Placement(
@@ -471,10 +458,7 @@ mod tests {
         let scheduler = Scheduler::new(runtime, state, "node-1".to_string());
 
         let result = scheduler.next_instance_index("default/api").await;
-        assert!(matches!(
-            result,
-            Err(SchedulerError::DeploymentNotFound(_))
-        ));
+        assert!(matches!(result, Err(SchedulerError::DeploymentNotFound(_))));
     }
 
     #[test]

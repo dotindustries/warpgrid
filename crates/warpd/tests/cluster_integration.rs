@@ -62,12 +62,7 @@ fn make_node(store: &StateStore, id: &str, addr: &str, port: u16) -> NodeInfo {
     node
 }
 
-fn make_instance(
-    id: &str,
-    deployment: &str,
-    node: &str,
-    status: InstanceStatus,
-) -> InstanceState {
+fn make_instance(id: &str, deployment: &str, node: &str, status: InstanceStatus) -> InstanceState {
     InstanceState {
         id: id.to_string(),
         deployment_id: deployment.to_string(),
@@ -208,8 +203,7 @@ fn health_status_propagation() {
 #[test]
 fn dead_node_detection_and_reaping() {
     let state = test_store();
-    let mgr = MembershipManager::new(state.clone())
-        .with_dead_timeout(Duration::from_secs(0));
+    let mgr = MembershipManager::new(state.clone()).with_dead_timeout(Duration::from_secs(0));
 
     let id = mgr
         .join("10.0.0.1", 8443, HashMap::new(), 8_000_000_000, 1000)
@@ -256,12 +250,8 @@ fn placement_distributes_across_nodes() {
 
     // Run placement.
     let weights = warpgrid_placement::ScoringWeights::default();
-    let plan = warpgrid_placement::compute_placement(
-        &requirements,
-        &spec.id,
-        &node_resources,
-        &weights,
-    );
+    let plan =
+        warpgrid_placement::compute_placement(&requirements, &spec.id, &node_resources, &weights);
 
     // Should place across available nodes.
     assert!(!plan.assignments.is_empty());
@@ -367,8 +357,7 @@ async fn raft_state_machine_apply_and_snapshot() {
             value: r#"{"name":"app"}"#.to_string(),
         }),
     };
-    let responses: Vec<Response> =
-        RaftStateMachine::apply(&mut sm, [entry]).await.unwrap();
+    let responses: Vec<Response> = RaftStateMachine::apply(&mut sm, [entry]).await.unwrap();
     assert!(responses[0].success);
 
     // Build and restore snapshot.
@@ -384,13 +373,7 @@ async fn raft_state_machine_apply_and_snapshot() {
 fn rollout_lifecycle() {
     use warpgrid_rollout::{Rollout, RolloutPhase, RolloutStrategy};
 
-    let mut rollout = Rollout::new(
-        "prod/api",
-        RolloutStrategy::default(),
-        3,
-        "v1",
-        "v2",
-    );
+    let mut rollout = Rollout::new("prod/api", RolloutStrategy::default(), 3, "v1", "v2");
     assert_eq!(rollout.phase, RolloutPhase::Pending);
 
     rollout.start();

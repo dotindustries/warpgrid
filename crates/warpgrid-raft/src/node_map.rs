@@ -132,13 +132,11 @@ impl NodeIdMap {
         let mut reverse = self.reverse.write().expect("reverse lock");
 
         if let Ok(iter) = table.iter() {
-            for item in iter {
-                if let Ok((k, v)) = item {
-                    let raft_id = k.value();
-                    let node_id = v.value().to_string();
-                    forward.insert(node_id.clone(), raft_id);
-                    reverse.insert(raft_id, node_id);
-                }
+            for (k, v) in iter.flatten() {
+                let raft_id = k.value();
+                let node_id = v.value().to_string();
+                forward.insert(node_id.clone(), raft_id);
+                reverse.insert(raft_id, node_id);
             }
         }
     }

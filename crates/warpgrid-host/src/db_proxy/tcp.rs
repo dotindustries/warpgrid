@@ -85,10 +85,14 @@ impl ConnectionBackend for TcpBackend {
         let n = data.len();
         match &mut self.transport {
             Transport::Plain(stream) => {
-                stream.write_all(data).map_err(|e| format!("tcp send: {e}"))?;
+                stream
+                    .write_all(data)
+                    .map_err(|e| format!("tcp send: {e}"))?;
             }
             Transport::Tls(stream) => {
-                stream.write_all(data).map_err(|e| format!("tls send: {e}"))?;
+                stream
+                    .write_all(data)
+                    .map_err(|e| format!("tls send: {e}"))?;
             }
         }
         Ok(n)
@@ -97,12 +101,12 @@ impl ConnectionBackend for TcpBackend {
     fn recv(&mut self, max_bytes: usize) -> Result<Vec<u8>, String> {
         let mut buf = vec![0u8; max_bytes];
         let n = match &mut self.transport {
-            Transport::Plain(stream) => {
-                stream.read(&mut buf).map_err(|e| format!("tcp recv: {e}"))?
-            }
-            Transport::Tls(stream) => {
-                stream.read(&mut buf).map_err(|e| format!("tls recv: {e}"))?
-            }
+            Transport::Plain(stream) => stream
+                .read(&mut buf)
+                .map_err(|e| format!("tcp recv: {e}"))?,
+            Transport::Tls(stream) => stream
+                .read(&mut buf)
+                .map_err(|e| format!("tls recv: {e}"))?,
         };
         buf.truncate(n);
         Ok(buf)
@@ -492,6 +496,7 @@ impl AsyncConnectionFactory for AsyncTcpConnectionFactory {
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
@@ -713,10 +718,7 @@ mod tests {
     #[test]
     fn factory_creates_working_connection() {
         let addr = start_echo_server();
-        let factory = TcpConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = TcpConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
 
         let mut backend = factory.connect(&key, None).unwrap();
@@ -730,10 +732,7 @@ mod tests {
 
     #[test]
     fn factory_connect_refused() {
-        let factory = TcpConnectionFactory::plain(
-            Duration::from_secs(1),
-            Duration::from_secs(1),
-        );
+        let factory = TcpConnectionFactory::plain(Duration::from_secs(1), Duration::from_secs(1));
         // Port 1 is unlikely to have a listener.
         let key = PoolKey::new("127.0.0.1", 1, "testdb", "user");
 
@@ -758,16 +757,16 @@ mod tests {
 
         let mut backend = factory.connect(&key, None).unwrap();
         let result = backend.recv(1024);
-        assert!(result.is_err(), "recv should timeout with factory-configured timeout");
+        assert!(
+            result.is_err(),
+            "recv should timeout with factory-configured timeout"
+        );
     }
 
     #[test]
     fn factory_ignores_password_for_passthrough() {
         let addr = start_echo_server();
-        let factory = TcpConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = TcpConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
 
         // Password is provided but should be ignored — guest sends auth via wire protocol.
@@ -795,17 +794,14 @@ mod tests {
     fn tls_send_and_recv_roundtrip() {
         // Generate a self-signed certificate for the test server.
         let key_pair = rcgen::KeyPair::generate().unwrap();
-        let cert_params =
-            rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
+        let cert_params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
         let cert = cert_params.self_signed(&key_pair).unwrap();
         let cert_der = cert.der().clone();
         let key_der = key_pair.serialize_der();
 
         // Build rustls ServerConfig.
-        let server_cert =
-            rustls::pki_types::CertificateDer::from(cert_der.to_vec());
-        let server_key =
-            rustls::pki_types::PrivateKeyDer::try_from(key_der).unwrap();
+        let server_cert = rustls::pki_types::CertificateDer::from(cert_der.to_vec());
+        let server_key = rustls::pki_types::PrivateKeyDer::try_from(key_der).unwrap();
         let server_config = Arc::new(
             rustls::ServerConfig::builder_with_provider(
                 rustls::crypto::ring::default_provider().into(),
@@ -822,8 +818,7 @@ mod tests {
         let server_config_clone = server_config.clone();
         std::thread::spawn(move || {
             let (tcp_stream, _) = listener.accept().unwrap();
-            let tls_conn =
-                rustls::ServerConnection::new(server_config_clone).unwrap();
+            let tls_conn = rustls::ServerConnection::new(server_config_clone).unwrap();
             let mut tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
             let mut buf = [0u8; 4096];
             loop {
@@ -865,16 +860,13 @@ mod tests {
     fn tls_passthrough_preserves_exact_bytes() {
         // Generate cert.
         let key_pair = rcgen::KeyPair::generate().unwrap();
-        let cert_params =
-            rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
+        let cert_params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
         let cert = cert_params.self_signed(&key_pair).unwrap();
         let cert_der = cert.der().clone();
         let key_der = key_pair.serialize_der();
 
-        let server_cert =
-            rustls::pki_types::CertificateDer::from(cert_der.to_vec());
-        let server_key =
-            rustls::pki_types::PrivateKeyDer::try_from(key_der).unwrap();
+        let server_cert = rustls::pki_types::CertificateDer::from(cert_der.to_vec());
+        let server_key = rustls::pki_types::PrivateKeyDer::try_from(key_der).unwrap();
         let server_config = Arc::new(
             rustls::ServerConfig::builder_with_provider(
                 rustls::crypto::ring::default_provider().into(),
@@ -890,8 +882,7 @@ mod tests {
         let server_config_clone = server_config.clone();
         std::thread::spawn(move || {
             let (tcp_stream, _) = listener.accept().unwrap();
-            let tls_conn =
-                rustls::ServerConnection::new(server_config_clone).unwrap();
+            let tls_conn = rustls::ServerConnection::new(server_config_clone).unwrap();
             let mut tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
             let mut buf = [0u8; 4096];
             loop {
@@ -930,10 +921,7 @@ mod tests {
     #[test]
     fn full_lifecycle_plain_tcp() {
         let addr = start_echo_server();
-        let factory = TcpConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = TcpConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
 
         let mut backend = factory.connect(&key, None).unwrap();
@@ -972,16 +960,11 @@ mod tests {
         let addr = listener.local_addr().expect("local addr");
 
         tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => {
-                        tokio::spawn(async move {
-                            let (mut reader, mut writer) = stream.into_split();
-                            let _ = tokio::io::copy(&mut reader, &mut writer).await;
-                        });
-                    }
-                    Err(_) => break,
-                }
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (mut reader, mut writer) = stream.into_split();
+                    let _ = tokio::io::copy(&mut reader, &mut writer).await;
+                });
             }
         });
 
@@ -1071,15 +1054,16 @@ mod tests {
         // Small delay to allow echo response.
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        assert!(backend.ping_async().await, "healthy connection should ping true");
+        assert!(
+            backend.ping_async().await,
+            "healthy connection should ping true"
+        );
     }
 
     #[tokio::test]
     async fn async_tcp_ping_closed_connection() {
         // Start a listener that accepts then immediately drops the connection.
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
         tokio::spawn(async move {
@@ -1092,7 +1076,10 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
         let mut backend = AsyncTcpBackend::new(stream);
 
-        assert!(!backend.ping_async().await, "closed connection should ping false");
+        assert!(
+            !backend.ping_async().await,
+            "closed connection should ping false"
+        );
     }
 
     // ── AsyncTcpBackend: close ───────────────────────────────────────
@@ -1161,7 +1148,10 @@ mod tests {
         let key = PoolKey::new("192.0.2.1", 5432, "testdb", "user");
 
         let result = factory.connect_async(&key, None).await;
-        assert!(result.is_err(), "should fail with timeout or connection error");
+        assert!(
+            result.is_err(),
+            "should fail with timeout or connection error"
+        );
     }
 
     #[tokio::test]

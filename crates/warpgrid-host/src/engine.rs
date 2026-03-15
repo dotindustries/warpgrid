@@ -23,10 +23,10 @@ use crate::config::ShimConfig;
 use crate::db_proxy::host::DbProxyHost;
 use crate::db_proxy::{AsyncConnectionFactory, ConnectionFactory, ConnectionPoolManager};
 use crate::dns::CachedDnsResolver;
-use crate::dns::host::DnsHost;
 use crate::dns::DnsResolver;
-use crate::filesystem::host::FilesystemHost;
+use crate::dns::host::DnsHost;
 use crate::filesystem::VirtualFileMap;
+use crate::filesystem::host::FilesystemHost;
 use crate::signals::host::SignalsHost;
 
 /// Per-instance host state.
@@ -102,10 +102,7 @@ impl shim::signals::Host for HostState {
 }
 
 impl shim::database_proxy::Host for HostState {
-    fn connect(
-        &mut self,
-        config: shim::database_proxy::ConnectConfig,
-    ) -> Result<u64, String> {
+    fn connect(&mut self, config: shim::database_proxy::ConnectConfig) -> Result<u64, String> {
         self.db_proxy
             .as_mut()
             .ok_or_else(|| "database proxy shim not enabled".to_string())
@@ -328,7 +325,10 @@ impl WarpGridEngine {
                 .expect("limiter must be set before instantiation")
         });
 
-        let instance = self.linker.instantiate_async(&mut store, &component).await?;
+        let instance = self
+            .linker
+            .instantiate_async(&mut store, &component)
+            .await?;
 
         Ok((store, instance))
     }
@@ -370,10 +370,8 @@ impl WarpGridEngine {
         };
 
         let dns = if config.dns {
-            let resolver = DnsResolver::new(
-                config.service_registry.clone(),
-                &config.etc_hosts_content,
-            );
+            let resolver =
+                DnsResolver::new(config.service_registry.clone(), &config.etc_hosts_content);
             let cached = Arc::new(CachedDnsResolver::new(
                 resolver,
                 config.dns_cache_config.clone(),
@@ -393,7 +391,10 @@ impl WarpGridEngine {
                         async_f,
                     ))
                 } else {
-                    Arc::new(ConnectionPoolManager::new(config.pool_config.clone(), factory))
+                    Arc::new(ConnectionPoolManager::new(
+                        config.pool_config.clone(),
+                        factory,
+                    ))
                 };
                 let runtime_handle = tokio::runtime::Handle::current();
                 Some(DbProxyHost::new(pool_manager, runtime_handle))
@@ -562,8 +563,12 @@ mod tests {
         shim::signals::Host::on_signal(&mut state, shim::signals::SignalType::Hangup).unwrap();
 
         // Deliver signals via the host-side API
-        state.signals.deliver_signal(shim::signals::SignalType::Terminate);
-        state.signals.deliver_signal(shim::signals::SignalType::Hangup);
+        state
+            .signals
+            .deliver_signal(shim::signals::SignalType::Terminate);
+        state
+            .signals
+            .deliver_signal(shim::signals::SignalType::Hangup);
 
         // Poll via the Host trait — should return FIFO order
         assert_eq!(
@@ -773,7 +778,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn build_host_state_with_async_factory_uses_async_path() {
-        use crate::db_proxy::async_io::{AsyncConnectionBackend, AsyncConnectionFactory, AsyncConnectFuture};
+        use crate::db_proxy::async_io::{
+            AsyncConnectFuture, AsyncConnectionBackend, AsyncConnectionFactory,
+        };
         use crate::db_proxy::{ConnectionBackend, ConnectionFactory, PoolKey};
         use std::future::Future;
         use std::pin::Pin;
@@ -783,15 +790,25 @@ mod tests {
         struct StubBackend;
 
         impl ConnectionBackend for StubBackend {
-            fn send(&mut self, data: &[u8]) -> Result<usize, String> { Ok(data.len()) }
-            fn recv(&mut self, _max: usize) -> Result<Vec<u8>, String> { Ok(vec![]) }
-            fn ping(&mut self) -> bool { true }
+            fn send(&mut self, data: &[u8]) -> Result<usize, String> {
+                Ok(data.len())
+            }
+            fn recv(&mut self, _max: usize) -> Result<Vec<u8>, String> {
+                Ok(vec![])
+            }
+            fn ping(&mut self) -> bool {
+                true
+            }
             fn close(&mut self) {}
         }
 
         struct CountingFactory(AtomicU64);
         impl ConnectionFactory for CountingFactory {
-            fn connect(&self, _key: &PoolKey, _password: Option<&str>) -> Result<Box<dyn ConnectionBackend>, String> {
+            fn connect(
+                &self,
+                _key: &PoolKey,
+                _password: Option<&str>,
+            ) -> Result<Box<dyn ConnectionBackend>, String> {
                 self.0.fetch_add(1, Ordering::Relaxed);
                 Ok(Box::new(StubBackend))
             }
@@ -800,10 +817,16 @@ mod tests {
         #[derive(Debug)]
         struct StubAsyncBackend;
         impl AsyncConnectionBackend for StubAsyncBackend {
-            fn send_async<'a>(&'a mut self, data: &'a [u8]) -> Pin<Box<dyn Future<Output = Result<usize, String>> + Send + 'a>> {
+            fn send_async<'a>(
+                &'a mut self,
+                data: &'a [u8],
+            ) -> Pin<Box<dyn Future<Output = Result<usize, String>> + Send + 'a>> {
                 Box::pin(async move { Ok(data.len()) })
             }
-            fn recv_async<'a>(&'a mut self, max_bytes: usize) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
+            fn recv_async<'a>(
+                &'a mut self,
+                max_bytes: usize,
+            ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
                 Box::pin(async move { Ok(vec![0x42; max_bytes.min(4)]) })
             }
             fn ping_async(&mut self) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
@@ -816,9 +839,15 @@ mod tests {
 
         struct CountingAsyncFactory(AtomicU64);
         impl AsyncConnectionFactory for CountingAsyncFactory {
-            fn connect_async<'a>(&'a self, _key: &'a PoolKey, _password: Option<&'a str>) -> AsyncConnectFuture<'a> {
+            fn connect_async<'a>(
+                &'a self,
+                _key: &'a PoolKey,
+                _password: Option<&'a str>,
+            ) -> AsyncConnectFuture<'a> {
                 self.0.fetch_add(1, Ordering::Relaxed);
-                Box::pin(async { Ok(Box::new(StubAsyncBackend) as Box<dyn AsyncConnectionBackend>) })
+                Box::pin(async {
+                    Ok(Box::new(StubAsyncBackend) as Box<dyn AsyncConnectionBackend>)
+                })
             }
         }
 
@@ -831,10 +860,8 @@ mod tests {
             ..ShimConfig::default()
         };
         let engine = WarpGridEngine::new(config).unwrap();
-        let mut state = engine.build_host_state_with_async(
-            Some(sync_factory.clone()),
-            Some(async_factory.clone()),
-        );
+        let mut state = engine
+            .build_host_state_with_async(Some(sync_factory.clone()), Some(async_factory.clone()));
 
         assert!(state.db_proxy.is_some(), "db_proxy should be Some");
 
@@ -847,11 +874,20 @@ mod tests {
             password: None,
         };
         let handle = shim::database_proxy::Host::connect(&mut state, connect_config).unwrap();
-        assert_eq!(async_factory.0.load(Ordering::Relaxed), 1, "async factory should be called");
-        assert_eq!(sync_factory.0.load(Ordering::Relaxed), 0, "sync factory should NOT be called");
+        assert_eq!(
+            async_factory.0.load(Ordering::Relaxed),
+            1,
+            "async factory should be called"
+        );
+        assert_eq!(
+            sync_factory.0.load(Ordering::Relaxed),
+            0,
+            "sync factory should NOT be called"
+        );
 
         // Send/recv should work through async path.
-        let sent = shim::database_proxy::Host::send(&mut state, handle, b"SELECT 1".to_vec()).unwrap();
+        let sent =
+            shim::database_proxy::Host::send(&mut state, handle, b"SELECT 1".to_vec()).unwrap();
         assert_eq!(sent, 8);
 
         let data = shim::database_proxy::Host::recv(&mut state, handle, 1024).unwrap();

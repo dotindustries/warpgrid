@@ -104,7 +104,8 @@ mod tests {
     #[test]
     fn declare_cooperative_is_queryable() {
         let mut host = ThreadingHost::new();
-        host.declare_threading_model(ThreadingModel::Cooperative).unwrap();
+        host.declare_threading_model(ThreadingModel::Cooperative)
+            .unwrap();
         assert!(matches!(
             host.threading_model(),
             Some(&ThreadingModel::Cooperative)
@@ -123,7 +124,8 @@ mod tests {
     #[test]
     fn declare_parallel_required_is_queryable() {
         let mut host = ThreadingHost::new();
-        host.declare_threading_model(ThreadingModel::ParallelRequired).unwrap();
+        host.declare_threading_model(ThreadingModel::ParallelRequired)
+            .unwrap();
         assert!(matches!(
             host.threading_model(),
             Some(&ThreadingModel::ParallelRequired)
@@ -135,7 +137,8 @@ mod tests {
     #[test]
     fn double_declaration_returns_error() {
         let mut host = ThreadingHost::new();
-        host.declare_threading_model(ThreadingModel::Cooperative).unwrap();
+        host.declare_threading_model(ThreadingModel::Cooperative)
+            .unwrap();
 
         let result = host.declare_threading_model(ThreadingModel::Cooperative);
         assert!(result.is_err());
@@ -145,7 +148,8 @@ mod tests {
     #[test]
     fn double_declaration_different_models_returns_error() {
         let mut host = ThreadingHost::new();
-        host.declare_threading_model(ThreadingModel::Cooperative).unwrap();
+        host.declare_threading_model(ThreadingModel::Cooperative)
+            .unwrap();
 
         let result = host.declare_threading_model(ThreadingModel::ParallelRequired);
         assert!(result.is_err());
@@ -214,7 +218,8 @@ mod tests {
     #[test]
     fn double_declaration_preserves_original_model() {
         let mut host = ThreadingHost::new();
-        host.declare_threading_model(ThreadingModel::Cooperative).unwrap();
+        host.declare_threading_model(ThreadingModel::Cooperative)
+            .unwrap();
 
         let _ = host.declare_threading_model(ThreadingModel::ParallelRequired);
         assert!(matches!(

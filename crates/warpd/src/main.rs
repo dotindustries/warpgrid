@@ -1,10 +1,11 @@
 //! warpd — the WarpGrid daemon.
 //!
-//! Single binary that can run in three modes:
+//! Single binary that can run in four modes:
 //!
 //! - **standalone** — all subsystems in one process (single-node, no Raft)
 //! - **control-plane** — Raft consensus + cluster gRPC + REST API
 //! - **agent** — worker node that joins a control-plane cluster
+//! - **cloud** — hosted platform control plane (multi-tenant, auth, billing)
 //!
 //! # Usage
 //!
@@ -12,9 +13,14 @@
 //! warpd standalone --port 8443 --data-dir /var/lib/warpgrid
 //! warpd control-plane --api-port 8443 --grpc-port 50051 --data-dir /var/lib/warpgrid
 //! warpd agent --control-plane 10.0.0.1:50051 --address 10.0.0.2 --port 8443
+//! warpd cloud --api-port 8443 --data-dir /var/lib/warpgrid
 //! ```
 
 mod agent_mode;
+#[allow(dead_code)]
+mod cloud;
+mod cloud_mode;
+mod config;
 mod control_plane;
 
 use std::collections::HashMap;
@@ -83,6 +89,59 @@ enum Command {
         autoscale_interval: u64,
     },
 
+    /// Run as hosted cloud control plane (multi-tenant, auth, provisioning).
+    Cloud {
+        /// Path to config file (searched: ./warpgrid.toml, $data_dir/warpgrid.toml, /etc/warpgrid/).
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+
+        /// HTTP API port.
+        #[arg(long, default_value = "8443")]
+        api_port: u16,
+
+        /// Data directory for persistent state.
+        #[arg(long, default_value = "/var/lib/warpgrid")]
+        data_dir: PathBuf,
+
+        /// Turso database URL for cloud metadata replication.
+        /// When set, cloud.db syncs to/from Turso Cloud for edge replication.
+        /// Format: libsql://your-db.turso.io
+        #[arg(long, env = "TURSO_DATABASE_URL")]
+        turso_url: Option<String>,
+
+        /// Turso auth token for database access.
+        #[arg(long, env = "TURSO_AUTH_TOKEN")]
+        turso_auth_token: Option<String>,
+
+        /// Fly.io API token for machine provisioning.
+        #[arg(long, env = "FLY_API_TOKEN")]
+        fly_api_token: Option<String>,
+
+        /// Tigris S3 bucket for Wasm component registry.
+        #[arg(
+            long,
+            env = "WARPGRID_REGISTRY_BUCKET",
+            default_value = "warpgrid-registry"
+        )]
+        registry_bucket: String,
+
+        /// Comma-separated list of edge regions to provision.
+        #[arg(long, default_value = "iad")]
+        edge_regions: String,
+
+        /// Metrics snapshot interval in seconds.
+        #[arg(long, default_value = "60")]
+        metrics_interval: u64,
+
+        /// PostHog API key for analytics. When not set, analytics are disabled.
+        #[arg(long, env = "POSTHOG_API_KEY")]
+        posthog_api_key: Option<String>,
+
+        /// Stripe secret key for billing. When not set, billing runs in mock mode.
+        #[arg(long, env = "STRIPE_SECRET_KEY")]
+        stripe_secret_key: Option<String>,
+    },
+
     /// Run as an agent node (worker, joins a control-plane cluster).
     Agent {
         /// Address of the control plane's gRPC endpoint (host:port).
@@ -112,6 +171,22 @@ enum Command {
         /// Metrics snapshot interval in seconds.
         #[arg(long, default_value = "60")]
         metrics_interval: u64,
+
+        /// This agent's region identifier (for deployment filtering).
+        #[arg(long, default_value = "iad")]
+        region: String,
+
+        /// Turso database URL for cloud metadata replication.
+        #[arg(long, env = "TURSO_DATABASE_URL")]
+        turso_url: Option<String>,
+
+        /// Turso auth token for database access.
+        #[arg(long, env = "TURSO_AUTH_TOKEN")]
+        turso_auth_token: Option<String>,
+
+        /// Runtime sync interval in seconds (how often to push state to Turso).
+        #[arg(long, default_value = "30")]
+        sync_interval: u64,
     },
 }
 
@@ -132,8 +207,37 @@ async fn main() -> anyhow::Result<()> {
             data_dir,
             metrics_interval,
             autoscale_interval,
+        } => run_standalone(port, data_dir, metrics_interval, autoscale_interval).await,
+        Command::Cloud {
+            config: config_path,
+            api_port,
+            data_dir,
+            turso_url,
+            turso_auth_token,
+            fly_api_token,
+            registry_bucket,
+            edge_regions,
+            metrics_interval,
+            posthog_api_key,
+            stripe_secret_key,
         } => {
-            run_standalone(port, data_dir, metrics_interval, autoscale_interval).await
+            // Load config file (CLI args and env vars take precedence).
+            let cfg = config::WarpGridConfig::load(config_path.as_deref(), Some(&data_dir));
+            let c = &cfg.cloud;
+
+            cloud_mode::run_cloud(
+                config::merge_with_default(api_port, c.api_port, 8443),
+                c.data_dir.clone().unwrap_or(data_dir),
+                config::merge_option(turso_url, c.turso.url.clone()),
+                config::merge_option(turso_auth_token, c.turso.auth_token.clone()),
+                config::merge_option(fly_api_token, c.fly.api_token.clone()),
+                c.registry.bucket.clone().unwrap_or(registry_bucket),
+                c.edge_regions.clone().unwrap_or(edge_regions),
+                config::merge_with_default(metrics_interval, c.metrics_interval, 60),
+                config::merge_option(posthog_api_key, c.posthog.api_key.clone()),
+                config::merge_option(stripe_secret_key, c.stripe.secret_key.clone()),
+            )
+            .await
         }
         Command::ControlPlane {
             api_port,
@@ -161,6 +265,10 @@ async fn main() -> anyhow::Result<()> {
             capacity_memory_bytes,
             capacity_cpu_weight,
             metrics_interval,
+            region,
+            turso_url,
+            turso_auth_token,
+            sync_interval,
         } => {
             agent_mode::run_agent(
                 control_plane,
@@ -170,6 +278,10 @@ async fn main() -> anyhow::Result<()> {
                 capacity_memory_bytes,
                 capacity_cpu_weight,
                 metrics_interval,
+                region,
+                turso_url,
+                turso_auth_token,
+                sync_interval,
             )
             .await
         }
@@ -290,14 +402,13 @@ async fn run_standalone(
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
     // Graceful shutdown on Ctrl-C.
-    let server = axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("failed to install CTRL+C handler");
-            info!("shutdown signal received");
-            let _ = shutdown_tx.send(true);
-        });
+    let server = axum::serve(listener, router).with_graceful_shutdown(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install CTRL+C handler");
+        info!("shutdown signal received");
+        let _ = shutdown_tx.send(true);
+    });
 
     server.await?;
 

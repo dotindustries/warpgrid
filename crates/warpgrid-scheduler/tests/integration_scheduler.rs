@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use warpgrid_placement::placer::PlacementPlan;
 use warpgrid_scheduler::{
-    PlacementMode, RoundRobinBalancer, SchedulePayload, Scheduler,
-    SchedulerError, execute_placement,
+    PlacementMode, RoundRobinBalancer, SchedulePayload, Scheduler, SchedulerError,
+    execute_placement,
 };
 use warpgrid_state::*;
 
@@ -66,9 +66,7 @@ fn make_plan(deployment_id: &str, assignments: Vec<(&str, u32)>) -> PlacementPla
 }
 
 fn make_runtime() -> Arc<warp_runtime::Runtime> {
-    Arc::new(
-        warp_runtime::Runtime::new(warpgrid_host::config::ShimConfig::default()).unwrap(),
-    )
+    Arc::new(warp_runtime::Runtime::new(warpgrid_host::config::ShimConfig::default()).unwrap())
 }
 
 // ── 1. Round-robin load balancer distribution ────────────────────────

@@ -99,7 +99,9 @@ mod tests {
         let snapshots = vec![test_snapshot("default/my-api")];
         let output = render_prometheus(&snapshots);
 
-        assert!(output.contains("warpgrid_requests_per_second{deployment=\"default/my-api\"} 150.50"));
+        assert!(
+            output.contains("warpgrid_requests_per_second{deployment=\"default/my-api\"} 150.50")
+        );
         assert!(output.contains("warpgrid_latency_p50_ms{deployment=\"default/my-api\"} 5.20"));
         assert!(output.contains("warpgrid_latency_p99_ms{deployment=\"default/my-api\"} 45.80"));
         assert!(output.contains("warpgrid_error_rate{deployment=\"default/my-api\"} 0.0120"));
@@ -109,10 +111,7 @@ mod tests {
 
     #[test]
     fn render_multiple_deployments() {
-        let snapshots = vec![
-            test_snapshot("ns1/api"),
-            test_snapshot("ns2/worker"),
-        ];
+        let snapshots = vec![test_snapshot("ns1/api"), test_snapshot("ns2/worker")];
         let output = render_prometheus(&snapshots);
 
         assert!(output.contains("deployment=\"ns1/api\""));

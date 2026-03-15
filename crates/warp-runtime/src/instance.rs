@@ -4,7 +4,7 @@
 //! and provides a typed interface for interacting with the guest.
 
 use wasmtime::component::{Component, Instance};
-use wasmtime::{Engine, StoreLimitsBuilder, Store};
+use wasmtime::{Engine, Store, StoreLimitsBuilder};
 
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 
@@ -134,10 +134,7 @@ impl InstanceFactory {
     /// Create a new instance with the given memory limit.
     ///
     /// The shim configuration is taken from the engine's stored config.
-    pub async fn create_instance(
-        &self,
-        memory_limit: usize,
-    ) -> anyhow::Result<WasmInstance> {
+    pub async fn create_instance(&self, memory_limit: usize) -> anyhow::Result<WasmInstance> {
         WasmInstance::new(&self.engine, &self.module, memory_limit).await
     }
 

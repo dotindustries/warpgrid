@@ -6,7 +6,11 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SourceUri {
     /// OCI registry: oci://registry.example.com/my-api:v1.0.0
-    Oci { registry: String, repository: String, tag: String },
+    Oci {
+        registry: String,
+        repository: String,
+        tag: String,
+    },
     /// HTTPS: https://releases.example.com/my-api.wasm
     Https { url: String },
     /// S3: s3://bucket/path/to/module.wasm
@@ -28,9 +32,9 @@ pub enum SourceError {
 impl SourceUri {
     pub fn parse(uri: &str) -> Result<Self, SourceError> {
         if let Some(rest) = uri.strip_prefix("oci://") {
-            let (repo_path, tag) = rest.rsplit_once(':')
-                .unwrap_or((rest, "latest"));
-            let (registry, repository) = repo_path.split_once('/')
+            let (repo_path, tag) = rest.rsplit_once(':').unwrap_or((rest, "latest"));
+            let (registry, repository) = repo_path
+                .split_once('/')
                 .ok_or_else(|| SourceError::InvalidUri(uri.to_string()))?;
             Ok(SourceUri::Oci {
                 registry: registry.to_string(),
@@ -38,25 +42,31 @@ impl SourceUri {
                 tag: tag.to_string(),
             })
         } else if uri.starts_with("https://") || uri.starts_with("http://") {
-            Ok(SourceUri::Https { url: uri.to_string() })
+            Ok(SourceUri::Https {
+                url: uri.to_string(),
+            })
         } else if let Some(rest) = uri.strip_prefix("s3://") {
-            let (bucket, key) = rest.split_once('/')
+            let (bucket, key) = rest
+                .split_once('/')
                 .ok_or_else(|| SourceError::InvalidUri(uri.to_string()))?;
             Ok(SourceUri::S3 {
                 bucket: bucket.to_string(),
                 key: key.to_string(),
             })
         } else if uri.starts_with("git://") {
-            let (url, reference) = uri.rsplit_once('#')
-                .unwrap_or((uri, "main"));
+            let (url, reference) = uri.rsplit_once('#').unwrap_or((uri, "main"));
             Ok(SourceUri::Git {
                 url: url.to_string(),
                 reference: reference.to_string(),
             })
         } else if let Some(path) = uri.strip_prefix("file://") {
-            Ok(SourceUri::File { path: path.to_string() })
+            Ok(SourceUri::File {
+                path: path.to_string(),
+            })
         } else if uri.starts_with("./") || uri.starts_with('/') || uri.ends_with(".wasm") {
-            Ok(SourceUri::File { path: uri.to_string() })
+            Ok(SourceUri::File {
+                path: uri.to_string(),
+            })
         } else {
             Err(SourceError::UnsupportedScheme(uri.to_string()))
         }

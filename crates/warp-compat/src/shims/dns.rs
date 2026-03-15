@@ -2,6 +2,14 @@
 
 pub struct DnsShim;
 
+impl Default for DnsShim {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DnsShim {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }

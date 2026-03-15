@@ -65,8 +65,8 @@ pub trait AsyncConnectionFactory: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Mock async backend for testing — echoes sent data on recv.
     #[derive(Debug)]

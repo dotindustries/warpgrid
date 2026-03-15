@@ -62,7 +62,8 @@ pub fn analyze(path: &Path, lang_override: Option<&str>) -> Result<AnalysisRepor
     );
 
     Ok(AnalysisReport {
-        project_name: path.file_name()
+        project_name: path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string(),

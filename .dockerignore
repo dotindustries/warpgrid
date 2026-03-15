@@ -1,0 +1,48 @@
+# Build artifacts
+target/
+build/
+node_modules/
+
+# Version control
+.git/
+.gitignore
+
+# Non-Rust directories (not needed for warpd build)
+packages/
+test-apps/
+tests/
+examples/
+demos/
+
+# Documentation and metadata
+docs/
+AGENTS.md
+README.md
+LICENSE
+warpgrid-sdk-plan.md
+wasm-orchestrator-plan.md
+beads-to-github-mapping.json
+
+# IDE and tooling
+.claude/
+.beads/
+.context/
+.codegraph/
+.idea/
+.ralph-tui/
+.tervezo/
+.github/
+.DS_Store
+
+# Infra (avoid copying Dockerfile into its own context)
+infra/
+
+# Vendor and patches (not needed for Rust build)
+vendor/
+patches/
+libc-patches/
+
+# Scripts and task definitions
+scripts/
+tasks/
+test-infra/

@@ -24,6 +24,12 @@ pub struct MockBackend {
     latency: Duration,
 }
 
+impl Default for MockBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockBackend {
     /// Create a mock backend with zero latency.
     pub fn new() -> Self {
@@ -66,6 +72,12 @@ impl ConnectionBackend for MockBackend {
 pub struct MockFactory {
     latency: Duration,
     connect_count: AtomicU64,
+}
+
+impl Default for MockFactory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockFactory {
@@ -111,6 +123,12 @@ impl ConnectionFactory for MockFactory {
 #[derive(Debug)]
 pub struct MockAsyncBackend {
     latency: Duration,
+}
+
+impl Default for MockAsyncBackend {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockAsyncBackend {
@@ -167,6 +185,12 @@ impl AsyncConnectionBackend for MockAsyncBackend {
 pub struct MockAsyncFactory {
     latency: Duration,
     connect_count: AtomicU64,
+}
+
+impl Default for MockAsyncFactory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockAsyncFactory {

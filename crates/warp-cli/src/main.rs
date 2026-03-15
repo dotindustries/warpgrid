@@ -8,7 +8,7 @@ mod templates;
     name = "warp",
     about = "WarpGrid — Wasm-native cluster orchestrator",
     version,
-    propagate_version = true,
+    propagate_version = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -49,12 +49,76 @@ enum Commands {
         #[arg(short, long)]
         path: Option<String>,
     },
-    // Phase 3+:
-    // Deploy { ... },
-    // Status { ... },
-    // Logs { ... },
-    // Scale { ... },
-    // Nodes { ... },
+    /// Login to WarpGrid Cloud or register a new account.
+    Login {
+        /// API key (for existing accounts).
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Email address (to register a new account).
+        #[arg(long)]
+        email: Option<String>,
+        /// Cloud API URL (default: http://localhost:8443).
+        #[arg(long)]
+        api_url: Option<String>,
+    },
+    /// Deploy a Wasm component to WarpGrid Cloud.
+    Deploy {
+        /// Project directory (default: current directory).
+        #[arg(short, long, default_value = ".")]
+        path: String,
+        /// Target region (default: iad).
+        #[arg(short, long)]
+        region: Option<String>,
+        /// Override build language.
+        #[arg(short, long)]
+        lang: Option<String>,
+    },
+    /// Show deployment status.
+    Status,
+    /// Destroy a deployment.
+    Destroy {
+        /// Deployment ID to destroy.
+        deployment_id: String,
+    },
+    /// Show deployment logs.
+    Logs {
+        /// Deployment ID to fetch logs for.
+        deployment_id: String,
+        /// Follow logs (poll every 2 seconds).
+        #[arg(long)]
+        follow: bool,
+    },
+    /// Scale a deployment's instance count.
+    Scale {
+        /// Deployment ID to scale.
+        deployment_id: String,
+        /// Minimum number of instances.
+        #[arg(long)]
+        min: u32,
+        /// Maximum number of instances.
+        #[arg(long)]
+        max: u32,
+    },
+    /// Show WarpGrid Cloud platform status.
+    Ping {
+        /// Cloud API URL (overrides config).
+        #[arg(long)]
+        api_url: Option<String>,
+    },
+    /// Manage custom domains.
+    Domains {
+        #[command(subcommand)]
+        action: DomainsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DomainsAction {
+    /// Verify DNS configuration for a custom domain.
+    Verify {
+        /// The domain to verify (e.g. app.example.com).
+        domain: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -82,8 +146,7 @@ enum ConvertAction {
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("warp=info".parse()?)
+            tracing_subscriber::EnvFilter::from_default_env().add_directive("warp=info".parse()?),
         )
         .init();
 
@@ -98,15 +161,32 @@ fn main() -> anyhow::Result<()> {
                 }
                 Ok(())
             }
-            ConvertAction::Init { path } => {
-                commands::convert::init(&path)
-            }
+            ConvertAction::Init { path } => commands::convert::init(&path),
         },
-        Commands::Pack { path, lang } => {
-            commands::pack::pack(&path, lang.as_deref())
+        Commands::Pack { path, lang } => commands::pack::pack(&path, lang.as_deref()),
+        Commands::Init { template, path } => commands::init::init(&template, path.as_deref()),
+        Commands::Login {
+            api_key,
+            email,
+            api_url,
+        } => commands::cloud::login(api_key.as_deref(), api_url.as_deref(), email.as_deref()),
+        Commands::Deploy { path, region, lang } => {
+            commands::cloud::deploy(&path, region.as_deref(), lang.as_deref())
         }
-        Commands::Init { template, path } => {
-            commands::init::init(&template, path.as_deref())
-        }
+        Commands::Status => commands::cloud::status(),
+        Commands::Destroy { deployment_id } => commands::cloud::destroy(&deployment_id),
+        Commands::Logs {
+            deployment_id,
+            follow,
+        } => commands::cloud::logs(&deployment_id, follow),
+        Commands::Scale {
+            deployment_id,
+            min,
+            max,
+        } => commands::cloud::scale(&deployment_id, min, max),
+        Commands::Ping { api_url } => commands::cloud::platform_status(api_url.as_deref()),
+        Commands::Domains { action } => match action {
+            DomainsAction::Verify { domain } => commands::cloud::domains_verify(&domain),
+        },
     }
 }

@@ -107,11 +107,7 @@ impl Runtime {
     }
 
     /// Create an instance pool for a compiled module.
-    pub fn create_pool(
-        &self,
-        module: CompiledModule,
-        pool_config: PoolConfig,
-    ) -> InstancePool {
+    pub fn create_pool(&self, module: CompiledModule, pool_config: PoolConfig) -> InstancePool {
         let factory = InstanceFactory::new(self.engine.clone(), module);
         InstancePool::new(factory, pool_config)
     }

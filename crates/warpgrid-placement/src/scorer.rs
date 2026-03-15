@@ -22,11 +22,13 @@ pub struct NodeResources {
 
 impl NodeResources {
     pub fn free_memory(&self) -> u64 {
-        self.capacity_memory_bytes.saturating_sub(self.used_memory_bytes)
+        self.capacity_memory_bytes
+            .saturating_sub(self.used_memory_bytes)
     }
 
     pub fn free_cpu(&self) -> u32 {
-        self.capacity_cpu_weight.saturating_sub(self.used_cpu_weight)
+        self.capacity_cpu_weight
+            .saturating_sub(self.used_cpu_weight)
     }
 }
 
@@ -129,7 +131,8 @@ pub fn score_node(
 
     // Bin-packing score: how full will the node be after placement?
     // Higher = more packed = better for bin-packing strategy.
-    let projected_memory = node.used_memory_bytes + req.memory_bytes * u64::from(instances_to_place);
+    let projected_memory =
+        node.used_memory_bytes + req.memory_bytes * u64::from(instances_to_place);
     let bin_packing = if node.capacity_memory_bytes > 0 {
         (projected_memory as f64 / node.capacity_memory_bytes as f64).min(1.0) * 100.0
     } else {
@@ -157,9 +160,8 @@ pub fn score_node(
     };
     let balance = (1.0 - (node_util - cluster_avg_utilization).abs()).max(0.0) * 100.0;
 
-    let score = weights.bin_packing * bin_packing
-        + weights.affinity * affinity
-        + weights.balance * balance;
+    let score =
+        weights.bin_packing * bin_packing + weights.affinity * affinity + weights.balance * balance;
 
     Some(NodeScore {
         node_id: node.node_id.clone(),
@@ -201,7 +203,11 @@ pub fn rank_nodes(
         .collect();
 
     // Sort descending by score.
-    scores.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scores.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scores
 }
 
@@ -209,7 +215,13 @@ pub fn rank_nodes(
 mod tests {
     use super::*;
 
-    fn make_node(id: &str, cap_mem: u64, used_mem: u64, cap_cpu: u32, used_cpu: u32) -> NodeResources {
+    fn make_node(
+        id: &str,
+        cap_mem: u64,
+        used_mem: u64,
+        cap_cpu: u32,
+        used_cpu: u32,
+    ) -> NodeResources {
         NodeResources {
             node_id: id.to_string(),
             labels: HashMap::new(),
@@ -256,7 +268,8 @@ mod tests {
     fn rejects_missing_required_label() {
         let node = make_node("n1", 1024, 0, 100, 0);
         let mut req = default_req(128, 10);
-        req.required_labels.insert("region".to_string(), "us-east".to_string());
+        req.required_labels
+            .insert("region".to_string(), "us-east".to_string());
         let weights = ScoringWeights::default();
 
         assert!(score_node(&node, &req, &weights, 0.5).is_none());
@@ -265,9 +278,11 @@ mod tests {
     #[test]
     fn accepts_node_with_matching_label() {
         let mut node = make_node("n1", 1024, 0, 100, 0);
-        node.labels.insert("region".to_string(), "us-east".to_string());
+        node.labels
+            .insert("region".to_string(), "us-east".to_string());
         let mut req = default_req(128, 10);
-        req.required_labels.insert("region".to_string(), "us-east".to_string());
+        req.required_labels
+            .insert("region".to_string(), "us-east".to_string());
         let weights = ScoringWeights::default();
 
         let result = score_node(&node, &req, &weights, 0.5);
@@ -291,7 +306,8 @@ mod tests {
         assert!(
             s1.score > s2.score,
             "nearly full ({}) should score higher than mostly empty ({}) for bin-packing",
-            s1.score, s2.score
+            s1.score,
+            s2.score
         );
     }
 
@@ -303,7 +319,8 @@ mod tests {
         let unlabeled = make_node("n2", 1024, 0, 100, 0);
 
         let mut req = default_req(128, 10);
-        req.preferred_labels.insert("gpu".to_string(), "true".to_string());
+        req.preferred_labels
+            .insert("gpu".to_string(), "true".to_string());
 
         let weights = ScoringWeights {
             bin_packing: 0.0,
@@ -320,9 +337,9 @@ mod tests {
     #[test]
     fn rank_nodes_returns_sorted() {
         let nodes = vec![
-            make_node("n1", 1024, 100, 100, 0),  // Less full.
-            make_node("n2", 1024, 800, 100, 0),  // More full — scores higher for bin-packing.
-            make_node("n3", 1024, 500, 100, 0),  // Middle.
+            make_node("n1", 1024, 100, 100, 0), // Less full.
+            make_node("n2", 1024, 800, 100, 0), // More full — scores higher for bin-packing.
+            make_node("n3", 1024, 500, 100, 0), // Middle.
         ];
         let req = default_req(128, 10);
         let weights = ScoringWeights {

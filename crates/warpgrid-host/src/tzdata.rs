@@ -156,6 +156,7 @@ fn generate_transitions(dst: &DstSpec) -> Vec<(i64, u8)> {
 }
 
 /// Write a 44-byte TZif header.
+#[allow(clippy::too_many_arguments)]
 fn write_header(
     out: &mut Vec<u8>,
     version: u8,
@@ -499,10 +500,7 @@ mod tests {
     }
 
     /// Parse v2 header starting at a given offset, return header counts and offset past header.
-    fn parse_v2_header(
-        data: &[u8],
-        offset: usize,
-    ) -> ((u32, u32, u32, u32, u32, u32), usize) {
+    fn parse_v2_header(data: &[u8], offset: usize) -> ((u32, u32, u32, u32, u32, u32), usize) {
         assert!(
             data.len() >= offset + 44,
             "data too short for v2 header at offset {offset}"
@@ -685,12 +683,18 @@ mod tests {
             if ts == expected_ts {
                 // Check the type index for this transition.
                 let idx_offset = v2_data + (v2_timecnt as usize) * 8 + i;
-                assert_eq!(data[idx_offset], 1, "spring forward should switch to DST (type 1)");
+                assert_eq!(
+                    data[idx_offset], 1,
+                    "spring forward should switch to DST (type 1)"
+                );
                 found = true;
                 break;
             }
         }
-        assert!(found, "2024 spring forward timestamp not found in transitions");
+        assert!(
+            found,
+            "2024 spring forward timestamp not found in transitions"
+        );
     }
 
     #[test]
@@ -711,7 +715,10 @@ mod tests {
             let ts = read_be_i64(&data, v2_data + i * 8);
             if ts == expected_ts {
                 let idx_offset = v2_data + (v2_timecnt as usize) * 8 + i;
-                assert_eq!(data[idx_offset], 0, "fall back should switch to STD (type 0)");
+                assert_eq!(
+                    data[idx_offset], 0,
+                    "fall back should switch to STD (type 0)"
+                );
                 found = true;
                 break;
             }
@@ -806,12 +813,18 @@ mod tests {
             let ts = read_be_i64(&data, v2_data + i * 8);
             if ts == expected_ts {
                 let idx_offset = v2_data + (v2_timecnt as usize) * 8 + i;
-                assert_eq!(data[idx_offset], 1, "BST start should switch to DST (type 1)");
+                assert_eq!(
+                    data[idx_offset], 1,
+                    "BST start should switch to DST (type 1)"
+                );
                 found = true;
                 break;
             }
         }
-        assert!(found, "2024 BST start timestamp ({expected_ts}) not found in transitions");
+        assert!(
+            found,
+            "2024 BST start timestamp ({expected_ts}) not found in transitions"
+        );
     }
 
     #[test]
@@ -836,7 +849,10 @@ mod tests {
                 break;
             }
         }
-        assert!(found, "2024 BST end timestamp ({expected_ts}) not found in transitions");
+        assert!(
+            found,
+            "2024 BST end timestamp ({expected_ts}) not found in transitions"
+        );
     }
 
     // ── Asia/Tokyo ──────────────────────────────────────────────────────

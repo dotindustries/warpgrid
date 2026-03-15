@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion,
+    BenchmarkGroup, BenchmarkId, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
 
 use warpgrid_host::db_proxy::bench_utils::{MockAsyncFactory, MockFactory};
