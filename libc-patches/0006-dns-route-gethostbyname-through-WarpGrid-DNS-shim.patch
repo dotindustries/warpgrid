@@ -15,6 +15,10 @@ is stored in static buffers, consistent with the thread-unsafe POSIX API
 contract (acceptable in WASI's single-threaded model).
 
 US-204 (part 1 of 2)
+
+WarpGrid-Domain: dns
+WarpGrid-Deps: 0001
+WarpGrid-WIT: warpgrid:shim/dns
 ---
  libc-bottom-half/sources/netdb.c | 57 +++++++++++++++++++++++++++++++-
  1 file changed, 56 insertions(+), 1 deletion(-)

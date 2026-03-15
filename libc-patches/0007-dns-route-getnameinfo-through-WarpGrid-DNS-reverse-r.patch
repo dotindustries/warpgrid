@@ -21,6 +21,10 @@ Handles AF_INET and AF_INET6, validates socklen, returns EAI_FAMILY for
 unsupported families, and EAI_OVERFLOW for buffer too small.
 
 US-204 (part 2 of 2)
+
+WarpGrid-Domain: dns
+WarpGrid-Deps: 0001
+WarpGrid-WIT: warpgrid:shim/dns
 ---
  libc-bottom-half/sources/netdb.c             | 97 +++++++++++++++++++-
  libc-bottom-half/sources/warpgrid_dns_shim.c | 47 ++++++++--

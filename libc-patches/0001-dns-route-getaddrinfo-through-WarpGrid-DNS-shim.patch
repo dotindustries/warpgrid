@@ -21,6 +21,10 @@ falling back to the standard WASI ip_name_lookup resolver.
 - Add warpgrid_dns_shim.c to CMakeLists.txt wasip2 build sources.
 
 WarpGrid-SDK US-203
+
+WarpGrid-Domain: dns
+WarpGrid-Deps: none
+WarpGrid-WIT: warpgrid:shim/dns
 ---
  libc-bottom-half/CMakeLists.txt              |   1 +
  libc-bottom-half/sources/netdb.c             | 182 +++++++++++++++++++

@@ -27,6 +27,10 @@ Infrastructure for US-210/US-211:
   - __warpgrid_proxy_fd_remove(fd) — removes tracking (for close)
 
 Part of US-209: Patch connect() to route database proxy connections.
+
+WarpGrid-Domain: socket
+WarpGrid-Deps: 0001,0002
+WarpGrid-WIT: warpgrid:shim/database-proxy.connect
 ---
  libc-bottom-half/CMakeLists.txt               |   1 +
  libc-bottom-half/sources/connect.c            |  14 +

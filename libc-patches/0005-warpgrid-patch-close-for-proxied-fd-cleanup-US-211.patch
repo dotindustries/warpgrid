@@ -18,6 +18,10 @@ Add database-proxy.close() interception for proxied file descriptors:
 Close ordering: proxy check → virtual fd check → WASI close.
 Proxied fds don't short-circuit because the underlying WASI socket
 fd (from socket()) still needs to be reclaimed by descriptor_table_remove().
+
+WarpGrid-Domain: socket
+WarpGrid-Deps: 0004
+WarpGrid-WIT: warpgrid:shim/database-proxy.close
 ---
  .../sources/__wasilibc_fd_renumber.c          | 12 +++++
  .../sources/warpgrid_socket_shim.c            | 45 ++++++++++++++++++-
