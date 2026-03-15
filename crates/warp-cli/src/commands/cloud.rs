@@ -1,4 +1,4 @@
-//! Cloud CLI commands — login, deploy, status, logs, destroy.
+//! Cloud CLI commands — login, deploy, status, logs, scale, destroy.
 //!
 //! All commands communicate with the WarpGrid cloud control plane
 //! via its REST API. Credentials are stored in ~/.warpgrid/config.toml.
@@ -6,6 +6,7 @@
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 
 // ── Config ──────────────────────────────────────────────────────
 
@@ -97,6 +98,15 @@ struct StatusData {
     status: String,
     version: String,
     mode: String,
+}
+
+#[derive(Deserialize)]
+struct LogEntryResponse {
+    timestamp: i64,
+    #[allow(dead_code)]
+    deployment_id: String,
+    level: String,
+    message: String,
 }
 
 // ── Commands ────────────────────────────────────────────────────
@@ -333,6 +343,112 @@ pub fn platform_status(api_url_override: Option<&str>) -> anyhow::Result<()> {
         }
     } else {
         bail!("Failed: {}", body.error.unwrap_or_default());
+    }
+
+    Ok(())
+}
+
+/// Format a unix timestamp as a human-readable datetime string.
+fn format_timestamp(ts: i64) -> String {
+    let secs = ts as u64;
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+    let s = secs % 60;
+    format!("{:02}:{:02}:{:02}", hours, mins, s)
+}
+
+/// Fetch and display deployment logs.
+pub fn logs(deployment_id: &str, follow: bool) -> anyhow::Result<()> {
+    let config = CloudConfig::load()?;
+    let api_key = config.require_api_key()?;
+
+    let client = reqwest::blocking::Client::new();
+    let url = format!(
+        "{}/api/v1/cloud/logs/{}",
+        config.api_url(),
+        deployment_id
+    );
+
+    let fetch_and_print = |seen: &mut HashSet<i64>| -> anyhow::Result<()> {
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .send()
+            .context("Failed to connect to WarpGrid cloud")?;
+
+        let body: ApiResponse<Vec<LogEntryResponse>> = resp.json()?;
+
+        if let Some(entries) = body.data {
+            for entry in &entries {
+                if seen.insert(entry.timestamp) {
+                    println!(
+                        "[{}] [{}] {}",
+                        format_timestamp(entry.timestamp),
+                        entry.level.to_uppercase(),
+                        entry.message
+                    );
+                }
+            }
+        } else if let Some(err) = body.error {
+            bail!("Failed to fetch logs: {}", err);
+        }
+
+        Ok(())
+    };
+
+    let mut seen = HashSet::new();
+    fetch_and_print(&mut seen)?;
+
+    if follow {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            fetch_and_print(&mut seen)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Scale a deployment's instance count.
+pub fn scale(deployment_id: &str, min: u32, max: u32) -> anyhow::Result<()> {
+    let config = CloudConfig::load()?;
+    let api_key = config.require_api_key()?;
+
+    if min > max {
+        bail!("--min ({}) cannot be greater than --max ({})", min, max);
+    }
+
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .put(format!(
+            "{}/api/v1/cloud/deploy/{}/scale",
+            config.api_url(),
+            deployment_id
+        ))
+        .header("Authorization", format!("Bearer {api_key}"))
+        .json(&serde_json::json!({ "min": min, "max": max }))
+        .send()
+        .context("Failed to connect to WarpGrid cloud")?;
+
+    if resp.status().is_success() {
+        let body: ApiResponse<serde_json::Value> = resp.json()?;
+        if let Some(data) = body.data {
+            let instances = data.get("instances").cloned().unwrap_or_default();
+            println!("Deployment '{}' scaled.", deployment_id);
+            println!(
+                "  Instances: min={}, max={}",
+                instances.get("min").and_then(|v| v.as_u64()).unwrap_or(0),
+                instances.get("max").and_then(|v| v.as_u64()).unwrap_or(0),
+            );
+        } else {
+            println!("Deployment '{}' scaled.", deployment_id);
+        }
+    } else {
+        let body: ApiResponse<()> = resp.json()?;
+        bail!(
+            "Scale failed: {}",
+            body.error.unwrap_or_else(|| "Unknown error".to_string())
+        );
     }
 
     Ok(())

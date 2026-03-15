@@ -6,10 +6,12 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use super::analytics::{AnalyticsService, EVENT_USER_REGISTERED};
 use super::auth::{AuthStore, User};
@@ -19,6 +21,35 @@ use super::registry::WasmRegistry;
 use super::teams::{TeamRole, TeamStore};
 use super::tenants;
 use super::usage::UsageTracker;
+
+/// Maximum number of log entries to keep in the ring buffer.
+const LOG_BUFFER_MAX: usize = 1000;
+
+/// A single log entry in the in-memory ring buffer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub timestamp: i64,
+    pub deployment_id: String,
+    pub level: String,
+    pub message: String,
+}
+
+/// In-memory ring buffer for deployment logs.
+pub type LogBuffer = Arc<RwLock<VecDeque<LogEntry>>>;
+
+/// Create a new empty log buffer.
+pub fn new_log_buffer() -> LogBuffer {
+    Arc::new(RwLock::new(VecDeque::with_capacity(LOG_BUFFER_MAX)))
+}
+
+/// Push a log entry into the buffer, evicting oldest if at capacity.
+pub async fn push_log(buffer: &LogBuffer, entry: LogEntry) {
+    let mut buf = buffer.write().await;
+    if buf.len() >= LOG_BUFFER_MAX {
+        buf.pop_front();
+    }
+    buf.push_back(entry);
+}
 
 /// Shared state for cloud API routes.
 #[derive(Clone)]
@@ -32,6 +63,7 @@ pub struct CloudState {
     pub domains: DomainStore,
     pub billing: BillingService,
     pub usage: UsageTracker,
+    pub logs: LogBuffer,
 }
 
 /// Build the cloud API router with all routes.
@@ -59,6 +91,10 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
             "/api/v1/cloud/domains/{domain}",
             delete(remove_domain),
         )
+        // Logs route
+        .route("/api/v1/cloud/logs/{deployment_id}", get(get_logs))
+        // Scale route
+        .route("/api/v1/cloud/deploy/{id}/scale", put(scale_deployment))
         // Billing routes
         .route("/api/v1/cloud/billing/plan", get(billing_plan))
         .route("/api/v1/cloud/billing/usage", get(billing_usage))
@@ -435,6 +471,14 @@ async fn upload_and_deploy(
         }),
     );
 
+    // Push log entry.
+    push_log(&state.logs, LogEntry {
+        timestamp: now,
+        deployment_id: deployment_id.clone(),
+        level: "info".to_string(),
+        message: format!("Deployment created: {} (region={}, size={} bytes)", name, region, wasm_size),
+    }).await;
+
     (
         StatusCode::CREATED,
         CloudResponse::ok(serde_json::json!({
@@ -486,6 +530,18 @@ async fn delete_deployment(
         serde_json::json!({ "deployment_id": id }),
     );
 
+    // Push log entry.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    push_log(&state.logs, LogEntry {
+        timestamp: now,
+        deployment_id: id.clone(),
+        level: "info".to_string(),
+        message: format!("Deployment deleted: {}", id),
+    }).await;
+
     match deleted {
         Ok(affected) if affected > 0 => CloudResponse::ok("Deployment deleted").into_response(),
         Ok(_) => error_response(StatusCode::NOT_FOUND, "Deployment not found").into_response(),
@@ -503,6 +559,152 @@ async fn platform_status() -> impl IntoResponse {
         "version": env!("CARGO_PKG_VERSION"),
         "mode": "cloud",
     }))
+}
+
+// ── Logs handler ────────────────────────────────────────────────
+
+async fn get_logs(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path(deployment_id): Path<String>,
+) -> impl IntoResponse {
+    let _user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    let buf = state.logs.read().await;
+    let entries: Vec<&LogEntry> = buf
+        .iter()
+        .filter(|e| e.deployment_id == deployment_id)
+        .rev()
+        .take(50)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    CloudResponse::ok(entries).into_response()
+}
+
+// ── Scale handler ───────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ScaleRequest {
+    min: u32,
+    max: u32,
+}
+
+async fn scale_deployment(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<ScaleRequest>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    if body.min > body.max {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "min cannot be greater than max",
+        )
+        .into_response();
+    }
+
+    // Verify the deployment belongs to this user's namespace.
+    if let Some((ns, _)) = tenants::extract_namespace(&id) {
+        if ns != user.namespace {
+            return error_response(StatusCode::FORBIDDEN, "Not your deployment").into_response();
+        }
+    }
+
+    // Update spec_json in cloud_deployments table.
+    let row_result = state.cloud_db.query(
+        "SELECT spec_json FROM cloud_deployments WHERE id = ? AND namespace = ?",
+        libsql::params![id.clone(), user.namespace.clone()],
+    ).await;
+
+    let spec_json = match row_result {
+        Ok(mut rows) => match rows.next().await {
+            Ok(Some(row)) => row.get::<String>(0).unwrap_or_default(),
+            _ => {
+                return error_response(StatusCode::NOT_FOUND, "Deployment not found").into_response();
+            }
+        },
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Failed to read deployment: {e}"),
+            )
+            .into_response();
+        }
+    };
+
+    // Parse and update the spec JSON.
+    let mut spec: serde_json::Value = match serde_json::from_str(&spec_json) {
+        Ok(v) => v,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Failed to parse spec: {e}"),
+            )
+            .into_response();
+        }
+    };
+
+    spec["instances"]["min"] = serde_json::json!(body.min);
+    spec["instances"]["max"] = serde_json::json!(body.max);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let update_result = state.cloud_db.execute(
+        "UPDATE cloud_deployments SET spec_json = ?, updated_at = ? WHERE id = ? AND namespace = ?",
+        libsql::params![spec.to_string(), now, id.clone(), user.namespace.clone()],
+    ).await;
+
+    if let Err(e) = update_result {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to update deployment: {e}"),
+        )
+        .into_response();
+    }
+
+    // Also update the redb state store.
+    if let Ok(Some(mut redb_spec)) = state.state_store.get_deployment(&id) {
+        redb_spec = warpgrid_state::DeploymentSpec {
+            instances: warpgrid_state::InstanceConstraints {
+                min: body.min,
+                max: body.max,
+            },
+            updated_at: now as u64,
+            ..redb_spec
+        };
+        let _ = state.state_store.put_deployment(&redb_spec);
+    }
+
+    // Track analytics.
+    state.analytics.track(
+        &user.id,
+        super::analytics::EVENT_DEPLOYMENT_SCALED,
+        serde_json::json!({
+            "deployment_id": id,
+            "min": body.min,
+            "max": body.max,
+        }),
+    );
+
+    CloudResponse::ok(serde_json::json!({
+        "deployment_id": id,
+        "instances": { "min": body.min, "max": body.max },
+    }))
+    .into_response()
 }
 
 // ── Team request/response types ─────────────────────────────────

@@ -80,6 +80,25 @@ enum Commands {
         /// Deployment ID to destroy.
         deployment_id: String,
     },
+    /// Show deployment logs.
+    Logs {
+        /// Deployment ID to fetch logs for.
+        deployment_id: String,
+        /// Follow logs (poll every 2 seconds).
+        #[arg(long)]
+        follow: bool,
+    },
+    /// Scale a deployment's instance count.
+    Scale {
+        /// Deployment ID to scale.
+        deployment_id: String,
+        /// Minimum number of instances.
+        #[arg(long)]
+        min: u32,
+        /// Maximum number of instances.
+        #[arg(long)]
+        max: u32,
+    },
     /// Show WarpGrid Cloud platform status.
     Ping {
         /// Cloud API URL (overrides config).
@@ -154,6 +173,12 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Destroy { deployment_id } => {
             commands::cloud::destroy(&deployment_id)
+        }
+        Commands::Logs { deployment_id, follow } => {
+            commands::cloud::logs(&deployment_id, follow)
+        }
+        Commands::Scale { deployment_id, min, max } => {
+            commands::cloud::scale(&deployment_id, min, max)
         }
         Commands::Ping { api_url } => {
             commands::cloud::platform_status(api_url.as_deref())

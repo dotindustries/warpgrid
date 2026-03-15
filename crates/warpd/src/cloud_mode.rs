@@ -180,6 +180,7 @@ pub async fn run_cloud(
         domains: DomainStore::with_libsql(cloud_conn.clone()),
         billing,
         usage,
+        logs: crate::cloud::routes::new_log_buffer(),
     };
     let console_routes = console_router(cloud_state.clone());
     let cloud_routes = cloud_router(cloud_state);
