@@ -1,5 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import { WarpGridError, WarpGridDatabaseError } from "../src/errors.ts";
+import {
+  WarpGridError,
+  WarpGridDatabaseError,
+  WarpGridHandlerValidationError,
+} from "../src/errors.ts";
 
 describe("WarpGridError", () => {
   test("is an instance of Error", () => {
@@ -55,5 +59,24 @@ describe("WarpGridDatabaseError", () => {
       cause: "string cause",
     });
     expect(err.cause).toBe("string cause");
+  });
+});
+
+describe("WarpGridHandlerValidationError", () => {
+  test("is an instance of WarpGridError and Error", () => {
+    const err = new WarpGridHandlerValidationError("bad handler");
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(WarpGridError);
+    expect(err).toBeInstanceOf(WarpGridHandlerValidationError);
+  });
+
+  test("has correct name", () => {
+    const err = new WarpGridHandlerValidationError("bad handler");
+    expect(err.name).toBe("WarpGridHandlerValidationError");
+  });
+
+  test("stores message", () => {
+    const err = new WarpGridHandlerValidationError("missing fetch method");
+    expect(err.message).toBe("missing fetch method");
   });
 });
