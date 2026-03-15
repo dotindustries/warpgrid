@@ -24,6 +24,12 @@ pub struct MockBackend {
     latency: Duration,
 }
 
+impl Default for MockBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockBackend {
     /// Create a mock backend with zero latency.
     pub fn new() -> Self {

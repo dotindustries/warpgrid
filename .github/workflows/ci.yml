@@ -27,6 +27,24 @@ jobs:
       - name: Test
         run: cargo test --all
 
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: useblacksmith/setup-docker-builder@v1
+      - name: Build Docker image
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          file: infra/Dockerfile
+          push: false
+          tags: warpgrid:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify binary works
+        run: docker run --rm warpgrid:ci --help
+
   wasi-libc:
     name: Build & Test wasi-libc
     runs-on: blacksmith-4vcpu-ubuntu-2404
