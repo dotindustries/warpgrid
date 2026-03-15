@@ -7,9 +7,9 @@
 //! Additional routes (`/benchmarks`, `/pricing`) serve inline pages
 //! for content not yet in the main landing page.
 
+use axum::Router;
 use axum::response::Html;
 use axum::routing::get;
-use axum::Router;
 
 /// The main landing page HTML — embedded from `landing/index.html` at compile time.
 const LANDING_HTML: &str = include_str!("../../../../landing/index.html");
