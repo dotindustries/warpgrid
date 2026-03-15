@@ -6,15 +6,18 @@
 #   1. --help flag prints usage and exits 0
 #   2. --dry-run prints execution plan without running anything
 #   3. --only filters to specified test apps
-#   4. --dry-run with --only shows only selected apps
-#   5. Missing test apps are reported as SKIP in dry-run
-#   6. test-results/ directory is created when running
-#   7. Build failure causes dependent test to be SKIP (not errored)
+#   4. --only with comma-separated list includes all specified apps
+#   5. Apps without test.sh are reported appropriately in dry-run
+#   6. --dry-run does NOT create test-results/ directory
+#   7. Unknown flag produces error and exits non-zero
 #   8. --verbose flag accepted without error
 #   9. --keep-deps flag accepted without error
-#  10. Unknown flag produces error and exits non-zero
-#  11. Summary table includes all test app columns
-#  12. Timestamped log files are created per test app
+#  10. Dry-run plan includes structured output (plan header)
+#  11. Dry-run shows prerequisite information
+#  12. Real execution creates test-results/ with timestamped log files
+#  13. Build failure causes dependent test to be SKIP (not errored)
+#  14. Summary table includes APP, STATUS, DETAILS columns and totals
+#  15. --only=value equals-sign syntax works like --only value
 #
 # Usage:
 #   ./test-all.test.sh          Run all tests
@@ -287,6 +290,95 @@ if ! ${QUICK}; then
     fi
 else
     skip "Execution test (--quick mode)"
+fi
+
+# ── Test 13: Build failure causes dependent test to be SKIP ──────────
+
+log "Test 13: Build failure causes dependent test to be SKIP"
+
+# Create a fake test app with a failing build.sh and a test.sh
+FAKE_APP_DIR="${PROJECT_ROOT}/test-apps/t99-fake-build-fail"
+mkdir -p "${FAKE_APP_DIR}"
+cat > "${FAKE_APP_DIR}/build.sh" <<'BUILDEOF'
+#!/usr/bin/env bash
+echo "Intentional build failure"
+exit 1
+BUILDEOF
+chmod +x "${FAKE_APP_DIR}/build.sh"
+
+cat > "${FAKE_APP_DIR}/test.sh" <<'TESTEOF'
+#!/usr/bin/env bash
+echo "This should not run"
+exit 0
+TESTEOF
+chmod +x "${FAKE_APP_DIR}/test.sh"
+
+OUTPUT=$("${TEST_ALL}" --only t99 2>&1) || true
+
+# Clean up fake app immediately
+rm -rf "${FAKE_APP_DIR}"
+rm -rf "${PROJECT_ROOT}/test-results" 2>/dev/null || true
+
+if echo "${OUTPUT}" | grep -q "SKIP"; then
+    if echo "${OUTPUT}" | grep -qi "build failed"; then
+        pass "Build failure causes dependent test to be SKIP with 'build failed' detail"
+    else
+        pass "Build failure causes dependent test to be SKIP"
+    fi
+else
+    fail "Build failure did not produce SKIP status. Output: ${OUTPUT}"
+fi
+
+# ── Test 14: Summary table format ────────────────────────────────────
+
+log "Test 14: Summary table includes APP, STATUS, DETAILS columns and totals"
+
+# Re-create fake app for a quick run that produces a summary
+FAKE_APP_DIR="${PROJECT_ROOT}/test-apps/t98-fake-summary"
+mkdir -p "${FAKE_APP_DIR}"
+cat > "${FAKE_APP_DIR}/test.sh" <<'TESTEOF'
+#!/usr/bin/env bash
+echo "ok"
+exit 0
+TESTEOF
+chmod +x "${FAKE_APP_DIR}/test.sh"
+
+OUTPUT=$("${TEST_ALL}" --only t98 2>&1) || true
+
+# Clean up
+rm -rf "${FAKE_APP_DIR}"
+rm -rf "${PROJECT_ROOT}/test-results" 2>/dev/null || true
+
+HAS_APP=$(echo "${OUTPUT}" | grep -c "APP" || true)
+HAS_STATUS=$(echo "${OUTPUT}" | grep -c "STATUS" || true)
+HAS_DETAILS=$(echo "${OUTPUT}" | grep -c "DETAILS" || true)
+HAS_TOTAL=$(echo "${OUTPUT}" | grep -cE "Total:.*passed.*failed.*skipped" || true)
+
+if [ "${HAS_APP}" -gt 0 ] && [ "${HAS_STATUS}" -gt 0 ] && [ "${HAS_DETAILS}" -gt 0 ] && [ "${HAS_TOTAL}" -gt 0 ]; then
+    pass "Summary table has APP, STATUS, DETAILS columns and totals line"
+else
+    fail "Summary table missing expected columns or totals. Output: ${OUTPUT}"
+fi
+
+# ── Test 15: --only=value equals-sign syntax ─────────────────────────
+
+log "Test 15: --only=value equals-sign syntax"
+
+OUTPUT=$("${TEST_ALL}" --dry-run --only=t3 2>&1) || true
+EXIT_CODE=$?
+
+if [ ${EXIT_CODE} -eq 0 ]; then
+    if echo "${OUTPUT}" | grep -q "t3"; then
+        if echo "${OUTPUT}" | grep -q "RUN.*t4"; then
+            fail "--only=t3 still shows t4 in RUN plan"
+        else
+            pass "--only=t3 (equals syntax) shows t3 and excludes others"
+        fi
+    else
+        fail "--only=t3 (equals syntax) output does not mention t3. Output: ${OUTPUT}"
+    fi
+else
+    fail "--only=t3 (equals syntax) exited with code ${EXIT_CODE}"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

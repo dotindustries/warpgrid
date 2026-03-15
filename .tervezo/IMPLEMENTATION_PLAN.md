@@ -1,8 +1,10 @@
-# Implementation Plan: US-602 — Define and validate WarpGridHandler Bun interface
+# Implementation Plan: US-708 test-all.sh orchestration script
 
 ## Task List
 
-- [x] **Write `validateHandler()` runtime tests** — Created `packages/warpgrid-bun-sdk/tests/validate-handler.test.ts` (14 tests)
-- [x] **Add `WarpGridHandlerValidationError` tests to `errors.test.ts`** (3 tests)
-- [x] **Run `bun test` and `bun run typecheck` to verify all tests pass** — 184 tests pass, typecheck clean
-- [x] **Create PR referencing issue #71** — PR #122
+- [x] **Fix test header/numbering mismatch in `test-all.test.sh`** — Updated header to match actual test implementations
+- [x] **Add Test: Build failure causes dependent test to be SKIP** — Test 13 verifies SKIP status when build fails
+- [x] **Add Test: Summary table format** — Test 14 verifies APP, STATUS, DETAILS columns and totals
+- [x] **Add Test: `--only=value` equals-sign syntax** — Test 15 verifies equals-sign variant works
+- [x] **Run full test suite and verify all tests pass** — 14 passed, 0 failed, 1 skipped (quick mode)
+- [ ] **Create PR referencing issue #92** — Push branch and create PR with "Closes #92"
