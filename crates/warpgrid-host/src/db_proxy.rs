@@ -15,6 +15,8 @@
 //! ```
 
 pub mod async_io;
+#[cfg(feature = "bench")]
+pub mod bench_utils;
 pub mod host;
 pub mod mysql;
 pub mod redis;
