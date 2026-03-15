@@ -18,3 +18,4 @@ __pycache__/
 docs/GTM-BETA-LAUNCH-PLAN.md
 docs/IMPLEMENTATION-PLAN-PHASE2.md
 warpgrid.toml
+tests/fixtures/rust-sqlx-postgres-guest/target/
