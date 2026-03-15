@@ -1,0 +1,12 @@
+[package]
+name = "bun-postgres-handler"
+version = "0.1.0"
+description = "Bun Postgres handler fixture for warp pack integration testing"
+
+[build]
+lang = "bun"
+entry = "src/handler.ts"
+target = "wasip2"
+
+[runtime]
+trigger = "http"
