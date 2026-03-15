@@ -50,12 +50,26 @@ Modes:
                   warpgrid branch in the source checkout.
   --update <tag>  Fetch a new upstream tag, attempt to rebase patches onto it,
                   and report which patches applied/conflicted.
-  --validate      Check patch ordering, numbering, and dependency constraints.
+  --validate      Check patch ordering, numbering, dependency constraints,
+                  and structured headers (WarpGrid-Domain/Deps/WIT).
   --help          Show this help message.
 
 Options:
   --src <path>    Path to wasi-libc source checkout
                   (default: build/src-patched)
+  --subset <domain>
+                  Filter --validate to only check patches matching the given
+                  domain (dns, filesystem, socket). Validates that the subset
+                  is self-consistent — all transitive dependencies are satisfied
+                  within the subset.
+
+Patch Headers:
+  Each patch file must contain these structured headers in the commit message
+  body (before the --- separator):
+
+    WarpGrid-Domain: <dns|filesystem|socket>
+    WarpGrid-Deps: <comma-separated patch numbers, or "none">
+    WarpGrid-WIT: <comma-separated WIT interface identifiers>
 
 Environment:
   WARPGRID_LIBC_SRC   Override default source checkout path
@@ -65,6 +79,8 @@ Examples:
   scripts/rebase-libc.sh --export
   scripts/rebase-libc.sh --update wasi-sdk-31
   scripts/rebase-libc.sh --validate
+  scripts/rebase-libc.sh --validate --subset dns
+  scripts/rebase-libc.sh --validate --subset filesystem
 USAGE
 }
 
@@ -396,6 +412,8 @@ EOF
 # ─── --validate ──────────────────────────────────────────────────────────────
 
 do_validate() {
+    local subset_filter="${1:-}"
+
     collect_patches
 
     if [[ ${#PATCH_FILES[@]} -eq 0 ]]; then
@@ -403,19 +421,100 @@ do_validate() {
         return 0
     fi
 
-    log "Validating ${#PATCH_FILES[@]} patch(es)..."
-
-    local errors=0
-    local prev_num=0
-    local seen_numbers=""
+    # First pass: extract headers from all patches
+    # Use simple indexed arrays for portability (no associative arrays)
+    local all_num_strs=""
+    local all_domains=""
+    local all_deps=""
+    local all_wits=""
+    local all_names=""
+    local patch_count=0
 
     for patch in "${PATCH_FILES[@]}"; do
         local patch_name
         patch_name=$(basename "${patch}")
-
-        # Check numbering: must start with numeric prefix
         local num_str
         num_str=$(echo "${patch_name}" | grep -oE '^[0-9]+' || true)
+
+        # Extract structured headers from the commit message (before ---)
+        local commit_msg
+        commit_msg=$(sed -n '1,/^---$/p' "${patch}" 2>/dev/null || true)
+        local domain wit deps
+        domain=$(echo "${commit_msg}" | grep -m1 '^WarpGrid-Domain:' | sed 's/^WarpGrid-Domain:[[:space:]]*//' || true)
+        deps=$(echo "${commit_msg}" | grep -m1 '^WarpGrid-Deps:' | sed 's/^WarpGrid-Deps:[[:space:]]*//' || true)
+        wit=$(echo "${commit_msg}" | grep -m1 '^WarpGrid-WIT:' | sed 's/^WarpGrid-WIT:[[:space:]]*//' || true)
+
+        # Store in parallel arrays (space-delimited lists, indexed by position)
+        all_num_strs="${all_num_strs}${num_str}|"
+        all_domains="${all_domains}${domain}|"
+        all_deps="${all_deps}${deps}|"
+        all_wits="${all_wits}${wit}|"
+        all_names="${all_names}${patch_name}|"
+        patch_count=$((patch_count + 1))
+    done
+
+    # If subset filter is active, determine which patches to validate
+    local validate_indices=""
+    if [[ -n "${subset_filter}" ]]; then
+        log "Validating patches for subset: ${subset_filter}"
+        local idx=0
+        local remaining="${all_domains}"
+        while [[ -n "${remaining}" ]]; do
+            local domain="${remaining%%|*}"
+            remaining="${remaining#*|}"
+            if [[ "${domain}" == "${subset_filter}" ]]; then
+                validate_indices="${validate_indices} ${idx}"
+            fi
+            idx=$((idx + 1))
+        done
+
+        if [[ -z "${validate_indices}" ]]; then
+            warn "No patches found for domain '${subset_filter}'"
+            return 1
+        fi
+    else
+        local idx=0
+        while [[ ${idx} -lt ${patch_count} ]]; do
+            validate_indices="${validate_indices} ${idx}"
+            idx=$((idx + 1))
+        done
+    fi
+
+    # Collect the set of patch numbers being validated
+    local validated_num_strs=""
+    for idx in ${validate_indices}; do
+        local num_str
+        num_str=$(echo "${all_num_strs}" | cut -d'|' -f$((idx + 1)))
+        validated_num_strs="${validated_num_strs} ${num_str}"
+    done
+
+    local count_label
+    count_label=$(echo "${validate_indices}" | wc -w | tr -d ' ')
+    log "Validating ${count_label} patch(es)..."
+
+    local errors=0
+    local prev_num=0
+    local seen_numbers=""
+    local has_socket=false
+    local has_filesystem=false
+
+    for idx in ${validate_indices}; do
+        local patch_name num_str domain deps wit
+        patch_name=$(echo "${all_names}" | cut -d'|' -f$((idx + 1)))
+        num_str=$(echo "${all_num_strs}" | cut -d'|' -f$((idx + 1)))
+        domain=$(echo "${all_domains}" | cut -d'|' -f$((idx + 1)))
+        deps=$(echo "${all_deps}" | cut -d'|' -f$((idx + 1)))
+        wit=$(echo "${all_wits}" | cut -d'|' -f$((idx + 1)))
+
+        # Track domains present
+        if [[ "${domain}" == "socket" ]]; then
+            has_socket=true
+        fi
+        if [[ "${domain}" == "filesystem" ]]; then
+            has_filesystem=true
+        fi
+
+        # Check numbering: must start with numeric prefix
         if [[ -z "${num_str}" ]]; then
             warn "  ${patch_name}: missing numeric prefix"
             errors=$((errors + 1))
@@ -432,35 +531,55 @@ do_validate() {
         seen_numbers="${seen_numbers} ${num_str}"
 
         # Check that patch file is valid (has diff content)
-        if ! grep -q '^diff --git' "${patch}" 2>/dev/null; then
+        local patch_path="${PATCHES_DIR}/${patch_name}"
+        if [[ -f "${patch_path}" ]] && ! grep -q '^diff --git' "${patch_path}" 2>/dev/null; then
             warn "  ${patch_name}: does not appear to be a valid git patch"
             errors=$((errors + 1))
         fi
 
-        # Check dependency constraints (portable — no associative arrays)
-        # Known deps:
-        #   0003→0001 (socket-connect depends on dns-getaddrinfo for proxy config via FS)
-        #   0004→0003 (socket-send-recv depends on socket-connect)
-        #   0005→0004 (socket-close depends on socket-send-recv)
-        #   0006→0001 (gethostbyname depends on dns-getaddrinfo shim)
-        #   0007→0001 (getnameinfo depends on dns-getaddrinfo shim)
-        local dep=""
-        case "${num_str}" in
-            0003)      dep="0001" ;;
-            0004)      dep="0003" ;;
-            0005)      dep="0004" ;;
-            0006|0007) dep="0001" ;;
-        esac
+        # Check structured headers are present
+        if [[ -z "${domain}" ]]; then
+            warn "  ${patch_name}: missing WarpGrid-Domain: header"
+            errors=$((errors + 1))
+        fi
+        if [[ -z "${deps}" ]]; then
+            warn "  ${patch_name}: missing WarpGrid-Deps: header"
+            errors=$((errors + 1))
+        fi
+        if [[ -z "${wit}" ]]; then
+            warn "  ${patch_name}: missing WarpGrid-WIT: header"
+            errors=$((errors + 1))
+        fi
 
-        if [[ -n "${dep}" ]]; then
-            if ! echo "${seen_numbers}" | grep -qw "${dep}"; then
-                warn "  ${patch_name}: requires patch ${dep} which is not present or comes later"
-                errors=$((errors + 1))
-            fi
+        # Check dependency constraints from WarpGrid-Deps header
+        if [[ -n "${deps}" && "${deps}" != "none" ]]; then
+            local IFS_SAVE="${IFS}"
+            IFS=','
+            for dep in ${deps}; do
+                dep=$(echo "${dep}" | tr -d ' ')
+                if ! echo "${seen_numbers}" | grep -qw "${dep}"; then
+                    # Check if the dep is in the validated set at all
+                    if echo "${validated_num_strs}" | grep -qw "${dep}"; then
+                        warn "  ${patch_name}: requires patch ${dep} which comes later in the series"
+                    else
+                        warn "  ${patch_name}: requires patch ${dep} which is not present"
+                    fi
+                    errors=$((errors + 1))
+                fi
+            done
+            IFS="${IFS_SAVE}"
         fi
 
         log "  OK  ${patch_name}"
     done
+
+    # Check socket-without-filesystem: socket patches need filesystem for proxy.conf
+    if ${has_socket} && ! ${has_filesystem}; then
+        warn "  Socket patches require filesystem patches: socket-connect reads proxy"
+        warn "  configuration (/etc/warpgrid/proxy.conf) via the virtual filesystem shim."
+        warn "  Include filesystem patches (0002) or use --subset to validate a domain subset."
+        errors=$((errors + 1))
+    fi
 
     echo
     if [[ ${errors} -gt 0 ]]; then
@@ -477,6 +596,7 @@ do_validate() {
 main() {
     local mode=""
     local update_tag=""
+    local subset_domain=""
     local src_dir="${WARPGRID_LIBC_SRC:-${DEFAULT_SRC_DIR}}"
 
     if [[ $# -eq 0 ]]; then
@@ -497,6 +617,13 @@ main() {
                 update_tag="${1}"
                 ;;
             --validate) mode="validate" ;;
+            --subset)
+                if [[ $# -lt 2 ]]; then
+                    err "--subset requires a domain argument (dns, filesystem, socket)"
+                fi
+                shift
+                subset_domain="${1}"
+                ;;
             --src)
                 if [[ $# -lt 2 ]]; then
                     err "--src requires a path argument"
@@ -518,7 +645,7 @@ main() {
         apply)    do_apply "${src_dir}" ;;
         export)   do_export "${src_dir}" ;;
         update)   do_update "${update_tag}" "${src_dir}" ;;
-        validate) do_validate ;;
+        validate) do_validate "${subset_domain}" ;;
     esac
 }
 
