@@ -259,6 +259,9 @@ async fn concurrent_join_safety() {
 
 #[tokio::test]
 async fn tls_cert_chain_validation() {
+    // Install the ring crypto provider for rustls.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // Generate a CA (verifying the public API works).
     let (ca_pair, _ca_cert) = tls::generate_ca().unwrap();
     assert!(ca_pair.cert_pem.contains("BEGIN CERTIFICATE"));
