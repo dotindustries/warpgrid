@@ -1,0 +1,39 @@
+package warpgrid:shim@0.1.0;
+
+/// Database connection proxy shim interface.
+///
+/// Provides wire-protocol-level connection pooling for Postgres,
+/// MySQL, and Redis. The guest sends and receives raw protocol bytes;
+/// the host manages TLS, pooling, and health checking transparently.
+interface database-proxy {
+    /// Opaque handle to a proxied database connection.
+    type connection-handle = u64;
+
+    /// Configuration for establishing a proxied database connection.
+    record connect-config {
+        /// Database server hostname or IP.
+        host: string,
+        /// Database server port.
+        port: u16,
+        /// Database name.
+        database: string,
+        /// Authentication username.
+        user: string,
+        /// Optional authentication password.
+        password: option<string>,
+    }
+
+    /// Establish a proxied connection through the host's connection pool.
+    /// Returns an opaque handle for subsequent send/recv operations.
+    connect: func(config: connect-config) -> result<connection-handle, string>;
+
+    /// Send raw protocol bytes over a proxied connection.
+    /// Returns the number of bytes sent.
+    send: func(handle: connection-handle, data: list<u8>) -> result<u32, string>;
+
+    /// Receive up to `max-bytes` of raw protocol bytes from a proxied connection.
+    recv: func(handle: connection-handle, max-bytes: u32) -> result<list<u8>, string>;
+
+    /// Close a proxied connection, returning it to the pool if healthy.
+    close: func(handle: connection-handle) -> result<_, string>;
+}
