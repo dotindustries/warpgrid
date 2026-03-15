@@ -23,7 +23,7 @@ jobs:
   # ── T1: Rust HTTP + Postgres ──────────────────────────────────────
   t1-rust-http-postgres:
     name: "T1: Rust HTTP + Postgres"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
     services:
@@ -79,7 +79,7 @@ jobs:
   # ── T2: Rust HTTP + Redis + Postgres ──────────────────────────────
   t2-rust-http-redis-postgres:
     name: "T2: Rust HTTP + Redis + Postgres"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
     services:
@@ -146,7 +146,7 @@ jobs:
   # ── T3: Go HTTP + Postgres ────────────────────────────────────────
   t3-go-http-postgres:
     name: "T3: Go HTTP + Postgres"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
     services:
@@ -189,7 +189,7 @@ jobs:
   # ── T4: TypeScript HTTP + Postgres ─────────────────────────────────
   t4-ts-http-postgres:
     name: "T4: TypeScript HTTP + Postgres"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
     steps:
@@ -239,7 +239,7 @@ jobs:
   # ── T5: Bun HTTP + Postgres ────────────────────────────────────────
   t5-bun-http-postgres:
     name: "T5: Bun HTTP + Postgres"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
     steps:
@@ -293,7 +293,7 @@ jobs:
   # ── T6: Multi-service polyglot ─────────────────────────────────────
   t6-multi-service:
     name: "T6: Multi-service Polyglot"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
 
     services:
@@ -400,7 +400,7 @@ jobs:
   # ── Summary gate ───────────────────────────────────────────────────
   integration-summary:
     name: Integration Summary
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     needs:
       - t1-rust-http-postgres
