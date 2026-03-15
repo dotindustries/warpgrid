@@ -373,14 +373,14 @@ async fn upload_and_deploy(
             libsql::params![deployment_id.clone()],
         )
         .await;
-    if let Ok(mut rows) = existing {
-        if rows.next().await.ok().flatten().is_some() {
-            return error_response(
-                StatusCode::CONFLICT,
-                &format!("Deployment '{}' already exists", name),
-            )
-            .into_response();
-        }
+    if let Ok(mut rows) = existing
+        && rows.next().await.ok().flatten().is_some()
+    {
+        return error_response(
+            StatusCode::CONFLICT,
+            &format!("Deployment '{}' already exists", name),
+        )
+        .into_response();
     }
 
     let now = std::time::SystemTime::now()
@@ -623,10 +623,10 @@ async fn scale_deployment(
     }
 
     // Verify the deployment belongs to this user's namespace.
-    if let Some((ns, _)) = tenants::extract_namespace(&id) {
-        if ns != user.namespace {
-            return error_response(StatusCode::FORBIDDEN, "Not your deployment").into_response();
-        }
+    if let Some((ns, _)) = tenants::extract_namespace(&id)
+        && ns != user.namespace
+    {
+        return error_response(StatusCode::FORBIDDEN, "Not your deployment").into_response();
     }
 
     // Update spec_json in cloud_deployments table.
@@ -903,10 +903,10 @@ async fn remove_domain(
     };
 
     // Verify the domain belongs to this user's namespace.
-    if let Some(mapping) = state.domains.get_domain(&domain).await {
-        if mapping.namespace != user.namespace {
-            return error_response(StatusCode::FORBIDDEN, "Not your domain").into_response();
-        }
+    if let Some(mapping) = state.domains.get_domain(&domain).await
+        && mapping.namespace != user.namespace
+    {
+        return error_response(StatusCode::FORBIDDEN, "Not your domain").into_response();
     }
 
     match state.domains.remove_domain(&domain).await {

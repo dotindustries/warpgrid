@@ -17,6 +17,7 @@
 //! ```
 
 mod agent_mode;
+#[allow(dead_code)]
 mod cloud;
 mod cloud_mode;
 mod config;

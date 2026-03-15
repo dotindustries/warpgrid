@@ -470,13 +470,13 @@ async fn console_deploy_submit(
             libsql::params![deployment_id.clone()],
         )
         .await;
-    if let Ok(mut rows) = existing {
-        if rows.next().await.ok().flatten().is_some() {
-            return Ok(deploy_error_response(
-                &user,
-                &format!("Deployment '{}' already exists", deploy_name),
-            ));
-        }
+    if let Ok(mut rows) = existing
+        && rows.next().await.ok().flatten().is_some()
+    {
+        return Ok(deploy_error_response(
+            &user,
+            &format!("Deployment '{}' already exists", deploy_name),
+        ));
     }
 
     let now = std::time::SystemTime::now()

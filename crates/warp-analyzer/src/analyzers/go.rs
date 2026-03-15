@@ -26,14 +26,12 @@ pub fn analyze_go_mod(project_path: &Path) -> Result<Vec<DependencyVerdict>> {
             in_require = false;
             continue;
         }
-        if in_require {
-            if let Some(caps) = dep_re.captures(line) {
-                deps.push(DependencyVerdict {
-                    name: caps[1].to_string(),
-                    version: Some(caps[2].to_string()),
-                    verdict: warp_core::Verdict::Unknown,
-                });
-            }
+        if in_require && let Some(caps) = dep_re.captures(line) {
+            deps.push(DependencyVerdict {
+                name: caps[1].to_string(),
+                version: Some(caps[2].to_string()),
+                verdict: warp_core::Verdict::Unknown,
+            });
         }
     }
 

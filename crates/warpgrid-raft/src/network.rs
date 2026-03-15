@@ -103,7 +103,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         let inner = response.into_inner();
         if !inner.error.is_empty() {
             let raft_err: RaftError<u64> = serde_json::from_str(&inner.error)
-                .unwrap_or_else(|_| RaftError::Fatal(openraft::error::Fatal::Panicked));
+                .unwrap_or(RaftError::Fatal(openraft::error::Fatal::Panicked));
             return Err(RPCError::RemoteError(RemoteError::new(target, raft_err)));
         }
 
@@ -149,7 +149,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         let inner = response.into_inner();
         if !inner.error.is_empty() {
             let raft_err: RaftError<u64, InstallSnapshotError> = serde_json::from_str(&inner.error)
-                .unwrap_or_else(|_| RaftError::Fatal(openraft::error::Fatal::Panicked));
+                .unwrap_or(RaftError::Fatal(openraft::error::Fatal::Panicked));
             return Err(RPCError::RemoteError(RemoteError::new(target, raft_err)));
         }
 
@@ -182,7 +182,7 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         let inner = response.into_inner();
         if !inner.error.is_empty() {
             let raft_err: RaftError<u64> = serde_json::from_str(&inner.error)
-                .unwrap_or_else(|_| RaftError::Fatal(openraft::error::Fatal::Panicked));
+                .unwrap_or(RaftError::Fatal(openraft::error::Fatal::Panicked));
             return Err(RPCError::RemoteError(RemoteError::new(target, raft_err)));
         }
 

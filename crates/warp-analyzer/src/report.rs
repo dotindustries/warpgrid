@@ -5,16 +5,16 @@ use warp_core::AnalysisReport;
 pub fn format_report(report: &AnalysisReport) -> String {
     let mut out = String::new();
 
-    out.push_str(&format!("\n╔══════════════════════════════════════════╗\n"));
-    out.push_str(&format!("║  WarpGrid Compatibility Analysis         ║\n"));
-    out.push_str(&format!("╠══════════════════════════════════════════╣\n"));
+    out.push_str("\n╔══════════════════════════════════════════╗\n");
+    out.push_str("║  WarpGrid Compatibility Analysis         ║\n");
+    out.push_str("╠══════════════════════════════════════════╣\n");
     out.push_str(&format!("║  Project:  {:<29}║\n", report.project_name));
     out.push_str(&format!("║  Language: {:<29}║\n", report.language));
     out.push_str(&format!(
         "║  Verdict:  {:<29}║\n",
         report.overall_verdict.label()
     ));
-    out.push_str(&format!("╚══════════════════════════════════════════╝\n\n"));
+    out.push_str("╚══════════════════════════════════════════╝\n\n");
 
     let total = report.dependencies.len();
     let blocking = report.blockers.len();

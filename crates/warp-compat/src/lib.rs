@@ -8,7 +8,7 @@
 pub mod shims;
 
 /// Shim configuration loaded from a deployment spec.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ShimConfig {
     pub timezone: bool,
     pub dev_urandom: bool,
@@ -16,17 +16,4 @@ pub struct ShimConfig {
     pub threading: Option<String>,
     pub signals: bool,
     pub database_proxy: bool,
-}
-
-impl Default for ShimConfig {
-    fn default() -> Self {
-        ShimConfig {
-            timezone: false,
-            dev_urandom: false,
-            dns: false,
-            threading: None,
-            signals: false,
-            database_proxy: false,
-        }
-    }
 }

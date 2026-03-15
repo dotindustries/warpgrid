@@ -8,6 +8,7 @@ use warp_core::{Blocker, DependencyVerdict, ShimItem};
 const BUN_RESULTS_JSON: &str = include_str!("../../../../compat-db/bun/results.json");
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct CompatEntry {
     name: String,
     verdict: String,
@@ -274,40 +275,40 @@ fn evaluate_bun_dependencies(deps: &[DependencyVerdict]) -> (Vec<Blocker>, Vec<S
     let mut blockers = Vec::new();
 
     for dep in deps {
-        if let Some(entry) = bun_rules.get(&dep.name) {
-            if entry.status != "pass" {
-                // Build a descriptive reason from the result fields
-                let mut notes = Vec::new();
-                if !entry.bundle_ok {
-                    notes.push("bundle failed".to_string());
-                }
-                if !entry.componentize_ok {
-                    notes.push("componentize failed".to_string());
-                }
-                if let Some(stage) = &entry.error_stage {
-                    notes.push(format!("failed at {stage} stage"));
-                }
-
-                let reason = if let Some(err) = &entry.error {
-                    // Truncate long error messages
-                    let truncated = if err.len() > 120 {
-                        format!("{}…", &err[..120])
-                    } else {
-                        err.clone()
-                    };
-                    truncated
-                } else {
-                    notes.join("; ")
-                };
-
-                blockers.push(Blocker {
-                    dependency: dep.name.clone(),
-                    reason,
-                    fix: "Check compat-db/bun/results.json for details".to_string(),
-                    effort_hours: None,
-                    location: None,
-                });
+        if let Some(entry) = bun_rules.get(&dep.name)
+            && entry.status != "pass"
+        {
+            // Build a descriptive reason from the result fields
+            let mut notes = Vec::new();
+            if !entry.bundle_ok {
+                notes.push("bundle failed".to_string());
             }
+            if !entry.componentize_ok {
+                notes.push("componentize failed".to_string());
+            }
+            if let Some(stage) = &entry.error_stage {
+                notes.push(format!("failed at {stage} stage"));
+            }
+
+            let reason = if let Some(err) = &entry.error {
+                // Truncate long error messages
+
+                if err.len() > 120 {
+                    format!("{}…", &err[..120])
+                } else {
+                    err.clone()
+                }
+            } else {
+                notes.join("; ")
+            };
+
+            blockers.push(Blocker {
+                dependency: dep.name.clone(),
+                reason,
+                fix: "Check compat-db/bun/results.json for details".to_string(),
+                effort_hours: None,
+                location: None,
+            });
         }
         // Dependencies not in the DB are treated as unknown (not blocked)
     }

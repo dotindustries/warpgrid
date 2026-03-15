@@ -34,6 +34,7 @@ use crate::cloud::sync::RuntimeSync;
 use crate::cloud::watcher::DeploymentWatcher;
 
 /// Run the agent node.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_agent(
     control_plane_addr: String,
     address: String,

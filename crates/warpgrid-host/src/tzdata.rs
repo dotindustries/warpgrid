@@ -156,6 +156,7 @@ fn generate_transitions(dst: &DstSpec) -> Vec<(i64, u8)> {
 }
 
 /// Write a 44-byte TZif header.
+#[allow(clippy::too_many_arguments)]
 fn write_header(
     out: &mut Vec<u8>,
     version: u8,

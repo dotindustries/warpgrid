@@ -680,15 +680,15 @@ pub fn build_alerts(deployments: &[DeploymentView], rollouts: &[RolloutView]) ->
             });
         }
 
-        if let Some(err) = d.error_rate {
-            if err > 5.0 {
-                alerts.push(AlertView {
-                    severity: "Warning",
-                    severity_color: "border-amber-400/50 bg-amber-500/10",
-                    deployment: d.name.clone(),
-                    message: format!("Error rate {err:.1}%"),
-                });
-            }
+        if let Some(err) = d.error_rate
+            && err > 5.0
+        {
+            alerts.push(AlertView {
+                severity: "Warning",
+                severity_color: "border-amber-400/50 bg-amber-500/10",
+                deployment: d.name.clone(),
+                message: format!("Error rate {err:.1}%"),
+            });
         }
     }
 

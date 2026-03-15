@@ -104,13 +104,12 @@ pub async fn start_rollout(
     // Check for existing active rollout.
     {
         let rollouts = state.rollouts.read().await;
-        if let Some(existing) = rollouts.get(&id) {
-            if existing.phase != RolloutPhase::Completed
-                && !matches!(existing.phase, RolloutPhase::RolledBack { .. })
-            {
-                return rollout_error("rollout already in progress", StatusCode::CONFLICT)
-                    .into_response();
-            }
+        if let Some(existing) = rollouts.get(&id)
+            && existing.phase != RolloutPhase::Completed
+            && !matches!(existing.phase, RolloutPhase::RolledBack { .. })
+        {
+            return rollout_error("rollout already in progress", StatusCode::CONFLICT)
+                .into_response();
         }
     }
 

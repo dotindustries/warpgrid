@@ -31,9 +31,10 @@ pub async fn scale_deployment(
     let spec = match state.store.get_deployment(&id) {
         Ok(Some(spec)) => spec,
         Ok(None) => {
-            return Html(format!(
+            return Html(
                 r#"<div class="text-rose-400 text-sm font-mono">Deployment not found</div>"#
-            ))
+                    .to_string(),
+            )
             .into_response();
         }
         Err(e) => {
@@ -76,9 +77,10 @@ pub async fn start_rollout(
     let spec = match state.store.get_deployment(&id) {
         Ok(Some(spec)) => spec,
         Ok(None) => {
-            return Html(format!(
+            return Html(
                 r#"<div class="text-rose-400 text-sm font-mono">Deployment not found</div>"#
-            ))
+                    .to_string(),
+            )
             .into_response();
         }
         Err(e) => {

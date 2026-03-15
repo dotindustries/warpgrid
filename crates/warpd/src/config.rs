@@ -89,6 +89,7 @@ pub struct PosthogConfig {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[allow(dead_code)]
 pub struct StripeConfig {
     pub secret_key: Option<String>,
     pub webhook_secret: Option<String>,

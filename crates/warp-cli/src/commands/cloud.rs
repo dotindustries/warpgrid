@@ -68,6 +68,7 @@ fn config_path() -> PathBuf {
 // ── API Response Types ──────────────────────────────────────────
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ApiResponse<T> {
     success: bool,
     data: Option<T>,
@@ -82,6 +83,7 @@ struct RegisterData {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct DeploymentInfo {
     id: String,
     namespace: String,

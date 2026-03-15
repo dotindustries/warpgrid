@@ -30,6 +30,7 @@ use crate::cloud::sync::RuntimeSync;
 use crate::cloud::teams::TeamStore;
 use crate::cloud::usage::UsageTracker;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_cloud(
     api_port: u16,
     data_dir: PathBuf,
