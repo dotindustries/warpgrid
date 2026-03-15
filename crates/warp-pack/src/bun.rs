@@ -768,6 +768,40 @@ entry = "src/index.ts"
         // If jco somehow succeeds with garbage input, that's fine too
     }
 
+    #[test]
+    fn test_resolve_jco_env_var_valid_file() {
+        // WARPGRID_JCO_PATH pointing to a real file should succeed.
+        let dir = tempfile::tempdir().unwrap();
+        let fake_jco = dir.path().join("jco");
+        fs::write(&fake_jco, "#!/bin/sh\n").unwrap();
+
+        // SAFETY: test is single-threaded for this env var; restored before return.
+        unsafe { std::env::set_var("WARPGRID_JCO_PATH", fake_jco.to_str().unwrap()) };
+        let result = resolve_jco(Path::new("."));
+        unsafe { std::env::remove_var("WARPGRID_JCO_PATH") };
+
+        assert!(result.is_ok(), "Should resolve valid env var path: {:?}", result.err());
+        assert_eq!(result.unwrap(), fake_jco);
+    }
+
+    #[test]
+    fn test_resolve_wit_dir_shared_fallback() {
+        // When project-local wit/ doesn't exist, should fall back to
+        // shared WIT in tests/fixtures/js-http-handler/wit/.
+        let dir = tempfile::tempdir().unwrap();
+        // No wit/ directory in the temp project
+        let project_root = find_project_root(Path::new("."));
+        let shared_wit = project_root.join("tests/fixtures/js-http-handler/wit");
+        if !shared_wit.is_dir() {
+            eprintln!("Skipping: shared WIT fixture not found");
+            return;
+        }
+
+        let result = resolve_wit_dir(dir.path(), &project_root);
+        assert!(result.is_ok(), "Should find shared WIT fallback: {:?}", result.err());
+        assert_eq!(result.unwrap(), shared_wit);
+    }
+
     // ── Polyfill injection tests ─────────────────────────────────────────
 
     #[test]
