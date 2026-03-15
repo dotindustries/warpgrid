@@ -385,12 +385,26 @@ test_unit() {
     set -e
     assert_eq "shim overhead 15% fails quality gate (exit 3)" "3" "$overhead_exit"
 
-    # Boundary: exactly 10% should pass (< 10% means strictly less)
+    # Boundary: exactly 10% should fail (< 10% means strictly less)
     set +e
     overhead_result=$("$BENCH_HARNESS" --check-overhead 10.0 2>&1)
     overhead_exit=$?
     set -e
     assert_eq "shim overhead 10% fails quality gate (exit 3)" "3" "$overhead_exit"
+
+    # Just below threshold: 9.9% should pass
+    set +e
+    overhead_result=$("$BENCH_HARNESS" --check-overhead 9.9 2>&1)
+    overhead_exit=$?
+    set -e
+    assert_eq "shim overhead 9.9% passes quality gate (exit 0)" "0" "$overhead_exit"
+
+    # Unknown option should exit 1
+    set +e
+    "$BENCH_HARNESS" --bogus-flag 2>/dev/null
+    local unknown_exit=$?
+    set -e
+    assert_eq "unknown option exits 1" "1" "$unknown_exit"
   fi
 
   # ─── compare-perf.sh tests ──────────────────────────────────────────────
@@ -523,6 +537,17 @@ REGRESSED
     cmp_exit=$?
     set -e
     assert_eq "compare-perf.sh missing baseline exits 2" "2" "$cmp_exit"
+
+    # Invalid JSON — should exit 2
+    local invalid_json_file
+    invalid_json_file=$(mktemp /tmp/bench-invalid-XXXXXX.json)
+    echo "not valid json {{{" > "$invalid_json_file"
+    set +e
+    cmp_output=$("$COMPARE_SCRIPT" --baseline "$invalid_json_file" --current "$current_file" 2>&1)
+    cmp_exit=$?
+    set -e
+    assert_eq "compare-perf.sh invalid JSON baseline exits 2" "2" "$cmp_exit"
+    rm -f "$invalid_json_file"
 
     rm -f "$baseline_file" "$current_file"
     trap - EXIT
