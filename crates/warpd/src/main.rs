@@ -120,6 +120,10 @@ enum Command {
         /// PostHog API key for analytics. When not set, analytics are disabled.
         #[arg(long, env = "POSTHOG_API_KEY")]
         posthog_api_key: Option<String>,
+
+        /// Stripe secret key for billing. When not set, billing runs in mock mode.
+        #[arg(long, env = "STRIPE_SECRET_KEY")]
+        stripe_secret_key: Option<String>,
     },
 
     /// Run as an agent node (worker, joins a control-plane cluster).
@@ -183,6 +187,7 @@ async fn main() -> anyhow::Result<()> {
             edge_regions,
             metrics_interval,
             posthog_api_key,
+            stripe_secret_key,
         } => {
             cloud_mode::run_cloud(
                 api_port,
@@ -193,6 +198,7 @@ async fn main() -> anyhow::Result<()> {
                 edge_regions,
                 metrics_interval,
                 posthog_api_key,
+                stripe_secret_key,
             )
             .await
         }

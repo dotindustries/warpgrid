@@ -19,12 +19,15 @@ use tracing::{info, warn};
 
 use crate::cloud::analytics::AnalyticsService;
 use crate::cloud::auth::AuthStore;
+use crate::cloud::billing::BillingService;
 use crate::cloud::console::console_router;
 use crate::cloud::domains::DomainStore;
+use crate::cloud::landing::landing_router;
 use crate::cloud::provisioner::FlyProvisioner;
 use crate::cloud::registry::WasmRegistry;
 use crate::cloud::routes::{cloud_router, CloudState};
 use crate::cloud::teams::TeamStore;
+use crate::cloud::usage::UsageTracker;
 
 pub async fn run_cloud(
     api_port: u16,
@@ -35,6 +38,7 @@ pub async fn run_cloud(
     edge_regions: String,
     metrics_interval: u64,
     posthog_api_key: Option<String>,
+    stripe_secret_key: Option<String>,
 ) -> anyhow::Result<()> {
     info!("WarpGrid daemon starting in cloud mode");
 
@@ -114,6 +118,19 @@ pub async fn run_cloud(
         AnalyticsService::Noop => info!("PostHog analytics disabled (no POSTHOG_API_KEY)"),
     }
 
+    // ── Billing ──────────────────────────────────────────────────
+
+    let billing = BillingService::from_env(stripe_secret_key);
+    match &billing {
+        BillingService::Active(_) => info!("Stripe billing enabled"),
+        BillingService::Mock(_) => info!("Stripe billing disabled (mock mode, no STRIPE_SECRET_KEY)"),
+    }
+
+    // ── Usage tracker ───────────────────────────────────────────
+
+    let usage = UsageTracker::new();
+    info!("usage tracker initialized");
+
     // ── Build API router ────────────────────────────────────────
 
     // Merge existing warpgrid-api routes (dashboard, deployments, metrics)
@@ -126,11 +143,19 @@ pub async fn run_cloud(
         teams: TeamStore::new(),
         analytics,
         domains: DomainStore::new(),
+        billing,
+        usage,
     };
     let console_routes = console_router(cloud_state.clone());
     let cloud_routes = cloud_router(cloud_state);
+    let landing_routes = landing_router();
 
-    let router = base_router.merge(cloud_routes).merge(console_routes);
+    // Landing pages (/, /benchmarks, /pricing) are the fallback so that
+    // /console/*, /api/*, and /dashboard routes always take priority.
+    let router = base_router
+        .merge(cloud_routes)
+        .merge(console_routes)
+        .fallback_service(landing_routes);
 
     // ── Start server ────────────────────────────────────────────
 
@@ -146,6 +171,10 @@ pub async fn run_cloud(
     );
     info!(
         "Console:   http://localhost:{}/console/",
+        api_port
+    );
+    info!(
+        "Landing:   http://localhost:{}/",
         api_port
     );
 

@@ -13,10 +13,12 @@ use std::sync::Arc;
 
 use super::analytics::{AnalyticsService, EVENT_USER_REGISTERED};
 use super::auth::{AuthStore, User};
+use super::billing::{BillingService, PlanLimits};
 use super::domains::{DomainError, DomainStore};
 use super::registry::WasmRegistry;
 use super::teams::{TeamRole, TeamStore};
 use super::tenants;
+use super::usage::UsageTracker;
 
 /// Shared state for cloud API routes.
 #[derive(Clone)]
@@ -27,6 +29,8 @@ pub struct CloudState {
     pub teams: TeamStore,
     pub analytics: AnalyticsService,
     pub domains: DomainStore,
+    pub billing: BillingService,
+    pub usage: UsageTracker,
 }
 
 /// Build the cloud API router with all routes.
@@ -53,6 +57,10 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
             "/api/v1/cloud/domains/{domain}",
             delete(remove_domain),
         )
+        // Billing routes
+        .route("/api/v1/cloud/billing/plan", get(billing_plan))
+        .route("/api/v1/cloud/billing/usage", get(billing_usage))
+        .route("/api/v1/cloud/billing/portal", post(billing_portal))
         .with_state(Arc::new(cloud_state))
 }
 
@@ -469,5 +477,79 @@ async fn remove_domain(
             };
             error_response(status, &e.to_string()).into_response()
         }
+    }
+}
+
+// ── Billing response types ──────────────────────────────────────
+
+#[derive(Serialize)]
+struct BillingPlanResponse {
+    plan: super::billing::Plan,
+    price: &'static str,
+    limits: PlanLimits,
+}
+
+#[derive(Serialize)]
+struct BillingPortalResponse {
+    url: String,
+}
+
+// ── Billing route handlers ──────────────────────────────────────
+
+async fn billing_plan(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let _user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // For beta, all users are on the Free plan.
+    let plan = super::billing::Plan::Free;
+    let limits = PlanLimits::for_plan(plan);
+
+    CloudResponse::ok(BillingPlanResponse {
+        plan,
+        price: plan.price_label(),
+        limits,
+    })
+    .into_response()
+}
+
+async fn billing_usage(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    let usage = state.usage.peek(&user.namespace);
+    CloudResponse::ok(usage).into_response()
+}
+
+async fn billing_portal(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // Use the user's namespace as a stand-in customer ID for beta.
+    match state
+        .billing
+        .create_billing_portal_session(&user.namespace)
+        .await
+    {
+        Ok(url) => CloudResponse::ok(BillingPortalResponse { url }).into_response(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to create billing portal session: {e}"),
+        )
+        .into_response(),
     }
 }

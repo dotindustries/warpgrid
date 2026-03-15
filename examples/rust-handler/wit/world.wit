@@ -1,0 +1,38 @@
+package warpgrid:shim@0.1.0;
+
+/// HTTP types for request/response pairs.
+interface http-types {
+    /// An HTTP header as a name-value pair.
+    record http-header {
+        name: string,
+        value: string,
+    }
+
+    /// An incoming HTTP request.
+    record http-request {
+        method: string,
+        uri: string,
+        headers: list<http-header>,
+        body: list<u8>,
+    }
+
+    /// An outgoing HTTP response.
+    record http-response {
+        status: u16,
+        headers: list<http-header>,
+        body: list<u8>,
+    }
+}
+
+/// Async handler interface for WarpGrid HTTP trigger invocation.
+interface async-handler {
+    use http-types.{http-request, http-response};
+
+    /// Handle an incoming HTTP request and return a response.
+    handle-request: func(request: http-request) -> http-response;
+}
+
+/// Handler world: exports handle-request for HTTP trigger invocation.
+world warpgrid-handler {
+    export async-handler;
+}

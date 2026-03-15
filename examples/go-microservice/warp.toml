@@ -1,0 +1,12 @@
+[package]
+name = "go-microservice"
+version = "0.1.0"
+description = "Minimal Go HTTP microservice example for WarpGrid"
+
+[build]
+lang = "go"
+entry = "main.go"
+target = "wasip2"
+
+[runtime]
+trigger = "http"
