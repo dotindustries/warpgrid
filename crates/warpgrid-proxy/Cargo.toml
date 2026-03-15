@@ -12,3 +12,7 @@ tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+serde_json.workspace = true

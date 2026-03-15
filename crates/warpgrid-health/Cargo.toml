@@ -16,3 +16,11 @@ hyper-util = { version = "0.1", features = ["tokio", "client-legacy"] }
 http-body-util = "0.1"
 http = "1"
 bytes = "1"
+
+[dev-dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio", "client-legacy"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { version = "1", features = ["full"] }

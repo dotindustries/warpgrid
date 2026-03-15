@@ -20,3 +20,6 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 http = "1"
 http-body-util = "0.1"
 bytes = "1"
+
+[dev-dependencies]
+hyper-util = { version = "0.1", features = ["tokio", "client-legacy", "http1"] }

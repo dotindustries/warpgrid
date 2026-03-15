@@ -10,3 +10,7 @@ warpgrid-state = { path = "../warpgrid-state" }
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+warpgrid-state = { path = "../warpgrid-state" }
+tokio = { version = "1", features = ["full"] }

@@ -17,3 +17,11 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+warp-runtime = { path = "../warp-runtime" }
+warpgrid-host = { path = "../warpgrid-host" }
+warpgrid-state = { path = "../warpgrid-state" }
+warpgrid-placement = { path = "../warpgrid-placement" }
+serde_json.workspace = true
+tokio = { version = "1", features = ["full"] }
