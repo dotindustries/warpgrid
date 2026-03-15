@@ -49,12 +49,43 @@ enum Commands {
         #[arg(short, long)]
         path: Option<String>,
     },
-    // Phase 3+:
-    // Deploy { ... },
-    // Status { ... },
-    // Logs { ... },
-    // Scale { ... },
-    // Nodes { ... },
+    /// Login to WarpGrid Cloud or register a new account.
+    Login {
+        /// API key (for existing accounts).
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Email address (to register a new account).
+        #[arg(long)]
+        email: Option<String>,
+        /// Cloud API URL (default: http://localhost:8443).
+        #[arg(long)]
+        api_url: Option<String>,
+    },
+    /// Deploy a Wasm component to WarpGrid Cloud.
+    Deploy {
+        /// Project directory (default: current directory).
+        #[arg(short, long, default_value = ".")]
+        path: String,
+        /// Target region (default: iad).
+        #[arg(short, long)]
+        region: Option<String>,
+        /// Override build language.
+        #[arg(short, long)]
+        lang: Option<String>,
+    },
+    /// Show deployment status.
+    Status,
+    /// Destroy a deployment.
+    Destroy {
+        /// Deployment ID to destroy.
+        deployment_id: String,
+    },
+    /// Show WarpGrid Cloud platform status.
+    Ping {
+        /// Cloud API URL (overrides config).
+        #[arg(long)]
+        api_url: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -107,6 +138,25 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Init { template, path } => {
             commands::init::init(&template, path.as_deref())
+        }
+        Commands::Login { api_key, email, api_url } => {
+            commands::cloud::login(
+                api_key.as_deref(),
+                api_url.as_deref(),
+                email.as_deref(),
+            )
+        }
+        Commands::Deploy { path, region, lang } => {
+            commands::cloud::deploy(&path, region.as_deref(), lang.as_deref())
+        }
+        Commands::Status => {
+            commands::cloud::status()
+        }
+        Commands::Destroy { deployment_id } => {
+            commands::cloud::destroy(&deployment_id)
+        }
+        Commands::Ping { api_url } => {
+            commands::cloud::platform_status(api_url.as_deref())
         }
     }
 }

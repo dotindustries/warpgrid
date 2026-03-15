@@ -1,3 +1,4 @@
+pub mod cloud;
 pub mod convert;
 pub mod dev;
 pub mod init;

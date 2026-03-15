@@ -1,10 +1,11 @@
 //! warpd — the WarpGrid daemon.
 //!
-//! Single binary that can run in three modes:
+//! Single binary that can run in four modes:
 //!
 //! - **standalone** — all subsystems in one process (single-node, no Raft)
 //! - **control-plane** — Raft consensus + cluster gRPC + REST API
 //! - **agent** — worker node that joins a control-plane cluster
+//! - **cloud** — hosted platform control plane (multi-tenant, auth, billing)
 //!
 //! # Usage
 //!
@@ -12,9 +13,12 @@
 //! warpd standalone --port 8443 --data-dir /var/lib/warpgrid
 //! warpd control-plane --api-port 8443 --grpc-port 50051 --data-dir /var/lib/warpgrid
 //! warpd agent --control-plane 10.0.0.1:50051 --address 10.0.0.2 --port 8443
+//! warpd cloud --api-port 8443 --data-dir /var/lib/warpgrid
 //! ```
 
 mod agent_mode;
+mod cloud;
+mod cloud_mode;
 mod control_plane;
 
 use std::collections::HashMap;
@@ -83,6 +87,37 @@ enum Command {
         autoscale_interval: u64,
     },
 
+    /// Run as hosted cloud control plane (multi-tenant, auth, provisioning).
+    Cloud {
+        /// HTTP API port.
+        #[arg(long, default_value = "8443")]
+        api_port: u16,
+
+        /// Data directory for persistent state.
+        #[arg(long, default_value = "/var/lib/warpgrid")]
+        data_dir: PathBuf,
+
+        /// PostgreSQL connection URL for cloud metadata.
+        #[arg(long, env = "DATABASE_URL")]
+        postgres_url: Option<String>,
+
+        /// Fly.io API token for machine provisioning.
+        #[arg(long, env = "FLY_API_TOKEN")]
+        fly_api_token: Option<String>,
+
+        /// Tigris S3 bucket for Wasm component registry.
+        #[arg(long, env = "WARPGRID_REGISTRY_BUCKET", default_value = "warpgrid-registry")]
+        registry_bucket: String,
+
+        /// Comma-separated list of edge regions to provision.
+        #[arg(long, default_value = "iad")]
+        edge_regions: String,
+
+        /// Metrics snapshot interval in seconds.
+        #[arg(long, default_value = "60")]
+        metrics_interval: u64,
+    },
+
     /// Run as an agent node (worker, joins a control-plane cluster).
     Agent {
         /// Address of the control plane's gRPC endpoint (host:port).
@@ -134,6 +169,26 @@ async fn main() -> anyhow::Result<()> {
             autoscale_interval,
         } => {
             run_standalone(port, data_dir, metrics_interval, autoscale_interval).await
+        }
+        Command::Cloud {
+            api_port,
+            data_dir,
+            postgres_url,
+            fly_api_token,
+            registry_bucket,
+            edge_regions,
+            metrics_interval,
+        } => {
+            cloud_mode::run_cloud(
+                api_port,
+                data_dir,
+                postgres_url,
+                fly_api_token,
+                registry_bucket,
+                edge_regions,
+                metrics_interval,
+            )
+            .await
         }
         Command::ControlPlane {
             api_port,
