@@ -189,26 +189,65 @@ import "{}";
     Ok(wrapper_path)
 }
 
+/// Extract WIT import specifiers from a WIT world file.
+///
+/// Scans for `import <package>:<ns>/<iface>@<ver>;` lines and returns
+/// the full specifiers (e.g., `warpgrid:shim/database-proxy@0.1.0`).
+/// These must be marked as `--external` during `bun build` so the bundler
+/// preserves them for `jco componentize` to resolve.
+fn extract_wit_imports(wit_dir: &Path) -> Vec<String> {
+    let mut imports = Vec::new();
+
+    // Read the top-level handler.wit (the world definition)
+    let handler_wit = wit_dir.join("handler.wit");
+    let content = match std::fs::read_to_string(&handler_wit) {
+        Ok(c) => c,
+        Err(_) => return imports,
+    };
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // Match lines like: import warpgrid:shim/database-proxy@0.1.0;
+        // Skip wasi: imports (handled by jco's --enable flags)
+        if let Some(rest) = trimmed.strip_prefix("import ") {
+            let specifier = rest.trim_end_matches(';').trim();
+            if !specifier.starts_with("wasi:") && specifier.contains(':') {
+                imports.push(specifier.to_string());
+            }
+        }
+    }
+
+    debug!("Extracted WIT external imports: {:?}", imports);
+    imports
+}
+
 /// Step 1: Bundle the Bun handler with `bun build`.
 ///
 /// Produces a single-file ES module bundle suitable for jco componentize.
-fn bun_build(project_path: &Path, entry: &str, output: &Path) -> Result<()> {
+/// WIT imports (e.g., `warpgrid:shim/database-proxy@0.1.0`) are marked as
+/// external so the bundler preserves them for jco to resolve.
+fn bun_build(project_path: &Path, entry: &str, output: &Path, externals: &[String]) -> Result<()> {
     let entry_path = {
         let p = Path::new(entry);
         if p.is_absolute() { p.to_path_buf() } else { project_path.join(entry) }
     };
     info!("Bundling with bun build: {}", entry_path.display());
 
-    let result = Command::new("bun")
-        .arg("build")
+    let mut cmd = Command::new("bun");
+    cmd.arg("build")
         .arg(&entry_path)
         .arg("--outfile")
         .arg(output)
         .arg("--target")
         .arg("browser")
         .arg("--format")
-        .arg("esm")
-        .output()
+        .arg("esm");
+
+    for ext in externals {
+        cmd.arg("--external").arg(ext);
+    }
+
+    let result = cmd.output()
         .context(
             "Failed to execute 'bun build'. Is Bun installed? \
              Install from https://bun.sh"
@@ -397,11 +436,15 @@ pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> 
         }
     };
 
+    // Extract WIT imports that need to be externalized during bundling
+    let wit_externals = extract_wit_imports(&wit_dir);
+
     // Step 1: Bundle with bun build (using wrapper entry if polyfills available)
     bun_build(
         project_path,
         &effective_entry,
         &bundled_js,
+        &wit_externals,
     )?;
 
     // Step 2: Componentize with jco
@@ -581,7 +624,7 @@ entry = "src/index.ts"
         fs::write(dir.path().join("src/index.ts"), handler).unwrap();
 
         let output = dir.path().join("bundle.js");
-        let result = bun_build(dir.path(), "src/index.ts", &output);
+        let result = bun_build(dir.path(), "src/index.ts", &output, &[]);
         assert!(result.is_ok(), "bun build failed: {:?}", result.err());
         assert!(output.exists(), "Bundle not produced");
 
@@ -608,7 +651,7 @@ entry = "src/index.ts"
         ).unwrap();
 
         let output = dir.path().join("bundle.js");
-        let result = bun_build(dir.path(), "src/broken.ts", &output);
+        let result = bun_build(dir.path(), "src/broken.ts", &output, &[]);
         // bun build may still succeed with an import it can't resolve
         // (it bundles what it can). But if it fails, the error should
         // include exit code info.
@@ -901,6 +944,7 @@ entry = "src/index.ts"
             dir.path(),
             &wrapper.to_string_lossy(),
             &output,
+            &[],
         );
         assert!(result.is_ok(), "bun build with polyfill wrapper failed: {:?}", result.err());
 

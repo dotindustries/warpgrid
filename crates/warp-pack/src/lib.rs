@@ -261,16 +261,21 @@ mod tests {
         // warp.toml says typescript, but we override with bun
         write_warp_toml(dir.path(), Some("typescript"));
         fs::create_dir_all(dir.path().join("src")).unwrap();
-        fs::write(dir.path().join("src/index.ts"), "export default {}").unwrap();
+        // Use an entry point with no exports — will always fail bun build
+        // since there's no addEventListener or handler export.
+        fs::write(dir.path().join("src/index.ts"), "const x: number = 42;").unwrap();
 
         let result = pack_with_lang(dir.path(), Some("bun"));
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        // Should try to pack as bun (entry point validation), not typescript
-        assert!(
-            !err.contains("Unsupported language"),
-            "Should use bun override: {err}"
-        );
+        // Whether it succeeds or fails, it should NOT say "Unsupported language"
+        // — this proves the override routed to the bun pipeline.
+        if let Err(err) = &result {
+            let err = err.to_string();
+            assert!(
+                !err.contains("Unsupported language"),
+                "Should use bun override: {err}"
+            );
+        }
+        // If it succeeds (jco+bun available), that also proves bun override worked.
     }
 
     #[test]
