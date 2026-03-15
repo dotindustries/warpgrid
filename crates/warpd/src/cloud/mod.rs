@@ -6,6 +6,7 @@
 pub mod analytics;
 pub mod auth;
 pub mod billing;
+pub mod db;
 pub mod console;
 pub mod domains;
 pub mod landing;

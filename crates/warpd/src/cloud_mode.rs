@@ -48,13 +48,20 @@ pub async fn run_cloud(
 
     // ── Initialize subsystems ───────────────────────────────────
 
-    // State store (redb for beta, Postgres for production).
+    // State store (redb for runtime state — deployments, instances, metrics).
     let state = warpgrid_state::StateStore::open(&db_path)?;
-    info!(path = ?db_path, "cloud state store opened");
+    info!(path = ?db_path, "runtime state store opened (redb)");
 
-    // Auth store (in-memory for beta, Postgres for production).
-    let auth = AuthStore::new();
-    info!("auth store initialized");
+    // Cloud metadata database (libSQL — users, teams, domains, billing).
+    let cloud_db_path = data_dir.join("cloud.db").to_string_lossy().to_string();
+    let cloud_db = crate::cloud::db::open_local(&cloud_db_path).await?;
+    let cloud_conn = cloud_db.connect()?;
+    crate::cloud::db::migrate(&cloud_conn).await?;
+    info!(path = %cloud_db_path, "cloud metadata store opened (libSQL)");
+
+    // Auth store (backed by libSQL — persists across restarts).
+    let auth = AuthStore::with_libsql(cloud_conn.clone());
+    info!("auth store initialized (persistent)");
 
     // Wasm component registry (local filesystem for beta, Tigris S3 for production).
     let registry_dir = data_dir.join("registry");

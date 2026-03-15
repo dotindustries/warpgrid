@@ -64,7 +64,7 @@ fn require_user(
         .ok_or(Redirect::to("/console/login"))?;
     state
         .auth
-        .validate(&api_key)
+        .validate_sync(&api_key)
         .ok_or(Redirect::to("/console/login"))
 }
 
@@ -551,7 +551,7 @@ async fn console_login_submit(
 ) -> impl IntoResponse {
     let api_key = form.api_key.trim().to_string();
 
-    if state.auth.validate(&api_key).is_none() {
+    if state.auth.validate_sync(&api_key).is_none() {
         let html = format!(
             r#"<!DOCTYPE html>
 <html lang="en">
@@ -804,7 +804,7 @@ mod tests {
     #[tokio::test]
     async fn require_user_succeeds_with_valid_key() {
         let cloud = test_cloud_state();
-        let (api_key, _user) = cloud.auth.register("test@example.com");
+        let (api_key, _user) = cloud.auth.register_sync("test@example.com");
         let state = Arc::new(cloud);
         let mut headers = HeaderMap::new();
         headers.insert(

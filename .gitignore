@@ -16,3 +16,4 @@ test-apps/**/Cargo.lock
 __pycache__/
 /test-results
 docs/GTM-BETA-LAUNCH-PLAN.md
+docs/IMPLEMENTATION-PLAN-PHASE2.md

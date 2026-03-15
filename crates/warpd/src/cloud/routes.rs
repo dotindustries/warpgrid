@@ -137,7 +137,7 @@ fn extract_user(headers: &HeaderMap, auth: &AuthStore) -> Result<User, (StatusCo
             "Invalid Authorization format (expected: Bearer wg_live_...)".to_string(),
         ))?;
 
-    auth.validate(token).ok_or((
+    auth.validate_sync(token).ok_or((
         StatusCode::UNAUTHORIZED,
         "Invalid API key".to_string(),
     ))
@@ -153,7 +153,16 @@ async fn register(
         return error_response(StatusCode::BAD_REQUEST, "Invalid email address").into_response();
     }
 
-    let (api_key, user) = state.auth.register(&body.email);
+    let (api_key, user) = match state.auth.register(&body.email).await {
+        Ok(result) => result,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Registration failed: {e}"),
+            )
+            .into_response();
+        }
+    };
 
     state.analytics.track(
         &user.id,
