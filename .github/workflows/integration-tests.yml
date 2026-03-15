@@ -75,6 +75,73 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # ── T2: Rust HTTP + Redis + Postgres ──────────────────────────────
+  t2-rust-http-redis-postgres:
+    name: "T2: Rust HTTP + Redis + Postgres"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+          --tmpfs /var/lib/postgresql/data
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+        with:
+          version: "v41.0.0"
+
+      - name: Build T2
+        run: cargo build -p t2-rust-http-redis-postgres 2>&1 || echo "BUILD_FAILED"
+        continue-on-error: true
+        id: build
+
+      - name: Test T2
+        if: steps.build.outcome == 'success'
+        run: cargo test -p t2-rust-http-redis-postgres
+        env:
+          DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
+          REDIS_URL: "redis://localhost:6379"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-t2
+          path: test-results/t2-*
+          if-no-files-found: ignore
+          retention-days: 7
+
   # ── T3: Go HTTP + Postgres ────────────────────────────────────────
   t3-go-http-postgres:
     name: "T3: Go HTTP + Postgres"
@@ -263,38 +330,19 @@ jobs:
       - name: Build all T6 services
         run: |
           echo "Building gateway (Rust)..."
-          cargo build -p t6-gateway-svc 2>&1 || echo "WARN: T6 gateway build skipped (crate may not exist yet)"
+          cargo build -p t6-gateway-svc
 
           echo "Building user-svc (Go)..."
-          if [ -f test-apps/t6-multi-service/user-svc/build.sh ]; then
-            test-apps/t6-multi-service/user-svc/build.sh --standalone
-          else
-            echo "WARN: T6 user-svc build.sh not found — skipping"
-          fi
+          test-apps/t6-multi-service/user-svc/build.sh --standalone
 
           echo "Building notification-svc (TypeScript)..."
-          if [ -f test-apps/t6-multi-service/notification-svc/build.sh ]; then
-            test-apps/t6-multi-service/notification-svc/build.sh --standalone
-          else
-            echo "WARN: T6 notification-svc build.sh not found — skipping"
-          fi
+          test-apps/t6-multi-service/notification-svc/build.sh --standalone
 
           echo "Building analytics-svc (Bun)..."
-          if [ -f test-apps/t6-multi-service/analytics-svc/build.sh ]; then
-            test-apps/t6-multi-service/analytics-svc/build.sh --standalone
-          else
-            echo "WARN: T6 analytics-svc build.sh not found — skipping"
-          fi
+          test-apps/t6-multi-service/analytics-svc/build.sh --standalone
 
       - name: Test T6 multi-service integration
-        run: |
-          if [ -f scripts/test-all.sh ]; then
-            scripts/test-all.sh --only t6
-          elif [ -f test-apps/t6-multi-service/test.sh ]; then
-            test-apps/t6-multi-service/test.sh
-          else
-            echo "T6 integration test script not yet available — skipping"
-          fi
+        run: scripts/test-all.sh --only t6
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
           REDIS_URL: "redis://localhost:6379"
@@ -315,6 +363,7 @@ jobs:
     if: always()
     needs:
       - t1-rust-http-postgres
+      - t2-rust-http-redis-postgres
       - t3-go-http-postgres
       - t4-ts-http-postgres
       - t5-bun-http-postgres
@@ -335,6 +384,7 @@ jobs:
           echo "| Test App | Status |" >> "$GITHUB_STEP_SUMMARY"
           echo "|----------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| T1: Rust HTTP + Postgres | ${{ needs.t1-rust-http-postgres.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| T2: Rust HTTP + Redis + Postgres | ${{ needs.t2-rust-http-redis-postgres.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| T3: Go HTTP + Postgres | ${{ needs.t3-go-http-postgres.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| T4: TypeScript HTTP + Postgres | ${{ needs.t4-ts-http-postgres.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| T5: Bun HTTP + Postgres | ${{ needs.t5-bun-http-postgres.result }} |" >> "$GITHUB_STEP_SUMMARY"
@@ -344,6 +394,7 @@ jobs:
           FAILED=0
           for result in \
             "${{ needs.t1-rust-http-postgres.result }}" \
+            "${{ needs.t2-rust-http-redis-postgres.result }}" \
             "${{ needs.t3-go-http-postgres.result }}" \
             "${{ needs.t4-ts-http-postgres.result }}" \
             "${{ needs.t5-bun-http-postgres.result }}" \

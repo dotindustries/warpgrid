@@ -562,7 +562,6 @@ async fn fresh_instance(
 /// Validates that the guest component can execute a complete Postgres DDL lifecycle
 /// through the database proxy shim, and that the mock server produces realistic
 /// wire protocol responses including RowDescription, DataRow, and CommandComplete.
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_create_insert_select_drop() {
     let server = StatefulMockPostgresServer::start();
@@ -637,7 +636,6 @@ async fn test_create_insert_select_drop() {
 ///
 /// The guest executes SELECT 1, SELECT 2, SELECT 3 on a single handle.
 /// Each query should produce a valid response with ReadyForQuery markers.
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_connection_reuse_multiple_queries() {
     let server = StatefulMockPostgresServer::start();
@@ -700,7 +698,6 @@ async fn test_connection_reuse_multiple_queries() {
 /// Both query responses should contain valid Postgres wire protocol data,
 /// confirming that close returns the connection to the pool and reconnect
 /// reuses it.
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_close_reconnect_reuses_pooled_connection() {
     let server = StatefulMockPostgresServer::start();
@@ -761,7 +758,6 @@ async fn test_close_reconnect_reuses_pooled_connection() {
 ///
 /// Orchestrates all three test scenarios on the same engine/component to
 /// validate the complete flow end-to-end.
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_full_lifecycle_end_to_end() {
     let server = StatefulMockPostgresServer::start();
