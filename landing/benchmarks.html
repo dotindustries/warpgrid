@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmarks — WarpGrid</title>
+  <meta name="description" content="WarpGrid performance benchmarks: cold start latency, throughput, and memory density compared to Docker containers.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --grid-950: #040608; --grid-900: #0a0f14; --grid-850: #0f161d; --grid-800: #141e28;
+      --grid-700: #1e2d3d; --grid-600: #2a3f52; --grid-500: #3a5570;
+      --accent: #00e5a0; --accent-dim: rgba(0, 229, 160, 0.1); --accent-glow: rgba(0, 229, 160, 0.25);
+      --danger: #ff5c6c; --warning: #ffbe0b; --info: #38bdf8;
+      --text-1: #f1f5f9; --text-2: #e2e8f0; --text-3: #cbd5e1; --text-4: #94a3b8; --text-5: #64748b;
+      --font-display: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
+    }
+    html { font-size: 16px; }
+    body { font-family: var(--font-display); background: var(--grid-950); color: var(--text-2); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* Nav */
+    nav { position: sticky; top: 0; z-index: 100; background: rgba(10, 15, 20, 0.85); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(30, 45, 61, 0.4); padding: 1rem 0; }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    .logo { display: flex; align-items: center; gap: 0.625rem; font-weight: 700; font-size: 1.25rem; color: var(--text-1); text-decoration: none; }
+    .logo-icon { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; width: 18px; height: 18px; }
+    .logo-icon span { width: 4px; height: 4px; border-radius: 1px; background: var(--accent); }
+    .logo-icon span:nth-child(5), .logo-icon span:nth-child(9) { background: var(--text-4); }
+    .nav-links { display: flex; gap: 2rem; list-style: none; }
+    .nav-links a { color: var(--text-4); text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--text-1); }
+    .nav-links a.active { color: var(--accent); }
+    .nav-cta { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1.25rem; background: var(--accent); color: var(--grid-950); font-weight: 600; font-size: 0.875rem; border-radius: 8px; text-decoration: none; transition: all 0.2s; }
+    .nav-cta:hover { box-shadow: 0 0 20px var(--accent-glow); }
+
+    /* Page */
+    .page-header { padding: 4rem 0 2rem; text-align: center; }
+    .page-header h1 { font-size: 2.5rem; color: var(--text-1); margin-bottom: 0.75rem; }
+    .page-header p { color: var(--text-4); font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
+    .section-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 0.75rem; }
+
+    /* Benchmark sections */
+    .bench-section { padding: 3rem 0; }
+    .bench-section h2 { font-size: 1.5rem; color: var(--text-1); margin-bottom: 1.5rem; }
+    .bench-grid { display: grid; gap: 1rem; }
+
+    /* Bar chart */
+    .bar-row { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; background: var(--grid-900); border: 1px solid var(--grid-700); border-radius: 8px; }
+    .bar-label { width: 120px; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-3); flex-shrink: 0; }
+    .bar-track { flex: 1; height: 32px; background: var(--grid-800); border-radius: 6px; overflow: hidden; position: relative; }
+    .bar-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent), #00b880); transition: width 0.8s ease-out; }
+    .bar-fill.danger { background: linear-gradient(90deg, var(--danger), #cc3344); }
+    .bar-value { width: 100px; font-family: var(--font-mono); font-size: 0.9rem; color: var(--accent); text-align: right; flex-shrink: 0; font-weight: 600; }
+    .bar-value.danger { color: var(--danger); }
+
+    /* Comparison cards */
+    .compare-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-top: 2rem; }
+    .compare-card { background: var(--grid-900); border: 1px solid var(--grid-700); border-radius: 12px; padding: 2rem; }
+    .compare-card h3 { color: var(--text-1); margin-bottom: 1rem; font-size: 1.1rem; }
+    .compare-card .stat { font-family: var(--font-mono); font-size: 2.5rem; font-weight: 700; color: var(--accent); }
+    .compare-card .stat.danger { color: var(--danger); }
+    .compare-card .stat-label { color: var(--text-4); font-size: 0.85rem; margin-top: 0.25rem; }
+
+    /* Source */
+    .source { margin-top: 3rem; padding: 1.5rem; background: var(--grid-900); border: 1px solid var(--grid-700); border-radius: 8px; text-align: center; }
+    .source a { color: var(--accent); }
+    .source p { color: var(--text-4); font-size: 0.85rem; }
+    .source code { font-family: var(--font-mono); background: var(--grid-800); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
+
+    /* Footer */
+    footer { padding: 2rem 0; border-top: 1px solid var(--grid-700); margin-top: 4rem; }
+    footer p { text-align: center; color: var(--text-5); font-size: 0.85rem; }
+    footer a { color: var(--text-4); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .compare-grid { grid-template-columns: 1fr; }
+      .bar-label { width: 80px; }
+      .bar-value { width: 80px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <span class="logo-icon"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+      WarpGrid
+    </a>
+    <ul class="nav-links">
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#features">Features</a></li>
+      <li><a href="/benchmarks" class="active">Benchmarks</a></li>
+      <li><a href="/pricing">Pricing</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <a href="/console/login" class="nav-cta">Get Started</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <div class="section-label">Performance</div>
+    <h1>Benchmarks</h1>
+    <p>Real numbers from our test harness. WarpGrid vs Docker on identical hardware.</p>
+  </div>
+
+  <!-- Cold Start -->
+  <section class="bench-section">
+    <h2>Cold Start Latency</h2>
+    <div class="bench-grid">
+      <div class="bar-row">
+        <span class="bar-label">Rust</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 3%"></div></div>
+        <span class="bar-value">0.3 ms</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">Go</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 8%"></div></div>
+        <span class="bar-value">0.8 ms</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">TypeScript</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 11%"></div></div>
+        <span class="bar-value">1.1 ms</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">Bun</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 14%"></div></div>
+        <span class="bar-value">1.4 ms</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">Docker</span>
+        <div class="bar-track"><div class="bar-fill danger" style="width: 100%"></div></div>
+        <span class="bar-value danger">200–500 ms</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Throughput -->
+  <section class="bench-section">
+    <h2>Throughput (requests/sec per instance)</h2>
+    <div class="bench-grid">
+      <div class="bar-row">
+        <span class="bar-label">Rust</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 100%"></div></div>
+        <span class="bar-value">45,000</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">Go</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 71%"></div></div>
+        <span class="bar-value">32,000</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">Bun</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 62%"></div></div>
+        <span class="bar-value">28,000</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Memory Density -->
+  <section class="bench-section">
+    <h2>Memory Density (instances per 1 GB RAM)</h2>
+    <div class="compare-grid">
+      <div class="compare-card">
+        <h3>WarpGrid</h3>
+        <div class="stat">500</div>
+        <div class="stat-label">instances per GB</div>
+      </div>
+      <div class="compare-card">
+        <h3>Docker</h3>
+        <div class="stat danger">20</div>
+        <div class="stat-label">instances per GB</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- App Size -->
+  <section class="bench-section">
+    <h2>Deployment Size</h2>
+    <div class="compare-grid">
+      <div class="compare-card">
+        <h3>WarpGrid Component</h3>
+        <div class="stat">42 KB</div>
+        <div class="stat-label">average Wasm component</div>
+      </div>
+      <div class="compare-card">
+        <h3>Docker Image</h3>
+        <div class="stat danger">50+ MB</div>
+        <div class="stat-label">minimum container image</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="source">
+    <p>All benchmarks run via <code>test-infra/bench-harness</code> on identical hardware.</p>
+    <p style="margin-top: 0.5rem;"><a href="https://github.com/dotindustries/warpgrid/tree/main/test-infra/bench-harness">View source & reproduce →</a></p>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <p>WarpGrid is open source under Apache 2.0 · <a href="https://github.com/dotindustries/warpgrid">GitHub</a> · Built by <a href="https://dot.industries">dot industries</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

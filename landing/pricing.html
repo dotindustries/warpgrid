@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — WarpGrid</title>
+  <meta name="description" content="WarpGrid pricing plans: Free, Pro, and Enterprise. Deploy Wasm workloads with no credit card required.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --grid-950: #040608; --grid-900: #0a0f14; --grid-850: #0f161d; --grid-800: #141e28;
+      --grid-700: #1e2d3d; --grid-600: #2a3f52; --grid-500: #3a5570;
+      --accent: #00e5a0; --accent-dim: rgba(0, 229, 160, 0.1); --accent-glow: rgba(0, 229, 160, 0.25);
+      --danger: #ff5c6c; --warning: #ffbe0b; --info: #38bdf8;
+      --text-1: #f1f5f9; --text-2: #e2e8f0; --text-3: #cbd5e1; --text-4: #94a3b8; --text-5: #64748b;
+      --font-display: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
+    }
+    html { font-size: 16px; }
+    body { font-family: var(--font-display); background: var(--grid-950); color: var(--text-2); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* Nav */
+    nav { position: sticky; top: 0; z-index: 100; background: rgba(10, 15, 20, 0.85); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(30, 45, 61, 0.4); padding: 1rem 0; }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    .logo { display: flex; align-items: center; gap: 0.625rem; font-weight: 700; font-size: 1.25rem; color: var(--text-1); text-decoration: none; }
+    .logo-icon { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; width: 18px; height: 18px; }
+    .logo-icon span { width: 4px; height: 4px; border-radius: 1px; background: var(--accent); }
+    .logo-icon span:nth-child(5), .logo-icon span:nth-child(9) { background: var(--text-4); }
+    .nav-links { display: flex; gap: 2rem; list-style: none; }
+    .nav-links a { color: var(--text-4); text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--text-1); }
+    .nav-links a.active { color: var(--accent); }
+    .nav-cta { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1.25rem; background: var(--accent); color: var(--grid-950); font-weight: 600; font-size: 0.875rem; border-radius: 8px; text-decoration: none; transition: all 0.2s; }
+    .nav-cta:hover { box-shadow: 0 0 20px var(--accent-glow); }
+
+    /* Page */
+    .page-header { padding: 4rem 0 1rem; text-align: center; }
+    .page-header h1 { font-size: 2.5rem; color: var(--text-1); margin-bottom: 0.75rem; }
+    .page-header p { color: var(--text-4); font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
+    .section-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 0.75rem; }
+
+    /* Beta banner */
+    .beta-banner { max-width: 600px; margin: 2rem auto; padding: 1rem 1.5rem; background: var(--accent-dim); border: 1px solid rgba(0, 229, 160, 0.2); border-radius: 10px; text-align: center; color: var(--accent); font-weight: 500; }
+
+    /* Plans */
+    .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; padding: 2rem 0 4rem; }
+    .plan { background: var(--grid-900); border: 1px solid var(--grid-700); border-radius: 16px; padding: 2.5rem 2rem; display: flex; flex-direction: column; transition: border-color 0.2s, transform 0.2s; }
+    .plan:hover { border-color: var(--grid-500); transform: translateY(-2px); }
+    .plan.featured { border-color: var(--accent); position: relative; }
+    .plan.featured::before { content: "Most Popular"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--grid-950); font-size: 0.75rem; font-weight: 700; padding: 0.25rem 1rem; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .plan-name { font-size: 1.25rem; font-weight: 600; color: var(--text-1); margin-bottom: 0.5rem; }
+    .plan-price { font-family: var(--font-mono); margin: 1rem 0 1.5rem; }
+    .plan-price .amount { font-size: 3rem; font-weight: 700; color: var(--accent); }
+    .plan-price .period { font-size: 1rem; color: var(--text-4); }
+    .plan-features { list-style: none; flex: 1; margin-bottom: 2rem; }
+    .plan-features li { padding: 0.5rem 0; color: var(--text-3); font-size: 0.95rem; display: flex; align-items: center; gap: 0.75rem; }
+    .plan-features li::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-dim); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(0, 229, 160, 0.3); }
+    .plan-features li.check::before { background: var(--accent); }
+    .btn-plan { display: block; text-align: center; padding: 0.875rem 1.5rem; border-radius: 10px; font-weight: 600; font-size: 0.95rem; text-decoration: none; transition: all 0.2s; }
+    .btn-plan.primary { background: var(--accent); color: var(--grid-950); }
+    .btn-plan.primary:hover { box-shadow: 0 0 24px var(--accent-glow); }
+    .btn-plan.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    .btn-plan.secondary:hover { background: var(--accent-dim); }
+    .btn-plan.outline { background: transparent; color: var(--text-3); border: 1px solid var(--grid-600); }
+    .btn-plan.outline:hover { border-color: var(--text-4); color: var(--text-1); }
+
+    /* FAQ-like section */
+    .faq-section { max-width: 700px; margin: 0 auto; padding: 2rem 0 4rem; }
+    .faq-section h2 { font-size: 1.5rem; color: var(--text-1); margin-bottom: 1.5rem; text-align: center; }
+    .faq-item { padding: 1.25rem 0; border-bottom: 1px solid var(--grid-700); }
+    .faq-item strong { color: var(--text-1); display: block; margin-bottom: 0.5rem; }
+    .faq-item p { color: var(--text-4); font-size: 0.9rem; }
+
+    /* Footer */
+    footer { padding: 2rem 0; border-top: 1px solid var(--grid-700); }
+    footer p { text-align: center; color: var(--text-5); font-size: 0.85rem; }
+    footer a { color: var(--text-4); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .plans { grid-template-columns: 1fr; }
+      .plan.featured { margin-top: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <span class="logo-icon"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+      WarpGrid
+    </a>
+    <ul class="nav-links">
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#features">Features</a></li>
+      <li><a href="/benchmarks">Benchmarks</a></li>
+      <li><a href="/pricing" class="active">Pricing</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <a href="/console/login" class="nav-cta">Get Started</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <div class="section-label">Plans</div>
+    <h1>Simple, transparent pricing</h1>
+    <p>Pay only for what you use. Scale to zero when idle. No credit card required to start.</p>
+  </div>
+
+  <div class="beta-banner">
+    🎉 Free during beta — all features unlocked, no credit card required
+  </div>
+
+  <div class="plans">
+    <div class="plan">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">
+        <span class="amount">$0</span><span class="period">/month</span>
+      </div>
+      <ul class="plan-features">
+        <li class="check">3 deployments</li>
+        <li class="check">5 instances each</li>
+        <li class="check">100 req/s</li>
+        <li class="check">10 MB max Wasm size</li>
+        <li class="check">Community support</li>
+        <li class="check">1 region</li>
+      </ul>
+      <a href="/console/login" class="btn-plan secondary">Get Started Free</a>
+    </div>
+
+    <div class="plan featured">
+      <div class="plan-name">Pro</div>
+      <div class="plan-price">
+        <span class="amount">$29</span><span class="period">/month</span>
+      </div>
+      <ul class="plan-features">
+        <li class="check">10 deployments</li>
+        <li class="check">20 instances each</li>
+        <li class="check">1,000 req/s</li>
+        <li class="check">50 MB max Wasm size</li>
+        <li class="check">Custom domains</li>
+        <li class="check">Priority support</li>
+        <li class="check">5 regions</li>
+      </ul>
+      <a href="/console/login" class="btn-plan primary">Start Free Trial</a>
+    </div>
+
+    <div class="plan">
+      <div class="plan-name">Enterprise</div>
+      <div class="plan-price">
+        <span class="amount">Custom</span>
+      </div>
+      <ul class="plan-features">
+        <li class="check">Unlimited deployments</li>
+        <li class="check">Unlimited instances</li>
+        <li class="check">Dedicated regions</li>
+        <li class="check">SLA guarantee</li>
+        <li class="check">SSO / SAML</li>
+        <li class="check">24/7 support</li>
+        <li class="check">On-premise option</li>
+      </ul>
+      <a href="mailto:hello@dot.industries" class="btn-plan outline">Contact Sales</a>
+    </div>
+  </div>
+
+  <section class="faq-section">
+    <h2>Pricing FAQ</h2>
+    <div class="faq-item">
+      <strong>Do I need a credit card to start?</strong>
+      <p>No. The free tier requires no credit card and has no time limit.</p>
+    </div>
+    <div class="faq-item">
+      <strong>What happens when I exceed my plan limits?</strong>
+      <p>We'll notify you before you hit limits. Your workloads won't be stopped — you'll be prompted to upgrade.</p>
+    </div>
+    <div class="faq-item">
+      <strong>Can I scale to zero?</strong>
+      <p>Yes. On Free and Pro plans, idle deployments scale to zero instances and you pay nothing for compute during idle periods.</p>
+    </div>
+    <div class="faq-item">
+      <strong>Is there a minimum commitment?</strong>
+      <p>No contracts, no minimums. Cancel anytime. Enterprise plans have custom terms.</p>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="container">
+    <p>WarpGrid is open source under Apache 2.0 · <a href="https://github.com/dotindustries/warpgrid">GitHub</a> · Built by <a href="https://dot.industries">dot industries</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
