@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY landing/ landing/
 
 # Build only the warpd binary in release mode.
 RUN cargo build --release --package warpd \

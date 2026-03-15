@@ -59,6 +59,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure git identity (required by git am)
+        run: |
+          git config --global user.email "ci@warpgrid.dev"
+          git config --global user.name "WarpGrid CI"
+
       - name: Install wasmtime
         uses: bytecodealliance/actions/wasmtime/setup@v1
         with:
