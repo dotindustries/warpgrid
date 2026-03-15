@@ -97,9 +97,15 @@ enum Command {
         #[arg(long, default_value = "/var/lib/warpgrid")]
         data_dir: PathBuf,
 
-        /// PostgreSQL connection URL for cloud metadata.
-        #[arg(long, env = "DATABASE_URL")]
-        postgres_url: Option<String>,
+        /// Turso database URL for cloud metadata replication.
+        /// When set, cloud.db syncs to/from Turso Cloud for edge replication.
+        /// Format: libsql://your-db.turso.io
+        #[arg(long, env = "TURSO_DATABASE_URL")]
+        turso_url: Option<String>,
+
+        /// Turso auth token for database access.
+        #[arg(long, env = "TURSO_AUTH_TOKEN")]
+        turso_auth_token: Option<String>,
 
         /// Fly.io API token for machine provisioning.
         #[arg(long, env = "FLY_API_TOKEN")]
@@ -181,7 +187,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Cloud {
             api_port,
             data_dir,
-            postgres_url,
+            turso_url,
+            turso_auth_token,
             fly_api_token,
             registry_bucket,
             edge_regions,
@@ -192,7 +199,8 @@ async fn main() -> anyhow::Result<()> {
             cloud_mode::run_cloud(
                 api_port,
                 data_dir,
-                postgres_url,
+                turso_url,
+                turso_auth_token,
                 fly_api_token,
                 registry_bucket,
                 edge_regions,

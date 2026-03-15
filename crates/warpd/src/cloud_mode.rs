@@ -32,7 +32,8 @@ use crate::cloud::usage::UsageTracker;
 pub async fn run_cloud(
     api_port: u16,
     data_dir: PathBuf,
-    _postgres_url: Option<String>,
+    turso_url: Option<String>,
+    turso_auth_token: Option<String>,
     fly_api_token: Option<String>,
     _registry_bucket: String,
     edge_regions: String,
@@ -53,11 +54,25 @@ pub async fn run_cloud(
     info!(path = ?db_path, "runtime state store opened (redb)");
 
     // Cloud metadata database (libSQL — users, teams, domains, billing).
+    // If Turso credentials are provided, open as a syncing replica;
+    // otherwise, open as a standalone local file.
     let cloud_db_path = data_dir.join("cloud.db").to_string_lossy().to_string();
-    let cloud_db = crate::cloud::db::open_local(&cloud_db_path).await?;
+    let cloud_db = match (&turso_url, &turso_auth_token) {
+        (Some(url), Some(token)) => {
+            info!(url = %url, "connecting to Turso Cloud (embedded replica)");
+            crate::cloud::db::open_replica(&cloud_db_path, url, token).await?
+        }
+        (Some(_), None) => {
+            anyhow::bail!("TURSO_DATABASE_URL is set but TURSO_AUTH_TOKEN is missing");
+        }
+        _ => {
+            crate::cloud::db::open_local(&cloud_db_path).await?
+        }
+    };
     let cloud_conn = cloud_db.connect()?;
     crate::cloud::db::migrate(&cloud_conn).await?;
-    info!(path = %cloud_db_path, "cloud metadata store opened (libSQL)");
+    let mode_label = if turso_url.is_some() { "turso replica" } else { "local" };
+    info!(path = %cloud_db_path, mode = mode_label, "cloud metadata store opened (libSQL)");
 
     // Auth store (backed by libSQL — persists across restarts).
     let auth = AuthStore::with_libsql(cloud_conn.clone());

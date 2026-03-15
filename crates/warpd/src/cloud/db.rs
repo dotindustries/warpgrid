@@ -29,6 +29,22 @@ pub async fn open_local(path: &str) -> anyhow::Result<Database> {
     Ok(db)
 }
 
+/// Open a libSQL embedded replica that syncs from a Turso Cloud primary.
+/// The local file serves reads instantly; writes go through the remote primary.
+pub async fn open_replica(
+    local_path: &str,
+    turso_url: &str,
+    auth_token: &str,
+) -> anyhow::Result<Database> {
+    let db = Builder::new_remote_replica(local_path, turso_url.to_string(), auth_token.to_string())
+        .build()
+        .await
+        .with_context(|| {
+            format!("failed to open libSQL replica at {local_path} syncing from {turso_url}")
+        })?;
+    Ok(db)
+}
+
 /// Open an in-memory libSQL database (for tests).
 pub async fn open_memory() -> anyhow::Result<Database> {
     let db = Builder::new_local(":memory:")
