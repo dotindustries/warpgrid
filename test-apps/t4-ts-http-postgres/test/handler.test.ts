@@ -263,6 +263,19 @@ describe("unsupported routes", () => {
 
     assert.equal(response.status, 405);
   });
+
+  it("returns 405 for unsupported HTTP method on /users/:id", () => {
+    const mockClient = new MockPgClient();
+
+    const response = handleRequest(
+      { method: "DELETE", url: "http://localhost/users/1", body: null },
+      () => mockClient
+    );
+
+    assert.equal(response.status, 405);
+    const body = JSON.parse(response.body);
+    assert.ok(body.error.includes("not allowed"));
+  });
 });
 
 describe("Content-Type header", () => {
