@@ -1,0 +1,27 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only one deploy at a time
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy warpgrid-cloud
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Only deploy if CI passed (check & test must succeed)
+    needs: []
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --config infra/fly-cloud.toml --dockerfile infra/Dockerfile --app warpgrid-cloud
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
