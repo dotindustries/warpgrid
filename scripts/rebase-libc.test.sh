@@ -17,6 +17,9 @@
 #   8.  --validate --subset filesystem validates filesystem-only subset
 #   9.  --validate reports clear error for socket patches without filesystem
 #  10.  --help includes --validate and --subset documentation
+#  11.  --subset dns on full 8-patch set validates only DNS patches
+#  12.  --subset with unknown domain exits non-zero
+#  13.  dependency that comes later in series produces distinct error
 #
 # Usage:
 #   ./rebase-libc.test.sh          Run all tests
@@ -378,6 +381,60 @@ elif ${HAS_VALIDATE}; then
     fail "--help has --validate but missing --subset"
 else
     fail "--help missing --validate and/or --subset. Output: ${OUTPUT}"
+fi
+
+# ── Test 11: --subset filters domain from full patch set ──────────────
+
+log "Test 11: --subset dns on full 8-patch set validates only DNS patches"
+
+PATCHES="${_tmpdir}/test11-patches"
+mkdir -p "${PATCHES}"
+make_valid_patch_set "${PATCHES}"
+
+EXIT_CODE=0
+OUTPUT=$(run_validate "${PATCHES}" --subset dns 2>&1) || EXIT_CODE=$?
+
+# Should pass (DNS subset is self-consistent) and only validate 3 patches
+if [ ${EXIT_CODE} -eq 0 ] && echo "${OUTPUT}" | grep -q "3 patch"; then
+    pass "--subset dns on full set validates only 3 DNS patches"
+else
+    fail "--subset dns on full set should pass with 3 patches (exit=${EXIT_CODE}). Output: ${OUTPUT}"
+fi
+
+# ── Test 12: --subset with unknown domain exits non-zero ──────────────
+
+log "Test 12: --subset with unknown domain exits non-zero"
+
+PATCHES="${_tmpdir}/test12-patches"
+mkdir -p "${PATCHES}"
+make_valid_patch_set "${PATCHES}"
+
+EXIT_CODE=0
+OUTPUT=$(run_validate "${PATCHES}" --subset bogus 2>&1) || EXIT_CODE=$?
+
+if [ ${EXIT_CODE} -ne 0 ] && echo "${OUTPUT}" | grep -qi "no patches found.*bogus\|bogus"; then
+    pass "--subset with unknown domain exits non-zero"
+else
+    fail "--subset bogus should fail (exit=${EXIT_CODE}). Output: ${OUTPUT}"
+fi
+
+# ── Test 13: dependency that comes later produces distinct error ───────
+
+log "Test 13: dependency that comes later in series produces distinct error"
+
+PATCHES="${_tmpdir}/test13-patches"
+mkdir -p "${PATCHES}"
+# Create patches where 0001 declares a dependency on 0002 (which exists but comes after)
+make_patch "${PATCHES}" "0001-dns.patch" "dns" "0002" "warpgrid:shim/dns"
+make_patch "${PATCHES}" "0002-fs.patch" "filesystem" "none" "warpgrid:shim/filesystem"
+
+EXIT_CODE=0
+OUTPUT=$(run_validate "${PATCHES}" 2>&1) || EXIT_CODE=$?
+
+if [ ${EXIT_CODE} -ne 0 ] && echo "${OUTPUT}" | grep -qi "comes later"; then
+    pass "--validate distinguishes 'comes later' from 'not present'"
+else
+    fail "--validate should report 'comes later' for forward deps (exit=${EXIT_CODE}). Output: ${OUTPUT}"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
