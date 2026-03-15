@@ -414,7 +414,7 @@ addEventListener("fetch", (event) => {
     const match = path.match(/^\/users\/([^/]+)$/);
     if (match && method === "GET") {
       response = handleGetUserById(match[1]);
-    } else if (path.startsWith("/users")) {
+    } else if (path === "/users" || (match && method !== "GET")) {
       response = jsonResponse(405, { error: "method not allowed" });
     } else {
       response = jsonResponse(404, { error: "not found" });

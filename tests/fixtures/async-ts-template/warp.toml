@@ -1,0 +1,7 @@
+[package]
+name = "async-ts-template"
+version = "0.1.0"
+
+[build]
+lang = "typescript"
+entry = "src/handler.ts"

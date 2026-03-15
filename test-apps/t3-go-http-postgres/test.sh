@@ -104,7 +104,7 @@ log "Building and starting Go server on port ${PORT}..."
 
 # Build the standalone Go binary
 GO_BINARY="${_tmpdir}/t3-server"
-if ! go build -o "${GO_BINARY}" "${SCRIPT_DIR}/main.go" 2>&1; then
+if ! go build -o "${GO_BINARY}" "${SCRIPT_DIR}" 2>&1; then
     fail "Go build failed"
     echo ""
     echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"
@@ -120,7 +120,7 @@ SERVER_READY=false
 ATTEMPTS=0
 MAX_ATTEMPTS=20
 while [ ${ATTEMPTS} -lt ${MAX_ATTEMPTS} ]; do
-    if grep -q "Server listening" "${_tmpdir}/serve.stderr" 2>/dev/null; then
+    if grep -q "listening on" "${_tmpdir}/serve.stderr" 2>/dev/null; then
         SERVER_READY=true
         break
     fi

@@ -36,6 +36,13 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 
+# JUnit XML tracking arrays (populated by run_single_test)
+RESULT_NAMES=()
+RESULT_CLASSNAMES=()
+RESULT_STATUSES=()    # "pass", "fail", "skip"
+RESULT_TIMES=()       # elapsed seconds per test
+RESULT_OUTPUTS=()     # failure/skip message
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 log() { echo "==> $*" >&2; }
@@ -139,12 +146,25 @@ run_single_test() {
     local wasm_file="${wasm_dir}/${test_name}.wasm"
 
     TOTAL=$((TOTAL + 1))
+    local test_start=${SECONDS}
+
+    # Helper to record result for JUnit XML
+    _record_result() {
+        local status="${1}" output="${2:-}"
+        local elapsed=$(( SECONDS - test_start ))
+        RESULT_NAMES+=("${test_name}")
+        RESULT_CLASSNAMES+=("libc.${variant}")
+        RESULT_STATUSES+=("${status}")
+        RESULT_TIMES+=("${elapsed}")
+        RESULT_OUTPUTS+=("${output}")
+    }
 
     # Check if this test requires shims (has WARPGRID_SHIM marker)
     if grep -q 'WARPGRID_SHIM_REQUIRED' "${src}" 2>/dev/null; then
         if [[ "${variant}" == "stock" ]]; then
             printf "  %-30s  SKIP (shim not available)\n" "${test_name}"
             SKIPPED=$((SKIPPED + 1))
+            _record_result "skip" "shim not available in stock sysroot"
             return
         fi
     fi
@@ -155,6 +175,7 @@ run_single_test() {
         if [[ ! -f "${libpq_dir}/lib/libpq.a" ]]; then
             printf "  %-30s  SKIP (libpq not built — run scripts/build-libpq.sh)\n" "${test_name}"
             SKIPPED=$((SKIPPED + 1))
+            _record_result "skip" "libpq not built"
             return
         fi
     fi
@@ -178,6 +199,7 @@ run_single_test() {
             echo "    ${compile_output}" | head -5 | sed 's/^/    /'
         fi
         FAILED=$((FAILED + 1))
+        _record_result "fail" "compile error: ${compile_output}"
         return
     fi
 
@@ -189,12 +211,14 @@ run_single_test() {
     if [[ ${exit_code} -eq 0 ]]; then
         printf "  %-30s  PASS\n" "${test_name}"
         PASSED=$((PASSED + 1))
+        _record_result "pass"
     else
         printf "  %-30s  FAIL (exit code ${exit_code})\n" "${test_name}"
         if [[ -n "${run_output}" ]]; then
             echo "${run_output}" | head -5 | sed 's/^/    /'
         fi
         FAILED=$((FAILED + 1))
+        _record_result "fail" "exit code ${exit_code}: ${run_output}"
     fi
 }
 
@@ -231,6 +255,62 @@ run_test_suite() {
     for src in "${test_files[@]}"; do
         run_single_test "${src}" "${sysroot}" "${variant}"
     done
+}
+
+# Generate JUnit XML report from tracked results
+generate_junit_xml() {
+    local output_dir="${PROJECT_ROOT}/test-results"
+    mkdir -p "${output_dir}"
+    local timestamp
+    timestamp="$(date +%Y%m%d-%H%M%S)"
+    local xml_file="${output_dir}/libc-${timestamp}.xml"
+
+    local total_time=0
+    for t in "${RESULT_TIMES[@]}"; do
+        total_time=$(( total_time + t ))
+    done
+
+    {
+        echo '<?xml version="1.0" encoding="UTF-8"?>'
+        echo "<testsuites>"
+        echo "  <testsuite name=\"libc-tests\" tests=\"${TOTAL}\" failures=\"${FAILED}\" skipped=\"${SKIPPED}\" time=\"${total_time}\">"
+
+        local i
+        for (( i=0; i<${#RESULT_NAMES[@]}; i++ )); do
+            local name="${RESULT_NAMES[$i]}"
+            local classname="${RESULT_CLASSNAMES[$i]}"
+            local status="${RESULT_STATUSES[$i]}"
+            local time="${RESULT_TIMES[$i]}"
+            local output="${RESULT_OUTPUTS[$i]}"
+
+            # XML-escape the output
+            output="${output//&/&amp;}"
+            output="${output//</&lt;}"
+            output="${output//>/&gt;}"
+            output="${output//\"/&quot;}"
+
+            case "${status}" in
+                pass)
+                    echo "    <testcase name=\"${name}\" classname=\"${classname}\" time=\"${time}\"/>"
+                    ;;
+                skip)
+                    echo "    <testcase name=\"${name}\" classname=\"${classname}\" time=\"${time}\">"
+                    echo "      <skipped message=\"${output}\"/>"
+                    echo "    </testcase>"
+                    ;;
+                fail)
+                    echo "    <testcase name=\"${name}\" classname=\"${classname}\" time=\"${time}\">"
+                    echo "      <failure message=\"test failed\">${output}</failure>"
+                    echo "    </testcase>"
+                    ;;
+            esac
+        done
+
+        echo "  </testsuite>"
+        echo "</testsuites>"
+    } > "${xml_file}"
+
+    log "JUnit XML report: ${xml_file}"
 }
 
 # Print summary
@@ -285,6 +365,11 @@ main() {
     fi
 
     print_summary
+
+    # Generate JUnit XML in CI mode
+    if ${ci_mode}; then
+        generate_junit_xml
+    fi
 
     # Exit code
     if [[ ${FAILED} -gt 0 ]]; then

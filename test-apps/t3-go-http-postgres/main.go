@@ -32,16 +32,28 @@ import (
 
 // User represents a row in the test_users table.
 type User struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email,omitempty"`
 }
 
 func main() {
 	connStr := os.Getenv("DATABASE_URL")
-	if connStr == "" {
-		connStr = "postgres://testuser@db.test.warp.local:5432/testdb"
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
 
+	if connStr == "" {
+		// Standalone mode: use in-memory handler
+		http.HandleFunc("/", handler)
+		log.Printf("listening on :%s (standalone mode)\n", port)
+		log.Fatal(http.ListenAndServe(":"+port, nil))
+		return
+	}
+
+	// Production mode: use pgx with real Postgres
 	http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -53,8 +65,8 @@ func main() {
 		}
 	})
 
-	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Printf("listening on :%s (postgres mode)\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
 func handleGetUsers(w http.ResponseWriter, _ *http.Request, connStr string) {

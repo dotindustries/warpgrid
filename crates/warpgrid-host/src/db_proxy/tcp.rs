@@ -21,9 +21,11 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::async_io::{AsyncConnectFuture, AsyncConnectionBackend, AsyncConnectionFactory};
 use super::{ConnectionBackend, ConnectionFactory, PoolKey};
 
 // ── Transport ────────────────────────────────────────────────────────
@@ -337,6 +339,153 @@ impl ConnectionFactory for TcpConnectionFactory {
         } else {
             Ok(Box::new(TcpBackend::plain(stream)))
         }
+    }
+}
+
+// ── Async TCP Backend ────────────────────────────────────────────────
+
+/// An [`AsyncConnectionBackend`] using tokio's async TCP for non-blocking I/O.
+///
+/// Wraps a `tokio::net::TcpStream` and performs raw byte passthrough without
+/// any protocol awareness — the async counterpart of [`TcpBackend`].
+pub struct AsyncTcpBackend {
+    stream: Option<tokio::net::TcpStream>,
+}
+
+impl std::fmt::Debug for AsyncTcpBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsyncTcpBackend")
+            .field("connected", &self.stream.is_some())
+            .finish()
+    }
+}
+
+impl AsyncTcpBackend {
+    /// Create a new async backend wrapping a tokio TCP stream.
+    pub fn new(stream: tokio::net::TcpStream) -> Self {
+        Self {
+            stream: Some(stream),
+        }
+    }
+}
+
+impl AsyncConnectionBackend for AsyncTcpBackend {
+    fn send_async<'a>(
+        &'a mut self,
+        data: &'a [u8],
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<usize, String>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::io::AsyncWriteExt;
+            let stream = self
+                .stream
+                .as_mut()
+                .ok_or_else(|| "connection closed".to_string())?;
+            let n = data.len();
+            stream
+                .write_all(data)
+                .await
+                .map_err(|e| format!("async tcp send: {e}"))?;
+            Ok(n)
+        })
+    }
+
+    fn recv_async<'a>(
+        &'a mut self,
+        max_bytes: usize,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::io::AsyncReadExt;
+            let stream = self
+                .stream
+                .as_mut()
+                .ok_or_else(|| "connection closed".to_string())?;
+            let mut buf = vec![0u8; max_bytes];
+            let n = stream
+                .read(&mut buf)
+                .await
+                .map_err(|e| format!("async tcp recv: {e}"))?;
+            buf.truncate(n);
+            Ok(buf)
+        })
+    }
+
+    fn ping_async(&mut self) -> Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
+        Box::pin(async move {
+            let stream = match &self.stream {
+                Some(s) => s,
+                None => return false,
+            };
+
+            // Try to peek — readable() + try_read with peek flag.
+            let mut peek_buf = [0u8; 1];
+            match stream.peek(&mut peek_buf).await {
+                Ok(0) => false, // EOF — peer closed
+                Ok(_) => true,  // Data available — alive
+                Err(e) => {
+                    // If we get WouldBlock it means no data but connection alive.
+                    matches!(e.kind(), std::io::ErrorKind::WouldBlock)
+                }
+            }
+        })
+    }
+
+    fn close_async(&mut self) -> Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(async move {
+            if let Some(stream) = self.stream.take() {
+                drop(stream);
+            }
+        })
+    }
+}
+
+// ── AsyncTcpConnectionFactory ────────────────────────────────────────
+
+/// Factory creating async TCP connections to database servers.
+///
+/// The async counterpart of [`TcpConnectionFactory`]. Uses
+/// `tokio::net::TcpStream::connect` with a timeout for non-blocking
+/// connection establishment.
+pub struct AsyncTcpConnectionFactory {
+    /// Timeout for establishing TCP connections.
+    connect_timeout: Duration,
+}
+
+impl AsyncTcpConnectionFactory {
+    /// Create a factory for plain async TCP connections.
+    pub fn new(connect_timeout: Duration) -> Self {
+        Self { connect_timeout }
+    }
+}
+
+impl AsyncConnectionFactory for AsyncTcpConnectionFactory {
+    fn connect_async<'a>(
+        &'a self,
+        key: &'a PoolKey,
+        _password: Option<&'a str>,
+    ) -> AsyncConnectFuture<'a> {
+        Box::pin(async move {
+            let addr_str = format!("{}:{}", key.host, key.port);
+
+            // Resolve DNS and connect with timeout.
+            let stream = tokio::time::timeout(
+                self.connect_timeout,
+                tokio::net::TcpStream::connect(&addr_str),
+            )
+            .await
+            .map_err(|_| format!("async tcp connect timeout for {addr_str}"))?
+            .map_err(|e| format!("async tcp connect to {addr_str}: {e}"))?;
+
+            // Disable Nagle's algorithm for low-latency wire protocol exchange.
+            let _ = stream.set_nodelay(true);
+
+            tracing::debug!(
+                host = %key.host,
+                port = key.port,
+                "established async tcp connection"
+            );
+
+            Ok(Box::new(AsyncTcpBackend::new(stream)) as Box<dyn AsyncConnectionBackend>)
+        })
     }
 }
 
@@ -811,5 +960,219 @@ mod tests {
         let backend = TcpBackend::plain(stream);
         let debug = format!("{backend:?}");
         assert!(debug.contains("tls: false"));
+    }
+
+    // ── Async TCP echo server helper ──────────────────────────────────
+
+    /// Start a tokio TCP echo server. Returns the address.
+    async fn start_async_echo_server() -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind to random port");
+        let addr = listener.local_addr().expect("local addr");
+
+        tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _)) => {
+                        tokio::spawn(async move {
+                            let (mut reader, mut writer) = stream.into_split();
+                            let _ = tokio::io::copy(&mut reader, &mut writer).await;
+                        });
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        addr
+    }
+
+    // ── AsyncTcpBackend: send/recv ────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_tcp_send_and_recv_roundtrip() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        let sent = backend.send_async(b"hello world").await.unwrap();
+        assert_eq!(sent, 11);
+
+        let data = backend.recv_async(1024).await.unwrap();
+        assert_eq!(data, b"hello world");
+    }
+
+    #[tokio::test]
+    async fn async_tcp_passthrough_preserves_exact_bytes() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        // Binary data — Postgres startup message (first 8 bytes of protocol v3.0).
+        let pg_startup: [u8; 8] = [0x00, 0x00, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00];
+        let sent = backend.send_async(&pg_startup).await.unwrap();
+        assert_eq!(sent, 8);
+
+        let data = backend.recv_async(1024).await.unwrap();
+        assert_eq!(data, pg_startup, "raw bytes must pass through unmodified");
+    }
+
+    #[tokio::test]
+    async fn async_tcp_multiple_send_recv_cycles() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        for i in 0..10 {
+            let msg = format!("message {i}");
+            let sent = backend.send_async(msg.as_bytes()).await.unwrap();
+            assert_eq!(sent, msg.len());
+
+            let data = backend.recv_async(1024).await.unwrap();
+            assert_eq!(data, msg.as_bytes());
+        }
+    }
+
+    #[tokio::test]
+    async fn async_tcp_large_payload_passthrough() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        // 64 KB payload — larger than typical TCP buffer.
+        let payload: Vec<u8> = (0..65536).map(|i| (i % 256) as u8).collect();
+        let sent = backend.send_async(&payload).await.unwrap();
+        assert_eq!(sent, 65536);
+
+        // Recv may return in chunks — collect until we have all bytes.
+        let mut received = Vec::new();
+        while received.len() < 65536 {
+            let chunk = backend.recv_async(65536 - received.len()).await.unwrap();
+            if chunk.is_empty() {
+                break;
+            }
+            received.extend_from_slice(&chunk);
+        }
+        assert_eq!(received.len(), 65536);
+        assert_eq!(received, payload);
+    }
+
+    // ── AsyncTcpBackend: ping ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_tcp_ping_healthy_connection() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        // Send some data so the echo server will respond, making peek see data.
+        backend.send_async(b"ping").await.unwrap();
+        // Small delay to allow echo response.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert!(backend.ping_async().await, "healthy connection should ping true");
+    }
+
+    #[tokio::test]
+    async fn async_tcp_ping_closed_connection() {
+        // Start a listener that accepts then immediately drops the connection.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            drop(stream); // Close immediately.
+        });
+
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        // Give the server time to close.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        assert!(!backend.ping_async().await, "closed connection should ping false");
+    }
+
+    // ── AsyncTcpBackend: close ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_tcp_close_terminates_connection() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut backend = AsyncTcpBackend::new(stream);
+
+        backend.close_async().await;
+
+        // After close, send should fail (stream is None).
+        let result = backend.send_async(b"data").await;
+        assert!(result.is_err(), "send after close should fail");
+    }
+
+    // ── AsyncTcpBackend: debug format ────────────────────────────────
+
+    #[tokio::test]
+    async fn async_tcp_debug_format() {
+        let addr = start_async_echo_server().await;
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let backend = AsyncTcpBackend::new(stream);
+        let debug = format!("{backend:?}");
+        assert!(debug.contains("connected: true"));
+
+        // After close, should show disconnected.
+        let mut backend = backend;
+        backend.close_async().await;
+        let debug = format!("{backend:?}");
+        assert!(debug.contains("connected: false"));
+    }
+
+    // ── AsyncTcpConnectionFactory ────────────────────────────────────
+
+    #[tokio::test]
+    async fn async_factory_creates_working_connection() {
+        let addr = start_async_echo_server().await;
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_secs(2));
+        let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
+
+        let mut backend = factory.connect_async(&key, None).await.unwrap();
+
+        let sent = backend.send_async(b"test").await.unwrap();
+        assert_eq!(sent, 4);
+
+        let data = backend.recv_async(1024).await.unwrap();
+        assert_eq!(data, b"test");
+    }
+
+    #[tokio::test]
+    async fn async_factory_connect_refused() {
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_secs(1));
+        // Port 1 is unlikely to have a listener.
+        let key = PoolKey::new("127.0.0.1", 1, "testdb", "user");
+
+        let result = factory.connect_async(&key, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn async_factory_connect_timeout() {
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_millis(100));
+        // Use a non-routable address to trigger timeout.
+        let key = PoolKey::new("192.0.2.1", 5432, "testdb", "user");
+
+        let result = factory.connect_async(&key, None).await;
+        assert!(result.is_err(), "should fail with timeout or connection error");
+    }
+
+    #[tokio::test]
+    async fn async_factory_ignores_password_for_passthrough() {
+        let addr = start_async_echo_server().await;
+        let factory = AsyncTcpConnectionFactory::new(Duration::from_secs(2));
+        let key = PoolKey::new("127.0.0.1", addr.port(), "testdb", "user");
+
+        // Password is provided but should be ignored — guest sends auth via wire protocol.
+        let mut backend = factory.connect_async(&key, Some("secret")).await.unwrap();
+        let sent = backend.send_async(b"test").await.unwrap();
+        assert_eq!(sent, 4);
     }
 }

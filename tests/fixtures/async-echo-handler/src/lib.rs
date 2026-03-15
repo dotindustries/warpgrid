@@ -1,6 +1,6 @@
-//! Minimal async echo handler fixture for US-501/US-502 integration tests.
+//! Minimal async echo handler fixture for integration tests.
 //!
-//! Returns the request body as the response body with status 200
+//! Echoes request body back in the response with status 200
 //! and an `x-async: true` header.
 
 #![no_std]
@@ -21,7 +21,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 wit_bindgen::generate!({
     path: "wit",
-    world: "warpgrid-async-handler",
+    world: "async-echo-handler",
     generate_all,
 });
 
@@ -35,12 +35,10 @@ impl exports::warpgrid::shim::async_handler::Guest for Component {
 
         HttpResponse {
             status: 200,
-            headers: vec![
-                HttpHeader {
-                    name: "x-async".into(),
-                    value: "true".into(),
-                },
-            ],
+            headers: vec![HttpHeader {
+                name: "x-async".into(),
+                value: "true".into(),
+            }],
             body: request.body,
         }
     }
