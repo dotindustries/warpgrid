@@ -41,6 +41,7 @@ reqwest = { version = "0.12", features = ["json"] }
 sha2 = "0.10"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
 libsql = "0.9"
 
 [dev-dependencies]

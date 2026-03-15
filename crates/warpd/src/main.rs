@@ -19,6 +19,7 @@
 mod agent_mode;
 mod cloud;
 mod cloud_mode;
+mod config;
 mod control_plane;
 
 use std::collections::HashMap;
@@ -89,6 +90,10 @@ enum Command {
 
     /// Run as hosted cloud control plane (multi-tenant, auth, provisioning).
     Cloud {
+        /// Path to config file (searched: ./warpgrid.toml, $data_dir/warpgrid.toml, /etc/warpgrid/).
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+
         /// HTTP API port.
         #[arg(long, default_value = "8443")]
         api_port: u16,
@@ -185,6 +190,7 @@ async fn main() -> anyhow::Result<()> {
             run_standalone(port, data_dir, metrics_interval, autoscale_interval).await
         }
         Command::Cloud {
+            config: config_path,
             api_port,
             data_dir,
             turso_url,
@@ -196,17 +202,24 @@ async fn main() -> anyhow::Result<()> {
             posthog_api_key,
             stripe_secret_key,
         } => {
+            // Load config file (CLI args and env vars take precedence).
+            let cfg = config::WarpGridConfig::load(
+                config_path.as_deref(),
+                Some(&data_dir),
+            );
+            let c = &cfg.cloud;
+
             cloud_mode::run_cloud(
-                api_port,
-                data_dir,
-                turso_url,
-                turso_auth_token,
-                fly_api_token,
-                registry_bucket,
-                edge_regions,
-                metrics_interval,
-                posthog_api_key,
-                stripe_secret_key,
+                config::merge_with_default(api_port, c.api_port, 8443),
+                c.data_dir.clone().unwrap_or(data_dir),
+                config::merge_option(turso_url, c.turso.url.clone()),
+                config::merge_option(turso_auth_token, c.turso.auth_token.clone()),
+                config::merge_option(fly_api_token, c.fly.api_token.clone()),
+                c.registry.bucket.clone().unwrap_or(registry_bucket),
+                c.edge_regions.clone().unwrap_or(edge_regions),
+                config::merge_with_default(metrics_interval, c.metrics_interval, 60),
+                config::merge_option(posthog_api_key, c.posthog.api_key.clone()),
+                config::merge_option(stripe_secret_key, c.stripe.secret_key.clone()),
             )
             .await
         }
