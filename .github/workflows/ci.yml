@@ -49,6 +49,7 @@ jobs:
           context: .
           file: infra/Dockerfile
           push: false
+          load: true
           tags: warpgrid:ci
       - name: Verify binary works
         run: docker run --rm warpgrid:ci --help
