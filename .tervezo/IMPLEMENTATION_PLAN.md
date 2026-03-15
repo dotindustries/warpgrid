@@ -1,8 +1,13 @@
-# Implementation Plan: US-602 — Define and validate WarpGridHandler Bun interface
+# Implementation Plan: US-611 — Implement `bun run --warpgrid` native dev mode
 
 ## Task List
 
-- [x] **Write `validateHandler()` runtime tests** — Created `packages/warpgrid-bun-sdk/tests/validate-handler.test.ts` (14 tests)
-- [x] **Add `WarpGridHandlerValidationError` tests to `errors.test.ts`** (3 tests)
-- [x] **Run `bun test` and `bun run typecheck` to verify all tests pass** — 184 tests pass, typecheck clean
-- [x] **Create PR referencing issue #71** — PR #122
+- [x] **1.1** Create `packages/warpgrid-bun-sdk/tests/preload.test.ts` with TDD tests
+- [x] **2.1** Create `packages/warpgrid-bun-sdk/src/preload.ts` — preload script
+- [x] **3.1** Update `packages/warpgrid-bun-sdk/package.json` — add `"./preload"` export
+- [x] **4.1** Integration test: handler with mock native pool after preload
+- [x] **5.1** Add module-load test simulating `bun run --preload`
+- [x] **5.2** Document bunfig.toml config in preload.ts comment
+- [x] **6.1** Run `bun test` — 195 tests pass (9 new)
+- [x] **6.2** Run typecheck — clean
+- [x] **6.3** No regressions in existing tests

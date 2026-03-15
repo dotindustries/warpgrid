@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./pg": "./src/pg.ts",
     "./postgres": "./src/postgres.ts",
-    "./errors": "./src/errors.ts"
+    "./errors": "./src/errors.ts",
+    "./preload": "./src/preload.ts"
   },
   "scripts": {
     "typecheck": "bun x tsc --noEmit",
