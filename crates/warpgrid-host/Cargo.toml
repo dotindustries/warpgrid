@@ -19,9 +19,16 @@ webpki-roots = "0.26"
 
 [features]
 integration = []
+bench = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "rt-multi-thread", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rcgen = "0.13"
 wat.workspace = true
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "async_db_proxy"
+harness = false
+required-features = ["bench"]

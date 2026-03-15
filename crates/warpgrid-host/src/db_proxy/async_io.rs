@@ -73,6 +73,7 @@ mod tests {
     struct MockAsyncBackend {
         buf: Vec<u8>,
         healthy: Arc<AtomicBool>,
+        latency: std::time::Duration,
     }
 
     impl MockAsyncBackend {
@@ -80,6 +81,7 @@ mod tests {
             Self {
                 buf: Vec::new(),
                 healthy: Arc::new(AtomicBool::new(true)),
+                latency: std::time::Duration::ZERO,
             }
         }
     }
@@ -90,6 +92,9 @@ mod tests {
             data: &'a [u8],
         ) -> Pin<Box<dyn Future<Output = Result<usize, String>> + Send + 'a>> {
             Box::pin(async move {
+                if !self.latency.is_zero() {
+                    tokio::time::sleep(self.latency).await;
+                }
                 self.buf = data.to_vec();
                 Ok(data.len())
             })
@@ -100,6 +105,9 @@ mod tests {
             max_bytes: usize,
         ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
             Box::pin(async move {
+                if !self.latency.is_zero() {
+                    tokio::time::sleep(self.latency).await;
+                }
                 let len = max_bytes.min(self.buf.len());
                 Ok(self.buf[..len].to_vec())
             })
