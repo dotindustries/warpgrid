@@ -213,6 +213,19 @@ describe("POST /users", () => {
     assert.ok(body.error.includes("name"));
   });
 
+  it("returns 400 when body is valid JSON but not an object", () => {
+    const mockClient = new MockPgClient();
+
+    const response = handleRequest(
+      { method: "POST", url: "http://localhost/users", body: JSON.stringify("just a string") },
+      () => mockClient
+    );
+
+    assert.equal(response.status, 400);
+    const body = JSON.parse(response.body);
+    assert.ok(body.error.includes("object"));
+  });
+
   it("returns 400 when name is empty string", () => {
     const mockClient = new MockPgClient();
 

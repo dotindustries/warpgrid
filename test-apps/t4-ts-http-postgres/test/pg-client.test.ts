@@ -289,6 +289,24 @@ describe("Client.connect", () => {
     assert.equal(transport.sentBuffers[1][0], 0x70, "second message is PasswordMessage ('p')");
   });
 
+  it("throws when server requires password but none was provided", () => {
+    const transport = new MockTransport();
+
+    // Queue auth challenge + ReadyForQuery so readUntil completes,
+    // then processStartupResponse hits the password check
+    transport.queueResponse(
+      buildAuthCleartextPassword(),
+      buildReadyForQuery("I")
+    );
+
+    const client = new Client(
+      { host: "localhost", port: 5432, database: "testdb", user: "testuser" /* no password */ },
+      transport
+    );
+
+    assert.throws(() => client.connect(), /password/i);
+  });
+
   it("throws on connection failure", () => {
     const transport = new MockTransport();
     transport.connectError = "connection refused";
