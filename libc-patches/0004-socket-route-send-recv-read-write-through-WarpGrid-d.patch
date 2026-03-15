@@ -24,6 +24,10 @@ Changes:
 
 This enables database drivers (libpq, pgx) that use read()/write() instead
 of send()/recv() to work transparently over the WarpGrid database proxy.
+
+WarpGrid-Domain: socket
+WarpGrid-Deps: 0003
+WarpGrid-WIT: warpgrid:shim/database-proxy.send,warpgrid:shim/database-proxy.recv
 ---
  .../cloudlibc/src/libc/unistd/read.c          | 15 +++-
  .../cloudlibc/src/libc/unistd/write.c         | 13 +++

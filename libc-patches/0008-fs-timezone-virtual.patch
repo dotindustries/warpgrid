@@ -15,6 +15,10 @@ served by the host through /usr/share/zoneinfo/*.
 - Update expected-symbols for all WASI targets
 
 Part of US-207: Patch timezone loading to use virtual filesystem
+
+WarpGrid-Domain: filesystem
+WarpGrid-Deps: 0002
+WarpGrid-WIT: warpgrid:shim/filesystem
 ---
  .../wasm32-wasip1-threads/defined-symbols.txt | 922 +++++++++---------
  expected/wasm32-wasip1/defined-symbols.txt    | 858 ++++++++--------

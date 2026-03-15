@@ -26,6 +26,10 @@ FILE* whose callbacks use read()/close()/lseek(), fopen() transparently
 works on virtual files without any patch to fopen.c itself.
 
 Part of US-206: Patch fopen/open to intercept virtual filesystem paths.
+
+WarpGrid-Domain: filesystem
+WarpGrid-Deps: none
+WarpGrid-WIT: warpgrid:shim/filesystem
 ---
  libc-bottom-half/CMakeLists.txt               |   1 +
  .../cloudlibc/src/libc/unistd/lseek.c         |   9 +
