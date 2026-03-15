@@ -9,6 +9,7 @@
 *.log
 /vendor/tinygo
 /vendor/componentize-js
+/vendor/wasmtime-async
 tests/fixtures/fs-shim-guest/target/
 test-apps/**/target/
 test-apps/**/Cargo.lock
