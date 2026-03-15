@@ -2,6 +2,8 @@
 
 This document describes the WASI Preview 3 (WASI 0.3) async interfaces available to WarpGrid through its source-built Wasmtime dependency, and how those interfaces are used by `warpgrid-host` and `warpgrid-trigger`.
 
+> **Looking to write an async handler?** See the [Async Handler Authoring Guide](guides/async-handlers.md) for step-by-step instructions in Rust, TypeScript, and Go.
+
 ## Overview
 
 WASI Preview 3 is the in-progress successor to WASI Preview 2. Its primary addition is the **component-model-async** extension, which introduces native async execution into the WebAssembly Component Model. The key features are:

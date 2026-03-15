@@ -117,6 +117,11 @@ crates/
 | **3: Platform** | Single-node orchestrator (API, scheduler, health, metrics, autoscale, dashboard) | Done |
 | **4: Scale** | Multi-node clustering (Raft, placement, proxy, rollouts) | Done |
 
+## Documentation
+
+- [Async Handler Authoring Guide](docs/guides/async-handlers.md) — write HTTP handlers in Rust, TypeScript, or Go
+- [WASI 0.3 API Surface](docs/wasi-03-api-surface.md) — async runtime internals and WIT interface reference
+
 ## Building
 
 ```bash
