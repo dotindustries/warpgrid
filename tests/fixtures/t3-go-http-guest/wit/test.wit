@@ -32,4 +32,23 @@ world t3-go-http-test {
     /// Full POST lifecycle: connect, handshake, INSERT user, close.
     /// Returns the insert response bytes.
     export test-insert-lifecycle: func(host: string, port: u16, database: string, user: string, name: string, email: string) -> result<list<u8>, string>;
+
+    /// HTTP response record for HTTP-level test functions.
+    record http-response {
+        status: u16,
+        content-type: string,
+        body: string,
+    }
+
+    /// Simulate GET /users: connect to DB, SELECT users, return HTTP response with JSON body.
+    export test-http-get-users: func(host: string, port: u16, database: string, user: string) -> result<http-response, string>;
+
+    /// Simulate POST /users: connect to DB, INSERT user, return HTTP response with JSON body.
+    export test-http-post-user: func(host: string, port: u16, database: string, user: string, request-body: string) -> result<http-response, string>;
+
+    /// Simulate POST /users with invalid JSON: return 400 without DB interaction.
+    export test-http-post-invalid-json: func(request-body: string) -> result<http-response, string>;
+
+    /// Simulate GET /users when DB is unavailable: return 503.
+    export test-http-db-unavailable: func(host: string, port: u16) -> result<http-response, string>;
 }
