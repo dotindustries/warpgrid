@@ -23,9 +23,9 @@
 
 use std::sync::Arc;
 
-use crate::bindings::warpgrid::shim::database_proxy::{ConnectConfig, Host};
 use super::ConnectionPoolManager;
 use super::PoolKey;
+use crate::bindings::warpgrid::shim::database_proxy::{ConnectConfig, Host};
 
 /// Host-side implementation of the `warpgrid:shim/database-proxy` interface.
 ///
@@ -85,9 +85,8 @@ impl Host for DbProxyHost {
 
         // Use send_query() which releases the mutex during I/O for concurrent access.
         // Falls back to sync backend via block_in_place if no async backend is available.
-        let sent = tokio::task::block_in_place(|| {
-            handle.block_on(mgr.send_query(conn_handle, &data))
-        })?;
+        let sent =
+            tokio::task::block_in_place(|| handle.block_on(mgr.send_query(conn_handle, &data)))?;
 
         Ok(sent as u32)
     }
@@ -110,10 +109,7 @@ impl Host for DbProxyHost {
     }
 
     fn close(&mut self, conn_handle: u64) -> Result<(), String> {
-        tracing::debug!(
-            handle = conn_handle,
-            "db_proxy intercept: close"
-        );
+        tracing::debug!(handle = conn_handle, "db_proxy intercept: close");
 
         let mgr = Arc::clone(&self.pool_manager);
         let handle = self.runtime_handle.clone();
@@ -124,9 +120,11 @@ impl Host for DbProxyHost {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::super::async_io::{
+        AsyncConnectFuture, AsyncConnectionBackend, AsyncConnectionFactory,
+    };
     use super::super::{ConnectionBackend, ConnectionFactory, PoolConfig};
-    use super::super::async_io::{AsyncConnectionBackend, AsyncConnectionFactory, AsyncConnectFuture};
+    use super::*;
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::atomic::{AtomicU64, Ordering};

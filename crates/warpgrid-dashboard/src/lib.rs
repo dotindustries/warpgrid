@@ -68,18 +68,9 @@ pub fn dashboard_router(state: DashboardState) -> Router {
         // Action routes
         .route("/density-demo/deploy", post(actions::deploy_demo))
         .route("/density-demo/teardown", post(actions::teardown_demo))
-        .route(
-            "/deployments/{id}/scale",
-            post(actions::scale_deployment),
-        )
-        .route(
-            "/deployments/{id}/rollout",
-            post(actions::start_rollout),
-        )
-        .route(
-            "/deployments/{id}",
-            delete(actions::delete_deployment),
-        )
+        .route("/deployments/{id}/scale", post(actions::scale_deployment))
+        .route("/deployments/{id}/rollout", post(actions::start_rollout))
+        .route("/deployments/{id}", delete(actions::delete_deployment))
         .route("/rollouts/{id}/pause", post(actions::pause_rollout))
         .route("/rollouts/{id}/resume", post(actions::resume_rollout))
         .with_state(state)

@@ -56,7 +56,10 @@ pub async fn run_agent(
     info!(path = ?db_path, "local state store opened (redb)");
 
     // ── Turso replica (for deployment discovery + global sync) ────
-    let cloud_db_path = data_dir.join("cloud-replica.db").to_string_lossy().to_string();
+    let cloud_db_path = data_dir
+        .join("cloud-replica.db")
+        .to_string_lossy()
+        .to_string();
     let cloud_db = match (&turso_url, &turso_auth_token) {
         (Some(url), Some(token)) => {
             info!(url = %url, "connecting to Turso Cloud (embedded replica)");
@@ -72,7 +75,11 @@ pub async fn run_agent(
     };
     let cloud_conn = cloud_db.connect()?;
     crate::cloud::db::migrate(&cloud_conn).await?;
-    let mode_label = if turso_url.is_some() { "turso replica" } else { "local" };
+    let mode_label = if turso_url.is_some() {
+        "turso replica"
+    } else {
+        "local"
+    };
     info!(path = %cloud_db_path, mode = mode_label, "cloud metadata store opened");
 
     // ── Wasm runtime ──────────────────────────────────────────────
@@ -82,11 +89,8 @@ pub async fn run_agent(
     info!("wasm runtime initialized");
 
     // ── Local scheduler ───────────────────────────────────────────
-    let _scheduler = warpgrid_scheduler::Scheduler::new(
-        runtime.clone(),
-        state.clone(),
-        "agent".to_string(),
-    );
+    let _scheduler =
+        warpgrid_scheduler::Scheduler::new(runtime.clone(), state.clone(), "agent".to_string());
     info!("local scheduler initialized");
 
     // ── Health monitor ────────────────────────────────────────────
@@ -120,11 +124,8 @@ pub async fn run_agent(
     let watcher_region = region.clone();
     let watcher_runtime = runtime.clone();
     let watcher_handle = tokio::spawn(async move {
-        let mut watcher = DeploymentWatcher::new(
-            watcher_conn,
-            watcher_state.clone(),
-            watcher_region.clone(),
-        );
+        let mut watcher =
+            DeploymentWatcher::new(watcher_conn, watcher_state.clone(), watcher_region.clone());
         info!(region = %watcher_region, "deployment watcher started");
 
         let poll_interval = Duration::from_secs(5);
@@ -202,9 +203,13 @@ pub async fn run_agent(
     let sync_region = region.clone();
     let sync_handle = tokio::spawn(async move {
         let sync = RuntimeSync::new(&sync_region, sync_state, sync_conn);
-        sync.run(Duration::from_secs(sync_interval), sync_shutdown).await;
+        sync.run(Duration::from_secs(sync_interval), sync_shutdown)
+            .await;
     });
-    info!(interval = sync_interval, "runtime sync started (redb → Turso)");
+    info!(
+        interval = sync_interval,
+        "runtime sync started (redb → Turso)"
+    );
 
     // ── Join cluster ──────────────────────────────────────────────
     let agent_config = AgentConfig {
@@ -222,10 +227,7 @@ pub async fn run_agent(
 
     // ── Heartbeat loop ────────────────────────────────────────────
     let heartbeat_handle = tokio::spawn(async move {
-        if let Err(e) = agent
-            .run_heartbeat(0, 0, heartbeat_shutdown)
-            .await
-        {
+        if let Err(e) = agent.run_heartbeat(0, 0, heartbeat_shutdown).await {
             tracing::error!(error = %e, "heartbeat loop error");
         }
     });

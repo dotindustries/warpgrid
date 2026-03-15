@@ -64,8 +64,8 @@ fn build_rust_template_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm = fixture_dir
-            .join("target/wasm32-unknown-unknown/release/async_rust_template.wasm");
+        let core_wasm =
+            fixture_dir.join("target/wasm32-unknown-unknown/release/async_rust_template.wasm");
 
         // Convert to component
         let component_path = fixture_dir.join("target/async-rust-template.component.wasm");
@@ -124,9 +124,8 @@ async fn rust_template_builds_and_exports_async_handler() {
 
     // Validate with wasm-tools component wit
     let root = workspace_root();
-    let component_path = root.join(
-        "tests/fixtures/async-rust-template/target/async-rust-template.component.wasm",
-    );
+    let component_path =
+        root.join("tests/fixtures/async-rust-template/target/async-rust-template.component.wasm");
 
     let wasm_tools = find_wasm_tools();
     let output = Command::new(&wasm_tools)
@@ -150,8 +149,8 @@ async fn rust_template_builds_and_exports_async_handler() {
 /// Load the Rust template component into WarpGridEngine and invoke handle-request.
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_template_handles_health_request() {
-    use warpgrid_host::bindings::async_handler_bindings::warpgrid::shim::http_types::HttpRequest;
     use warpgrid_host::bindings::async_handler_bindings::WarpgridAsyncHandler;
+    use warpgrid_host::bindings::async_handler_bindings::warpgrid::shim::http_types::HttpRequest;
     use warpgrid_host::engine::HostState;
     use warpgrid_host::signals::host::SignalsHost;
 
@@ -170,10 +169,9 @@ async fn rust_template_handles_health_request() {
     };
     let mut store = wasmtime::Store::new(engine.engine(), host_state);
 
-    let handler =
-        WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
-            .await
-            .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     let request = HttpRequest {
         method: "GET".into(),
@@ -199,8 +197,8 @@ async fn rust_template_handles_health_request() {
 /// Invoke handle-request with a non-health URI and verify echo response.
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_template_handles_echo_request() {
-    use warpgrid_host::bindings::async_handler_bindings::warpgrid::shim::http_types::HttpRequest;
     use warpgrid_host::bindings::async_handler_bindings::WarpgridAsyncHandler;
+    use warpgrid_host::bindings::async_handler_bindings::warpgrid::shim::http_types::HttpRequest;
     use warpgrid_host::engine::HostState;
     use warpgrid_host::signals::host::SignalsHost;
 
@@ -219,10 +217,9 @@ async fn rust_template_handles_echo_request() {
     };
     let mut store = wasmtime::Store::new(engine.engine(), host_state);
 
-    let handler =
-        WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
-            .await
-            .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     let request = HttpRequest {
         method: "POST".into(),
@@ -321,10 +318,7 @@ fn ts_template_fixture_structure() {
         fixture.join("package.json").exists(),
         "package.json should exist"
     );
-    assert!(
-        fixture.join("warp.toml").exists(),
-        "warp.toml should exist"
-    );
+    assert!(fixture.join("warp.toml").exists(), "warp.toml should exist");
     assert!(
         fixture.join("wit/handler.wit").exists(),
         "wit/handler.wit should exist"

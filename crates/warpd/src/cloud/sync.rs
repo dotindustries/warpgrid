@@ -96,25 +96,26 @@ impl RuntimeSync {
                 .unwrap_or_default();
 
             for inst in &instances {
-                self.turso_conn.execute(
-                    "INSERT OR REPLACE INTO cloud_instances \
+                self.turso_conn
+                    .execute(
+                        "INSERT OR REPLACE INTO cloud_instances \
                      (id, deployment_id, node_id, region, status, health, \
                       restart_count, memory_bytes, started_at, updated_at) \
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    libsql::params![
-                        inst.id.clone(),
-                        inst.deployment_id.clone(),
-                        inst.node_id.clone(),
-                        self.region.clone(),
-                        format!("{:?}", inst.status).to_lowercase(),
-                        format!("{:?}", inst.health).to_lowercase(),
-                        inst.restart_count as i64,
-                        inst.memory_bytes as i64,
-                        inst.started_at as i64,
-                        inst.updated_at as i64
-                    ],
-                )
-                .await?;
+                        libsql::params![
+                            inst.id.clone(),
+                            inst.deployment_id.clone(),
+                            inst.node_id.clone(),
+                            self.region.clone(),
+                            format!("{:?}", inst.status).to_lowercase(),
+                            format!("{:?}", inst.health).to_lowercase(),
+                            inst.restart_count as i64,
+                            inst.memory_bytes as i64,
+                            inst.started_at as i64,
+                            inst.updated_at as i64
+                        ],
+                    )
+                    .await?;
                 count += 1;
             }
         }
@@ -129,25 +130,26 @@ impl RuntimeSync {
 
         for node in &nodes {
             let labels_json = serde_json::to_string(&node.labels).unwrap_or_default();
-            self.turso_conn.execute(
-                "INSERT OR REPLACE INTO cloud_nodes \
+            self.turso_conn
+                .execute(
+                    "INSERT OR REPLACE INTO cloud_nodes \
                  (id, region, address, port, capacity_memory_bytes, capacity_cpu_weight, \
                   used_memory_bytes, used_cpu_weight, labels_json, last_heartbeat) \
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                libsql::params![
-                    node.id.clone(),
-                    self.region.clone(),
-                    node.address.clone(),
-                    node.port as i64,
-                    node.capacity_memory_bytes as i64,
-                    node.capacity_cpu_weight as i64,
-                    node.used_memory_bytes as i64,
-                    node.used_cpu_weight as i64,
-                    labels_json,
-                    node.last_heartbeat as i64
-                ],
-            )
-            .await?;
+                    libsql::params![
+                        node.id.clone(),
+                        self.region.clone(),
+                        node.address.clone(),
+                        node.port as i64,
+                        node.capacity_memory_bytes as i64,
+                        node.capacity_cpu_weight as i64,
+                        node.used_memory_bytes as i64,
+                        node.used_cpu_weight as i64,
+                        labels_json,
+                        node.last_heartbeat as i64
+                    ],
+                )
+                .await?;
             count += 1;
         }
 
@@ -167,24 +169,25 @@ impl RuntimeSync {
 
             // Only sync the latest snapshot (not entire history).
             if let Some(latest) = metrics.last() {
-                self.turso_conn.execute(
-                    "INSERT OR REPLACE INTO cloud_metrics \
+                self.turso_conn
+                    .execute(
+                        "INSERT OR REPLACE INTO cloud_metrics \
                      (deployment_id, region, epoch, rps, latency_p50_ms, latency_p99_ms, \
                       error_rate, total_memory_bytes, active_instances) \
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    libsql::params![
-                        latest.deployment_id.clone(),
-                        self.region.clone(),
-                        latest.epoch as i64,
-                        latest.rps,
-                        latest.latency_p50_ms,
-                        latest.latency_p99_ms,
-                        latest.error_rate,
-                        latest.total_memory_bytes as i64,
-                        latest.active_instances as i64
-                    ],
-                )
-                .await?;
+                        libsql::params![
+                            latest.deployment_id.clone(),
+                            self.region.clone(),
+                            latest.epoch as i64,
+                            latest.rps,
+                            latest.latency_p50_ms,
+                            latest.latency_p99_ms,
+                            latest.error_rate,
+                            latest.total_memory_bytes as i64,
+                            latest.active_instances as i64
+                        ],
+                    )
+                    .await?;
                 count += 1;
             }
         }
@@ -281,7 +284,10 @@ mod tests {
         sync.sync_once().await.unwrap();
 
         let mut rows = conn
-            .query("SELECT id, region, capacity_memory_bytes FROM cloud_nodes", ())
+            .query(
+                "SELECT id, region, capacity_memory_bytes FROM cloud_nodes",
+                (),
+            )
             .await
             .unwrap();
         let row = rows.next().await.unwrap().unwrap();

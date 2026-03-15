@@ -10,15 +10,15 @@
 
 use std::sync::Arc;
 
+use axum::Router;
 use axum::extract::{Multipart, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{get, post};
-use axum::Router;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::routes::{push_log, CloudState, LogEntry};
+use super::routes::{CloudState, LogEntry, push_log};
 use super::tenants;
 
 // ── Types ──────────────────────────────────────────────────────
@@ -37,7 +37,10 @@ pub fn console_router(state: CloudState) -> Router {
     Router::new()
         .route("/console/", get(console_overview))
         .route("/console/deployments", get(console_deployments))
-        .route("/console/deploy", get(console_deploy).post(console_deploy_submit))
+        .route(
+            "/console/deploy",
+            get(console_deploy).post(console_deploy_submit),
+        )
         .route("/console/logs/{deployment_id}", get(console_logs))
         .route("/console/teams", get(console_teams))
         .route("/console/settings", get(console_settings))
@@ -59,12 +62,8 @@ fn extract_session_cookie(headers: &HeaderMap) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn require_user(
-    headers: &HeaderMap,
-    state: &ConsoleState,
-) -> Result<super::auth::User, Redirect> {
-    let api_key = extract_session_cookie(headers)
-        .ok_or(Redirect::to("/console/login"))?;
+fn require_user(headers: &HeaderMap, state: &ConsoleState) -> Result<super::auth::User, Redirect> {
+    let api_key = extract_session_cookie(headers).ok_or(Redirect::to("/console/login"))?;
     state
         .auth
         .validate_sync(&api_key)
@@ -123,11 +122,7 @@ const CSS: &str = r#"
 "#;
 
 fn nav_link(href: &str, label: &str, active_page: &str, page_id: &str) -> String {
-    let class = if active_page == page_id {
-        "active"
-    } else {
-        ""
-    };
+    let class = if active_page == page_id { "active" } else { "" };
     format!(r#"<a href="{href}" class="{class}">{label}</a>"#)
 }
 
@@ -171,7 +166,12 @@ fn page_shell(title: &str, active_page: &str, user_email: &str, content: &str) -
 </html>"#,
         title = title,
         nav_overview = nav_link("/console/", "Overview", active_page, "overview"),
-        nav_deployments = nav_link("/console/deployments", "Deployments", active_page, "deployments"),
+        nav_deployments = nav_link(
+            "/console/deployments",
+            "Deployments",
+            active_page,
+            "deployments"
+        ),
         nav_deploy = nav_link("/console/deploy", "Deploy", active_page, "deploy"),
         nav_teams = nav_link("/console/teams", "Teams", active_page, "teams"),
         nav_settings = nav_link("/console/settings", "Settings", active_page, "settings"),
@@ -188,10 +188,7 @@ async fn console_overview(
 ) -> Result<Html<String>, Redirect> {
     let user = require_user(&headers, &state)?;
 
-    let all_deployments = state
-        .state_store
-        .list_deployments()
-        .unwrap_or_default();
+    let all_deployments = state.state_store.list_deployments().unwrap_or_default();
     let user_deployments: Vec<_> = all_deployments
         .iter()
         .filter(|d| d.namespace == user.namespace)
@@ -241,7 +238,12 @@ async fn console_overview(
         deployments_table = build_mini_deployments_table(&user_deployments),
     );
 
-    Ok(Html(page_shell("Overview", "overview", &user.email, &content)))
+    Ok(Html(page_shell(
+        "Overview",
+        "overview",
+        &user.email,
+        &content,
+    )))
 }
 
 async fn console_deployments(
@@ -250,10 +252,7 @@ async fn console_deployments(
 ) -> Result<Html<String>, Redirect> {
     let user = require_user(&headers, &state)?;
 
-    let all_deployments = state
-        .state_store
-        .list_deployments()
-        .unwrap_or_default();
+    let all_deployments = state.state_store.list_deployments().unwrap_or_default();
     let user_deployments: Vec<_> = all_deployments
         .iter()
         .filter(|d| d.namespace == user.namespace)
@@ -324,7 +323,12 @@ async fn console_deployments(
 </div>"#,
     );
 
-    Ok(Html(page_shell("Deployments", "deployments", &user.email, &content)))
+    Ok(Html(page_shell(
+        "Deployments",
+        "deployments",
+        &user.email,
+        &content,
+    )))
 }
 
 async fn console_deploy(
@@ -459,10 +463,13 @@ async fn console_deploy_submit(
     let deployment_id = tenants::scoped_deployment_id(&user.namespace, &deploy_name);
 
     // Check for duplicate deployment name.
-    let existing = state.cloud_db.query(
-        "SELECT id FROM cloud_deployments WHERE id = ?",
-        libsql::params![deployment_id.clone()],
-    ).await;
+    let existing = state
+        .cloud_db
+        .query(
+            "SELECT id FROM cloud_deployments WHERE id = ?",
+            libsql::params![deployment_id.clone()],
+        )
+        .await;
     if let Ok(mut rows) = existing {
         if rows.next().await.ok().flatten().is_some() {
             return Ok(deploy_error_response(
@@ -539,22 +546,29 @@ async fn console_deploy_submit(
     let _ = state.state_store.put_deployment(&redb_spec);
 
     // Push log entry.
-    push_log(&state.logs, LogEntry {
-        timestamp: now,
-        deployment_id: deployment_id.clone(),
-        level: "info".to_string(),
-        message: format!(
-            "Deployment created via console: {} (region={}, size={} bytes)",
-            deploy_name, region, wasm_size
-        ),
-    }).await;
+    push_log(
+        &state.logs,
+        LogEntry {
+            timestamp: now,
+            deployment_id: deployment_id.clone(),
+            level: "info".to_string(),
+            message: format!(
+                "Deployment created via console: {} (region={}, size={} bytes)",
+                deploy_name, region, wasm_size
+            ),
+        },
+    )
+    .await;
 
     // Redirect to deployments page on success.
     Ok((
         StatusCode::SEE_OTHER,
         {
             let mut h = HeaderMap::new();
-            h.insert("location", "/console/deployments".parse().expect("valid location"));
+            h.insert(
+                "location",
+                "/console/deployments".parse().expect("valid location"),
+            );
             h
         },
         Html(String::new()),
@@ -787,7 +801,12 @@ async fn console_settings(
         max_rps = user.quota.max_request_rate,
     );
 
-    Ok(Html(page_shell("Settings", "settings", &user.email, &content)))
+    Ok(Html(page_shell(
+        "Settings",
+        "settings",
+        &user.email,
+        &content,
+    )))
 }
 
 async fn console_login_page() -> Html<String> {
@@ -884,17 +903,12 @@ async fn console_login_submit(
 </body>
 </html>"#,
         );
-        return (
-            StatusCode::UNAUTHORIZED,
-            HeaderMap::new(),
-            Html(html),
-        );
+        return (StatusCode::UNAUTHORIZED, HeaderMap::new(), Html(html));
     }
 
     let mut response_headers = HeaderMap::new();
-    let cookie_value = format!(
-        "wg_session={api_key}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800"
-    );
+    let cookie_value =
+        format!("wg_session={api_key}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800");
     response_headers.insert(
         "set-cookie",
         cookie_value.parse().expect("valid cookie header"),
@@ -909,8 +923,7 @@ async fn console_login_submit(
 
 async fn console_logout() -> impl IntoResponse {
     let mut headers = HeaderMap::new();
-    let cookie_value =
-        "wg_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0";
+    let cookie_value = "wg_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0";
     headers.insert(
         "set-cookie",
         cookie_value.parse().expect("valid cookie header"),
@@ -1025,9 +1038,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "cookie",
-            "wg_session=wg_live_abc123; other=value"
-                .parse()
-                .unwrap(),
+            "wg_session=wg_live_abc123; other=value".parse().unwrap(),
         );
         assert_eq!(
             extract_session_cookie(&headers),
@@ -1094,9 +1105,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "cookie",
-            "wg_session=wg_live_invalid_key_0000000000"
-                .parse()
-                .unwrap(),
+            "wg_session=wg_live_invalid_key_0000000000".parse().unwrap(),
         );
         let result = require_user(&headers, &state);
         assert!(result.is_err());
@@ -1108,10 +1117,7 @@ mod tests {
         let (api_key, _user) = cloud.auth.register_sync("test@example.com");
         let state = Arc::new(cloud);
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "cookie",
-            format!("wg_session={api_key}").parse().unwrap(),
-        );
+        headers.insert("cookie", format!("wg_session={api_key}").parse().unwrap());
         let result = require_user(&headers, &state);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().email, "test@example.com");

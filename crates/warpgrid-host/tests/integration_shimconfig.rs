@@ -30,8 +30,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::WarpGridEngine;
@@ -58,12 +58,7 @@ fn build_guest(fixture_name: &str) -> Vec<u8> {
 
     // Step 1: Build the guest crate to a core Wasm module
     let status = Command::new("cargo")
-        .args([
-            "build",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--release",
-        ])
+        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
         .current_dir(&guest_dir)
         .status()
         .unwrap_or_else(|e| panic!("failed to run cargo build for {fixture_name}: {e}"));
@@ -75,8 +70,9 @@ fn build_guest(fixture_name: &str) -> Vec<u8> {
 
     // Derive the crate name from fixture name (hyphens → underscores)
     let crate_name = fixture_name.replace('-', "_");
-    let core_wasm_path = guest_dir
-        .join(format!("target/wasm32-unknown-unknown/release/{crate_name}.wasm"));
+    let core_wasm_path = guest_dir.join(format!(
+        "target/wasm32-unknown-unknown/release/{crate_name}.wasm"
+    ));
 
     // Step 2: Convert core module to component with wasm-tools
     let component_path = guest_dir.join(format!("target/{fixture_name}.component.wasm"));
@@ -89,7 +85,9 @@ fn build_guest(fixture_name: &str) -> Vec<u8> {
             component_path.to_str().unwrap(),
         ])
         .status()
-        .unwrap_or_else(|e| panic!("failed to run wasm-tools component new for {fixture_name}: {e}"));
+        .unwrap_or_else(|e| {
+            panic!("failed to run wasm-tools component new for {fixture_name}: {e}")
+        });
     assert!(
         status.success(),
         "wasm-tools component new failed for {fixture_name} with exit code {:?}",
@@ -450,7 +448,10 @@ async fn test_toml_config_round_trip_through_engine() {
     let engine = WarpGridEngine::new(config).unwrap();
 
     assert!(engine.config().filesystem);
-    assert_eq!(engine.config().filesystem_config.timezone_name, "America/New_York");
+    assert_eq!(
+        engine.config().filesystem_config.timezone_name,
+        "America/New_York"
+    );
     assert!(engine.config().dns);
     assert_eq!(engine.config().dns_config.ttl_seconds, 60);
     assert_eq!(engine.config().dns_config.cache_size, 2048);

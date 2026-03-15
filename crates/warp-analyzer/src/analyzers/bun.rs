@@ -128,10 +128,7 @@ mod tests {
     #[test]
     fn test_bun_lockb_detection() {
         let tmp = TempDir::new().unwrap();
-        create_package_json(
-            tmp.path(),
-            r#"{"dependencies": {"hono": "4.7.4"}}"#,
-        );
+        create_package_json(tmp.path(), r#"{"dependencies": {"hono": "4.7.4"}}"#);
         // Create a bun.lockb file (binary, but we only check existence)
         fs::write(tmp.path().join("bun.lockb"), b"\x00binary").unwrap();
 

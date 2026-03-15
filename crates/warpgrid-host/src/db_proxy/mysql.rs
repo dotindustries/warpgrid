@@ -151,8 +151,8 @@ impl ConnectionFactory for MysqlConnectionFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // ── Mock backend for testing MysqlBackend ────────────────────────
 
@@ -330,8 +330,7 @@ mod tests {
     #[test]
     fn mysql_factory_creates_plain_tcp_connection() {
         // Start a minimal TCP server that accepts and holds connections.
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
         let addr = listener.local_addr().expect("local addr");
         std::thread::spawn(move || {
             while let Ok((_stream, _)) = listener.accept() {
@@ -340,10 +339,7 @@ mod tests {
         });
         std::thread::sleep(Duration::from_millis(10));
 
-        let factory = MysqlConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = MysqlConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::with_protocol(
             "127.0.0.1",
             addr.port(),
@@ -358,10 +354,7 @@ mod tests {
 
     #[test]
     fn mysql_factory_connect_refused() {
-        let factory = MysqlConnectionFactory::plain(
-            Duration::from_secs(1),
-            Duration::from_secs(1),
-        );
+        let factory = MysqlConnectionFactory::plain(Duration::from_secs(1), Duration::from_secs(1));
         let key = PoolKey::with_protocol(
             "127.0.0.1",
             1,
@@ -379,8 +372,7 @@ mod tests {
     #[test]
     fn mysql_backend_send_recv_over_tcp() {
         // Start an echo server.
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
         let addr = listener.local_addr().expect("local addr");
         std::thread::spawn(move || {
             while let Ok((mut stream, _)) = listener.accept() {
@@ -402,10 +394,7 @@ mod tests {
         });
         std::thread::sleep(Duration::from_millis(10));
 
-        let factory = MysqlConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = MysqlConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::with_protocol(
             "127.0.0.1",
             addr.port(),
@@ -422,6 +411,9 @@ mod tests {
         assert_eq!(sent, mysql_greeting.len());
 
         let data = backend.recv(1024).unwrap();
-        assert_eq!(data, mysql_greeting, "MySQL bytes must pass through unmodified");
+        assert_eq!(
+            data, mysql_greeting,
+            "MySQL bytes must pass through unmodified"
+        );
     }
 }

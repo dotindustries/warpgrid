@@ -222,7 +222,10 @@ impl MembershipManager {
     /// Count of ready (alive) nodes.
     pub fn ready_count(&self) -> StateResult<usize> {
         let members = self.list_members()?;
-        Ok(members.iter().filter(|m| m.status == MemberStatus::Ready).count())
+        Ok(members
+            .iter()
+            .filter(|m| m.status == MemberStatus::Ready)
+            .count())
     }
 }
 
@@ -312,8 +315,7 @@ mod tests {
     #[test]
     fn dead_node_detection() {
         let state = test_state();
-        let mgr = MembershipManager::new(state.clone())
-            .with_dead_timeout(Duration::from_secs(0));
+        let mgr = MembershipManager::new(state.clone()).with_dead_timeout(Duration::from_secs(0));
 
         let node_id = mgr
             .join("10.0.0.1", 8443, HashMap::new(), 8_000_000_000, 1000)
@@ -333,8 +335,7 @@ mod tests {
     #[test]
     fn reap_dead_nodes() {
         let state = test_state();
-        let mgr = MembershipManager::new(state.clone())
-            .with_dead_timeout(Duration::from_secs(0));
+        let mgr = MembershipManager::new(state.clone()).with_dead_timeout(Duration::from_secs(0));
 
         let node_id = mgr
             .join("10.0.0.1", 8443, HashMap::new(), 8_000_000_000, 1000)

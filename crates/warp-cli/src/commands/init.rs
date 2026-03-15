@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use tracing::info;
 
 use crate::templates;
@@ -37,12 +37,7 @@ mod tests {
         let target = dir.path().join("out");
         let result = crate::templates::scaffold("no-such-template", &target);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Unknown template")
-        );
+        assert!(result.unwrap_err().to_string().contains("Unknown template"));
     }
 
     #[test]
@@ -51,12 +46,7 @@ mod tests {
         // dir already exists, so init should fail
         let result = init("async-rust", Some(dir.path().to_str().unwrap()));
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("already exists")
-        );
+        assert!(result.unwrap_err().to_string().contains("already exists"));
     }
 
     #[test]
@@ -139,10 +129,7 @@ mod tests {
     /// "async-rust-template") whereas templates use the placeholder
     /// "my-async-handler". The Go fixture also has a local `replace`
     /// directive needed for workspace builds that the template omits.
-    fn normalize_fixture_content(
-        content: &str,
-        fixture_name: &str,
-    ) -> String {
+    fn normalize_fixture_content(content: &str, fixture_name: &str) -> String {
         content
             .replace(fixture_name, "my-async-handler")
             // Go fixture has a local replace directive for workspace builds
@@ -197,12 +184,9 @@ mod tests {
 
         // Compare content of every file (normalizing known differences)
         for file in &scaffolded_files {
-            let scaffolded_content =
-                std::fs::read_to_string(scaffolded.join(file)).unwrap();
-            let fixture_content =
-                std::fs::read_to_string(fixture_dir.join(file)).unwrap();
-            let normalized_fixture =
-                normalize_fixture_content(&fixture_content, fixture_subdir);
+            let scaffolded_content = std::fs::read_to_string(scaffolded.join(file)).unwrap();
+            let fixture_content = std::fs::read_to_string(fixture_dir.join(file)).unwrap();
+            let normalized_fixture = normalize_fixture_content(&fixture_content, fixture_subdir);
             assert_eq!(
                 scaffolded_content, normalized_fixture,
                 "Content mismatch in '{file}' between template '{template_name}' and fixture '{fixture_subdir}'"

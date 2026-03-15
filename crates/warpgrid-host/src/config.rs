@@ -203,10 +203,7 @@ impl ShimConfig {
                     config.filesystem = *b;
                 }
                 toml::Value::Table(t) => {
-                    config.filesystem = t
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
+                    config.filesystem = t.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
                     if let Some(tz) = t.get("timezone_name").and_then(|v| v.as_str()) {
                         config.filesystem_config.timezone_name = tz.to_string();
                     }
@@ -234,10 +231,7 @@ impl ShimConfig {
                     config.dns = *b;
                 }
                 toml::Value::Table(t) => {
-                    config.dns = t
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
+                    config.dns = t.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
                     if let Some(ttl) = t.get("ttl_seconds").and_then(|v| v.as_integer()) {
                         config.dns_config.ttl_seconds = ttl as u64;
                     }
@@ -264,14 +258,13 @@ impl ShimConfig {
                     config.database_proxy = *b;
                 }
                 toml::Value::Table(t) => {
-                    config.database_proxy = t
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
+                    config.database_proxy =
+                        t.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
                     if let Some(size) = t.get("pool_size").and_then(|v| v.as_integer()) {
                         config.database_proxy_config.pool_size = size as usize;
                     }
-                    if let Some(timeout) = t.get("idle_timeout_seconds").and_then(|v| v.as_integer())
+                    if let Some(timeout) =
+                        t.get("idle_timeout_seconds").and_then(|v| v.as_integer())
                     {
                         config.database_proxy_config.idle_timeout_seconds = timeout as u64;
                     }
@@ -282,8 +275,9 @@ impl ShimConfig {
                         config.database_proxy_config.health_check_interval_seconds =
                             interval as u64;
                     }
-                    if let Some(timeout) =
-                        t.get("connect_timeout_seconds").and_then(|v| v.as_integer())
+                    if let Some(timeout) = t
+                        .get("connect_timeout_seconds")
+                        .and_then(|v| v.as_integer())
                     {
                         config.database_proxy_config.connect_timeout_seconds = timeout as u64;
                     }
@@ -384,7 +378,10 @@ mod tests {
         let config = ShimConfig::default();
         assert_eq!(config.database_proxy_config.pool_size, 10);
         assert_eq!(config.database_proxy_config.idle_timeout_seconds, 300);
-        assert_eq!(config.database_proxy_config.health_check_interval_seconds, 30);
+        assert_eq!(
+            config.database_proxy_config.health_check_interval_seconds,
+            30
+        );
         assert_eq!(config.database_proxy_config.connect_timeout_seconds, 5);
         assert_eq!(config.database_proxy_config.recv_timeout_seconds, 30);
     }
@@ -496,11 +493,17 @@ mod tests {
 
         assert!(config.filesystem);
         assert_eq!(
-            config.filesystem_config.extra_virtual_paths.get("/etc/myapp.conf"),
+            config
+                .filesystem_config
+                .extra_virtual_paths
+                .get("/etc/myapp.conf"),
             Some(&b"key=value".to_vec())
         );
         assert_eq!(
-            config.filesystem_config.extra_virtual_paths.get("/etc/motd"),
+            config
+                .filesystem_config
+                .extra_virtual_paths
+                .get("/etc/motd"),
             Some(&b"Welcome to WarpGrid".to_vec())
         );
     }
@@ -566,7 +569,12 @@ mod tests {
         let value = toml::Value::String("not a table".to_string());
         let result = ShimConfig::from_toml(Some(&value));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must be a TOML table"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("must be a TOML table")
+        );
     }
 
     #[test]
@@ -577,7 +585,12 @@ mod tests {
         let value: toml::Value = toml::from_str(toml_str).unwrap();
         let result = ShimConfig::from_toml(Some(&value));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("signals must be a boolean"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("signals must be a boolean")
+        );
     }
 
     #[test]
@@ -588,7 +601,12 @@ mod tests {
         let value: toml::Value = toml::from_str(toml_str).unwrap();
         let result = ShimConfig::from_toml(Some(&value));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("threading must be a boolean"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("threading must be a boolean")
+        );
     }
 
     // ---- from_toml: mixed boolean and table forms ----

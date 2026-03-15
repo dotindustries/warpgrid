@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use crate::body::{ByteStream, ChunkedBytesStream, EmptyFallibleStream, DEFAULT_CHUNK_SIZE};
+use crate::body::{ByteStream, ChunkedBytesStream, DEFAULT_CHUNK_SIZE, EmptyFallibleStream};
 use crate::header::HeaderMap;
 
 /// An incoming HTTP request with support for streaming body access.

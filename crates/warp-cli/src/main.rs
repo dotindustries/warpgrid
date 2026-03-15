@@ -8,7 +8,7 @@ mod templates;
     name = "warp",
     about = "WarpGrid — Wasm-native cluster orchestrator",
     version,
-    propagate_version = true,
+    propagate_version = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -146,8 +146,7 @@ enum ConvertAction {
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("warp=info".parse()?)
+            tracing_subscriber::EnvFilter::from_default_env().add_directive("warp=info".parse()?),
         )
         .init();
 
@@ -162,45 +161,32 @@ fn main() -> anyhow::Result<()> {
                 }
                 Ok(())
             }
-            ConvertAction::Init { path } => {
-                commands::convert::init(&path)
-            }
+            ConvertAction::Init { path } => commands::convert::init(&path),
         },
-        Commands::Pack { path, lang } => {
-            commands::pack::pack(&path, lang.as_deref())
-        }
-        Commands::Init { template, path } => {
-            commands::init::init(&template, path.as_deref())
-        }
-        Commands::Login { api_key, email, api_url } => {
-            commands::cloud::login(
-                api_key.as_deref(),
-                api_url.as_deref(),
-                email.as_deref(),
-            )
-        }
+        Commands::Pack { path, lang } => commands::pack::pack(&path, lang.as_deref()),
+        Commands::Init { template, path } => commands::init::init(&template, path.as_deref()),
+        Commands::Login {
+            api_key,
+            email,
+            api_url,
+        } => commands::cloud::login(api_key.as_deref(), api_url.as_deref(), email.as_deref()),
         Commands::Deploy { path, region, lang } => {
             commands::cloud::deploy(&path, region.as_deref(), lang.as_deref())
         }
-        Commands::Status => {
-            commands::cloud::status()
-        }
-        Commands::Destroy { deployment_id } => {
-            commands::cloud::destroy(&deployment_id)
-        }
-        Commands::Logs { deployment_id, follow } => {
-            commands::cloud::logs(&deployment_id, follow)
-        }
-        Commands::Scale { deployment_id, min, max } => {
-            commands::cloud::scale(&deployment_id, min, max)
-        }
-        Commands::Ping { api_url } => {
-            commands::cloud::platform_status(api_url.as_deref())
-        }
+        Commands::Status => commands::cloud::status(),
+        Commands::Destroy { deployment_id } => commands::cloud::destroy(&deployment_id),
+        Commands::Logs {
+            deployment_id,
+            follow,
+        } => commands::cloud::logs(&deployment_id, follow),
+        Commands::Scale {
+            deployment_id,
+            min,
+            max,
+        } => commands::cloud::scale(&deployment_id, min, max),
+        Commands::Ping { api_url } => commands::cloud::platform_status(api_url.as_deref()),
         Commands::Domains { action } => match action {
-            DomainsAction::Verify { domain } => {
-                commands::cloud::domains_verify(&domain)
-            }
+            DomainsAction::Verify { domain } => commands::cloud::domains_verify(&domain),
         },
     }
 }

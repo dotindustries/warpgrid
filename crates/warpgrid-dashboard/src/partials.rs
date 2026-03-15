@@ -13,9 +13,10 @@ use crate::DashboardState;
 use crate::views::*;
 
 fn render<T: Template>(tmpl: T) -> Html<String> {
-    Html(tmpl.render().unwrap_or_else(|e| {
-        format!("<pre>Template error: {e}</pre>")
-    }))
+    Html(
+        tmpl.render()
+            .unwrap_or_else(|e| format!("<pre>Template error: {e}</pre>")),
+    )
 }
 
 // ── Overview Stats ──────────────────────────────────────────────
@@ -106,7 +107,8 @@ pub async fn deployment_instances(
         .list_instances_for_deployment(&id)
         .unwrap_or_default();
 
-    let instance_views: Vec<InstanceView> = instances.iter().map(InstanceView::from_state).collect();
+    let instance_views: Vec<InstanceView> =
+        instances.iter().map(InstanceView::from_state).collect();
 
     render(InstanceTablePartial {
         instances: instance_views,
@@ -219,11 +221,7 @@ mod tests {
     #[tokio::test]
     async fn instance_table_partial_renders() {
         let state = test_state();
-        let resp = deployment_instances(
-            State(state),
-            Path("default/api".to_string()),
-        )
-        .await;
+        let resp = deployment_instances(State(state), Path("default/api".to_string())).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), 200);
     }

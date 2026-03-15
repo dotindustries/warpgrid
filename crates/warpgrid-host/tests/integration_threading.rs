@@ -28,8 +28,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::bindings::warpgrid::shim::threading::ThreadingModel;
 use warpgrid_host::config::ShimConfig;
@@ -58,12 +58,7 @@ fn build_threading_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for threading-shim-guest fixture");
@@ -73,8 +68,8 @@ fn build_threading_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/threading_shim_guest.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/threading_shim_guest.wasm");
 
         // Step 2: Convert core module to component with wasm-tools
         let component_path = guest_dir.join("target/threading-shim-guest.component.wasm");
@@ -213,10 +208,7 @@ async fn test_parallel_required_runs_cooperative_with_warning() {
 
     // Guest declares parallel-required threading model
     let declare_fn = instance
-        .get_typed_func::<(), (Result<(), String>,)>(
-            &mut store,
-            "declare-parallel-required",
-        )
+        .get_typed_func::<(), (Result<(), String>,)>(&mut store, "declare-parallel-required")
         .unwrap();
     let (result,) = declare_fn.call_async(&mut store, ()).await.unwrap();
     result.expect("declare-parallel-required should succeed");
@@ -269,10 +261,7 @@ async fn test_double_declaration_returns_error() {
 
     // Second declaration: parallel-required — should fail
     let declare_par = instance
-        .get_typed_func::<(), (Result<(), String>,)>(
-            &mut store,
-            "declare-parallel-required",
-        )
+        .get_typed_func::<(), (Result<(), String>,)>(&mut store, "declare-parallel-required")
         .unwrap();
     let (result,) = declare_par.call_async(&mut store, ()).await.unwrap();
     let err = result.expect_err("second declaration should fail");

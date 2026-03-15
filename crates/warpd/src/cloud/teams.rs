@@ -309,11 +309,12 @@ impl TeamStore {
             }
             TeamBackend::LibSql { conn } => {
                 // Verify team exists.
-                let team = self.get_team(team_id).await.ok_or_else(|| {
-                    TeamError::TeamNotFound {
+                let team = self
+                    .get_team(team_id)
+                    .await
+                    .ok_or_else(|| TeamError::TeamNotFound {
                         team_id: team_id.to_string(),
-                    }
-                })?;
+                    })?;
 
                 // Check if user is already a member.
                 if team.members.iter().any(|m| m.user_id == user_id) {
@@ -346,11 +347,7 @@ impl TeamStore {
     }
 
     /// Remove a member from a team. The owner cannot be removed.
-    pub async fn remove_member(
-        &self,
-        team_id: &str,
-        user_id: &str,
-    ) -> Result<Team, TeamError> {
+    pub async fn remove_member(&self, team_id: &str, user_id: &str) -> Result<Team, TeamError> {
         match &self.backend {
             TeamBackend::Memory { teams } => {
                 let mut store = teams.write().unwrap();
@@ -376,11 +373,12 @@ impl TeamStore {
                 Ok(team.clone())
             }
             TeamBackend::LibSql { conn } => {
-                let team = self.get_team(team_id).await.ok_or_else(|| {
-                    TeamError::TeamNotFound {
+                let team = self
+                    .get_team(team_id)
+                    .await
+                    .ok_or_else(|| TeamError::TeamNotFound {
                         team_id: team_id.to_string(),
-                    }
-                })?;
+                    })?;
 
                 if team.owner_user_id == user_id {
                     return Err(TeamError::CannotRemoveOwner);
@@ -447,11 +445,12 @@ impl TeamStore {
                 Ok(team.clone())
             }
             TeamBackend::LibSql { conn } => {
-                let team = self.get_team(team_id).await.ok_or_else(|| {
-                    TeamError::TeamNotFound {
+                let team = self
+                    .get_team(team_id)
+                    .await
+                    .ok_or_else(|| TeamError::TeamNotFound {
                         team_id: team_id.to_string(),
-                    }
-                })?;
+                    })?;
 
                 if team.owner_user_id == user_id {
                     return Err(TeamError::CannotChangeOwnerRole);
@@ -618,7 +617,11 @@ mod tests {
             .unwrap();
         assert_eq!(updated.members.len(), 2);
 
-        let bob = updated.members.iter().find(|m| m.user_id == "usr_bob").unwrap();
+        let bob = updated
+            .members
+            .iter()
+            .find(|m| m.user_id == "usr_bob")
+            .unwrap();
         assert_eq!(bob.role, TeamRole::Member);
 
         // List teams for bob.
@@ -659,19 +662,55 @@ mod tests {
             .unwrap();
 
         // Owner has all permissions.
-        assert!(store.check_permission(&team.id, "usr_owner", TeamRole::Owner).await);
-        assert!(store.check_permission(&team.id, "usr_owner", TeamRole::Admin).await);
-        assert!(store.check_permission(&team.id, "usr_owner", TeamRole::Member).await);
+        assert!(
+            store
+                .check_permission(&team.id, "usr_owner", TeamRole::Owner)
+                .await
+        );
+        assert!(
+            store
+                .check_permission(&team.id, "usr_owner", TeamRole::Admin)
+                .await
+        );
+        assert!(
+            store
+                .check_permission(&team.id, "usr_owner", TeamRole::Member)
+                .await
+        );
 
         // Admin has Admin and Member, but not Owner.
-        assert!(!store.check_permission(&team.id, "usr_admin", TeamRole::Owner).await);
-        assert!(store.check_permission(&team.id, "usr_admin", TeamRole::Admin).await);
-        assert!(store.check_permission(&team.id, "usr_admin", TeamRole::Member).await);
+        assert!(
+            !store
+                .check_permission(&team.id, "usr_admin", TeamRole::Owner)
+                .await
+        );
+        assert!(
+            store
+                .check_permission(&team.id, "usr_admin", TeamRole::Admin)
+                .await
+        );
+        assert!(
+            store
+                .check_permission(&team.id, "usr_admin", TeamRole::Member)
+                .await
+        );
 
         // Member has only Member.
-        assert!(!store.check_permission(&team.id, "usr_member", TeamRole::Owner).await);
-        assert!(!store.check_permission(&team.id, "usr_member", TeamRole::Admin).await);
-        assert!(store.check_permission(&team.id, "usr_member", TeamRole::Member).await);
+        assert!(
+            !store
+                .check_permission(&team.id, "usr_member", TeamRole::Owner)
+                .await
+        );
+        assert!(
+            !store
+                .check_permission(&team.id, "usr_member", TeamRole::Admin)
+                .await
+        );
+        assert!(
+            store
+                .check_permission(&team.id, "usr_member", TeamRole::Member)
+                .await
+        );
     }
 
     #[tokio::test]
@@ -694,7 +733,10 @@ mod tests {
         let store = TeamStore::new();
         let team = store.create_team("Acme", "usr_alice").await;
 
-        let err = store.remove_member(&team.id, "usr_alice").await.unwrap_err();
+        let err = store
+            .remove_member(&team.id, "usr_alice")
+            .await
+            .unwrap_err();
         assert!(matches!(err, TeamError::CannotRemoveOwner));
     }
 
@@ -703,7 +745,10 @@ mod tests {
         let store = TeamStore::new();
         let team = store.create_team("Acme", "usr_alice").await;
 
-        let err = store.remove_member(&team.id, "usr_ghost").await.unwrap_err();
+        let err = store
+            .remove_member(&team.id, "usr_ghost")
+            .await
+            .unwrap_err();
         assert!(matches!(err, TeamError::UserNotMember { .. }));
     }
 
@@ -722,7 +767,11 @@ mod tests {
             .await
             .unwrap();
 
-        let bob = updated.members.iter().find(|m| m.user_id == "usr_bob").unwrap();
+        let bob = updated
+            .members
+            .iter()
+            .find(|m| m.user_id == "usr_bob")
+            .unwrap();
         assert_eq!(bob.role, TeamRole::Admin);
     }
 
@@ -747,14 +796,22 @@ mod tests {
     #[tokio::test]
     async fn permission_check_on_nonexistent_team_returns_false() {
         let store = TeamStore::new();
-        assert!(!store.check_permission("team_nope", "usr_alice", TeamRole::Member).await);
+        assert!(
+            !store
+                .check_permission("team_nope", "usr_alice", TeamRole::Member)
+                .await
+        );
     }
 
     #[tokio::test]
     async fn permission_check_for_non_member_returns_false() {
         let store = TeamStore::new();
         let team = store.create_team("Acme", "usr_alice").await;
-        assert!(!store.check_permission(&team.id, "usr_stranger", TeamRole::Member).await);
+        assert!(
+            !store
+                .check_permission(&team.id, "usr_stranger", TeamRole::Member)
+                .await
+        );
     }
 
     #[test]
@@ -774,7 +831,11 @@ mod tests {
             .await
             .unwrap();
 
-        let bob = updated.members.iter().find(|m| m.user_id == "usr_bob").unwrap();
+        let bob = updated
+            .members
+            .iter()
+            .find(|m| m.user_id == "usr_bob")
+            .unwrap();
         assert_eq!(bob.role, TeamRole::Admin);
     }
 
@@ -817,7 +878,11 @@ mod tests {
             .unwrap();
         assert_eq!(updated.members.len(), 2);
 
-        let bob = updated.members.iter().find(|m| m.user_id == "usr_bob").unwrap();
+        let bob = updated
+            .members
+            .iter()
+            .find(|m| m.user_id == "usr_bob")
+            .unwrap();
         assert_eq!(bob.role, TeamRole::Member);
 
         // List teams for bob.

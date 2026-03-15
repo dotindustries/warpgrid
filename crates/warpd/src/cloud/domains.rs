@@ -382,12 +382,11 @@ impl DomainStore {
             DomainBackend::Memory { domains } => {
                 let mut store = domains.write().unwrap();
 
-                let mapping =
-                    store
-                        .get_mut(&domain)
-                        .ok_or_else(|| DomainError::NotFound {
-                            domain: domain.clone(),
-                        })?;
+                let mapping = store
+                    .get_mut(&domain)
+                    .ok_or_else(|| DomainError::NotFound {
+                        domain: domain.clone(),
+                    })?;
 
                 if mapping.status != DomainStatus::Pending {
                     return Err(DomainError::VerificationFailed {
@@ -401,11 +400,12 @@ impl DomainStore {
                 Ok(mapping.clone())
             }
             DomainBackend::LibSql { conn } => {
-                let existing = self.get_domain(&domain).await.ok_or_else(|| {
-                    DomainError::NotFound {
-                        domain: domain.clone(),
-                    }
-                })?;
+                let existing =
+                    self.get_domain(&domain)
+                        .await
+                        .ok_or_else(|| DomainError::NotFound {
+                            domain: domain.clone(),
+                        })?;
 
                 if existing.status != DomainStatus::Pending {
                     return Err(DomainError::VerificationFailed {
@@ -421,11 +421,11 @@ impl DomainStore {
                 .await
                 .map_err(|e| DomainError::Storage(e.to_string()))?;
 
-                self.get_domain(&domain).await.ok_or_else(|| {
-                    DomainError::NotFound {
+                self.get_domain(&domain)
+                    .await
+                    .ok_or_else(|| DomainError::NotFound {
                         domain: domain.clone(),
-                    }
-                })
+                    })
             }
         }
     }
@@ -438,10 +438,7 @@ fn row_to_mapping(row: &libsql::Row) -> Option<DomainMapping> {
     let namespace: String = row.get(2).ok()?;
     let status_str: String = row.get(3).ok()?;
     let created_at = row.get::<i64>(4).ok()? as u64;
-    let verified_at: Option<u64> = row
-        .get::<i64>(5)
-        .ok()
-        .map(|v| v as u64);
+    let verified_at: Option<u64> = row.get::<i64>(5).ok().map(|v| v as u64);
 
     let status = match status_str.as_str() {
         "active" => DomainStatus::Active,
@@ -548,7 +545,10 @@ mod tests {
     #[tokio::test]
     async fn invalid_domain_empty() {
         let store = DomainStore::new();
-        let err = store.add_domain("", "dep_123", "ns_alice").await.unwrap_err();
+        let err = store
+            .add_domain("", "dep_123", "ns_alice")
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 

@@ -123,10 +123,7 @@ impl StripeBillingClient {
             .http
             .post(format!("{STRIPE_API_BASE}/customers"))
             .bearer_auth(&self.secret_key)
-            .form(&[
-                ("email", email),
-                ("metadata[team_id]", team_id),
-            ])
+            .form(&[("email", email), ("metadata[team_id]", team_id)])
             .send()
             .await
             .map_err(|e| BillingError::Api(e.to_string()))?;
@@ -409,9 +406,7 @@ impl BillingService {
     /// the key is `None` or empty.
     pub fn from_env(stripe_key: Option<String>) -> Self {
         match stripe_key {
-            Some(ref key) if !key.is_empty() => {
-                Self::Active(StripeBillingClient::new(key))
-            }
+            Some(ref key) if !key.is_empty() => Self::Active(StripeBillingClient::new(key)),
             _ => Self::Mock(MockBillingClient::new()),
         }
     }
@@ -419,14 +414,9 @@ impl BillingService {
     /// Build from an optional Stripe secret key with a libSQL connection
     /// for plan persistence. Returns `Mock` with libSQL backend when
     /// the key is `None` or empty.
-    pub fn from_env_with_libsql(
-        stripe_key: Option<String>,
-        conn: libsql::Connection,
-    ) -> Self {
+    pub fn from_env_with_libsql(stripe_key: Option<String>, conn: libsql::Connection) -> Self {
         match stripe_key {
-            Some(ref key) if !key.is_empty() => {
-                Self::Active(StripeBillingClient::new(key))
-            }
+            Some(ref key) if !key.is_empty() => Self::Active(StripeBillingClient::new(key)),
             _ => Self::Mock(MockBillingClient::with_libsql(conn)),
         }
     }
@@ -449,12 +439,8 @@ impl BillingService {
         customer_id: &str,
     ) -> Result<String, BillingError> {
         match self {
-            Self::Active(client) => {
-                client.create_billing_portal_session(customer_id).await
-            }
-            Self::Mock(mock) => {
-                mock.create_billing_portal_session(customer_id).await
-            }
+            Self::Active(client) => client.create_billing_portal_session(customer_id).await,
+            Self::Mock(mock) => mock.create_billing_portal_session(customer_id).await,
         }
     }
 

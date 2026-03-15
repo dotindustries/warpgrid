@@ -124,9 +124,7 @@ impl AuthStore {
         let key_hash = hash_key(raw_key);
 
         match &self.backend {
-            AuthBackend::Memory { keys, .. } => {
-                keys.read().unwrap().get(&key_hash).cloned()
-            }
+            AuthBackend::Memory { keys, .. } => keys.read().unwrap().get(&key_hash).cloned(),
             AuthBackend::LibSql { conn } => {
                 let mut rows = conn
                     .query(
@@ -154,9 +152,7 @@ impl AuthStore {
     /// Get a user by ID.
     pub async fn get_user(&self, user_id: &str) -> Option<User> {
         match &self.backend {
-            AuthBackend::Memory { users, .. } => {
-                users.read().unwrap().get(user_id).cloned()
-            }
+            AuthBackend::Memory { users, .. } => users.read().unwrap().get(user_id).cloned(),
             AuthBackend::LibSql { conn } => {
                 let mut rows = conn
                     .query(
@@ -229,12 +225,9 @@ impl AuthStore {
                 let key_hash = hash_key(raw_key);
                 keys.read().unwrap().get(&key_hash).cloned()
             }
-            AuthBackend::LibSql { .. } => {
-                tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current()
-                        .block_on(self.validate(raw_key))
-                })
-            }
+            AuthBackend::LibSql { .. } => tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(self.validate(raw_key))
+            }),
         }
     }
 }
@@ -267,7 +260,13 @@ fn email_to_namespace(email: &str) -> String {
     let local = email.split('@').next().unwrap_or("user");
     local
         .chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -304,7 +303,11 @@ mod tests {
     fn invalid_key_returns_none() {
         let store = AuthStore::new();
         store.register_sync("bob@test.com");
-        assert!(store.validate_sync("wg_live_invalid_key_here_000000").is_none());
+        assert!(
+            store
+                .validate_sync("wg_live_invalid_key_here_000000")
+                .is_none()
+        );
     }
 
     #[test]
@@ -350,7 +353,12 @@ mod tests {
 
         let store = AuthStore::with_libsql(conn);
         store.register("bob@test.com").await.unwrap();
-        assert!(store.validate("wg_live_wrong_key_0000000000000").await.is_none());
+        assert!(
+            store
+                .validate("wg_live_wrong_key_0000000000000")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]

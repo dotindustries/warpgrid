@@ -103,11 +103,7 @@ impl Router {
             for backend in &mut entry.backends {
                 if backend.endpoint() == endpoint {
                     backend.healthy = false;
-                    debug!(
-                        service = service_name,
-                        endpoint,
-                        "marked backend unhealthy"
-                    );
+                    debug!(service = service_name, endpoint, "marked backend unhealthy");
                 }
             }
         }
@@ -195,10 +191,7 @@ mod tests {
     #[test]
     fn returns_none_when_all_unhealthy() {
         let router = Router::new();
-        router.update_service(
-            "api",
-            vec![make_backend("n1", "10.0.0.1", 8080)],
-        );
+        router.update_service("api", vec![make_backend("n1", "10.0.0.1", 8080)]);
         router.mark_unhealthy("api", "10.0.0.1:8080");
 
         assert!(router.next_backend("api").is_none());

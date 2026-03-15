@@ -43,9 +43,9 @@ async fn probe_healthy_server_returns_healthy() {
             let io = hyper_util::rt::TokioIo::new(stream);
             tokio::spawn(async move {
                 let service = hyper::service::service_fn(|_req| async {
-                    Ok::<_, hyper::Error>(hyper::Response::new(
-                        http_body_util::Full::new(bytes::Bytes::from("ok")),
-                    ))
+                    Ok::<_, hyper::Error>(hyper::Response::new(http_body_util::Full::new(
+                        bytes::Bytes::from("ok"),
+                    )))
                 });
                 let _ = hyper::server::conn::http1::Builder::new()
                     .serve_connection(io, service)
@@ -282,7 +282,11 @@ async fn probe_timeout_counts_as_failure() {
 
     // Use a very short timeout so the test completes quickly.
     let result = http_probe(&addr.to_string(), "/healthz", Duration::from_millis(50)).await;
-    assert_eq!(result, ProbeResult::Failed, "timeout should count as failure");
+    assert_eq!(
+        result,
+        ProbeResult::Failed,
+        "timeout should count as failure"
+    );
 }
 
 #[test]

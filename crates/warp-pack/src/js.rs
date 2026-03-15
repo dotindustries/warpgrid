@@ -34,10 +34,7 @@ fn find_jco(project_root: &Path) -> Result<PathBuf> {
     }
 
     // Try project-local node_modules (for projects that install jco themselves)
-    let local_jco = project_root
-        .join("node_modules")
-        .join(".bin")
-        .join("jco");
+    let local_jco = project_root.join("node_modules").join(".bin").join("jco");
 
     if local_jco.is_file() {
         debug!("Found jco at {} (project-local)", local_jco.display());
@@ -68,7 +65,10 @@ fn find_sdk_root(project_path: &Path) -> PathBuf {
     let mut candidate = project_path.to_path_buf();
     for _ in 0..10 {
         if candidate.join("build").join("componentize-js").exists()
-            || candidate.join("scripts").join("build-componentize-js.sh").exists()
+            || candidate
+                .join("scripts")
+                .join("build-componentize-js.sh")
+                .exists()
         {
             return candidate;
         }
@@ -92,9 +92,8 @@ fn generate_prelude(config: &WarpConfig) -> String {
     let db_enabled = shims.is_none_or(|s| s.database_proxy.unwrap_or(true));
     let dns_enabled = shims.is_none_or(|s| s.dns.unwrap_or(true));
 
-    let mut prelude = String::from(
-        "// ── WarpGrid Shim Prelude (auto-injected by warp pack --lang js) ──\n",
-    );
+    let mut prelude =
+        String::from("// ── WarpGrid Shim Prelude (auto-injected by warp pack --lang js) ──\n");
 
     // process.env polyfill — always injected
     prelude.push_str(
@@ -193,8 +192,7 @@ fn detect_shim_usage(source: &str) -> ShimUsage {
     ShimUsage {
         uses_database: source.contains("warpgrid:shim/database-proxy")
             || source.contains("warpgrid.database"),
-        uses_dns: source.contains("warpgrid:shim/dns")
-            || source.contains("warpgrid.dns"),
+        uses_dns: source.contains("warpgrid:shim/dns") || source.contains("warpgrid.dns"),
         uses_filesystem: source.contains("warpgrid:shim/filesystem")
             || source.contains("warpgrid.fs"),
     }
@@ -405,11 +403,7 @@ mod tests {
     use tempfile::TempDir;
 
     // Helper to create a minimal project structure
-    fn create_test_project(
-        lang: &str,
-        entry: &str,
-        handler_content: &str,
-    ) -> (TempDir, PathBuf) {
+    fn create_test_project(lang: &str, entry: &str, handler_content: &str) -> (TempDir, PathBuf) {
         let dir = TempDir::new().unwrap();
         let project = dir.path().to_path_buf();
 
@@ -625,7 +619,12 @@ addEventListener("fetch", (event) => {
         let config = WarpConfig::from_file(&project.join("warp.toml")).unwrap();
         let result = pack_js(&project, &config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Entry point not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Entry point not found")
+        );
     }
 
     #[test]
@@ -640,7 +639,12 @@ addEventListener("fetch", (event) => {
         let config = WarpConfig::from_file(&project.join("warp.toml")).unwrap();
         let result = pack_js(&project, &config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("WIT directory not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("WIT directory not found")
+        );
     }
 
     #[test]
@@ -769,7 +773,10 @@ const config = await warpgrid.fs.readFile("/config.json", "utf-8");
         }
 
         let result = find_jco(dir.path());
-        assert!(result.is_ok(), "Should find jco in project-local node_modules");
+        assert!(
+            result.is_ok(),
+            "Should find jco in project-local node_modules"
+        );
         assert_eq!(result.unwrap(), jco_path);
     }
 
@@ -806,7 +813,10 @@ const config = await warpgrid.fs.readFile("/config.json", "utf-8");
             .parent()
             .unwrap();
 
-        let test_fixture = project_root.join("tests").join("fixtures").join("js-http-handler");
+        let test_fixture = project_root
+            .join("tests")
+            .join("fixtures")
+            .join("js-http-handler");
         if !test_fixture.exists() {
             eprintln!("Test fixture not found at {}", test_fixture.display());
             return;
@@ -828,11 +838,7 @@ entry = "handler.js"
         fs::write(project.join("warp.toml"), warp_toml).unwrap();
 
         // Copy handler and wit from fixture
-        fs::copy(
-            test_fixture.join("handler.js"),
-            project.join("handler.js"),
-        )
-        .unwrap();
+        fs::copy(test_fixture.join("handler.js"), project.join("handler.js")).unwrap();
 
         // Copy WIT directory
         let wit_src = test_fixture.join("wit");
@@ -876,10 +882,7 @@ entry = "handler.js"
             .join("fixtures")
             .join("js-warpgrid-handler");
         if !test_fixture.exists() {
-            eprintln!(
-                "Test fixture not found at {}",
-                test_fixture.display()
-            );
+            eprintln!("Test fixture not found at {}", test_fixture.display());
             return;
         }
 

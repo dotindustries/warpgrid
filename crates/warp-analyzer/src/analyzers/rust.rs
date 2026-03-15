@@ -19,7 +19,9 @@ pub fn analyze_cargo_toml(project_path: &Path) -> Result<Vec<DependencyVerdict>>
         for (name, value) in dep_table {
             let version = match value {
                 toml::Value::String(v) => Some(v.clone()),
-                toml::Value::Table(t) => t.get("version").and_then(|v| v.as_str()).map(String::from),
+                toml::Value::Table(t) => {
+                    t.get("version").and_then(|v| v.as_str()).map(String::from)
+                }
                 _ => None,
             };
             deps.push(DependencyVerdict {
@@ -36,7 +38,9 @@ pub fn analyze_cargo_toml(project_path: &Path) -> Result<Vec<DependencyVerdict>>
             for (name, value) in dep_table {
                 let version = match value {
                     toml::Value::String(v) => Some(v.clone()),
-                    toml::Value::Table(t) => t.get("version").and_then(|v| v.as_str()).map(String::from),
+                    toml::Value::Table(t) => {
+                        t.get("version").and_then(|v| v.as_str()).map(String::from)
+                    }
                     _ => None,
                 };
                 deps.push(DependencyVerdict {

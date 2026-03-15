@@ -49,7 +49,10 @@ async fn measure_sync_throughput(
     measurement_duration: Duration,
 ) -> f64 {
     let factory = Arc::new(MockFactory::with_latency(latency));
-    let manager = Arc::new(ConnectionPoolManager::new(bench_config(concurrency), factory));
+    let manager = Arc::new(ConnectionPoolManager::new(
+        bench_config(concurrency),
+        factory,
+    ));
     let key = test_key();
 
     let mut handles = Vec::with_capacity(concurrency);

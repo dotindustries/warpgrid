@@ -28,5 +28,7 @@ pub mod scheduler;
 
 pub use error::{SchedulerError, SchedulerResult};
 pub use load_balancer::RoundRobinBalancer;
-pub use placement_executor::{ExecutionResult, NodeCommand, SchedulePayload, execute as execute_placement};
+pub use placement_executor::{
+    ExecutionResult, NodeCommand, SchedulePayload, execute as execute_placement,
+};
 pub use scheduler::{PlacementMode, Scheduler};

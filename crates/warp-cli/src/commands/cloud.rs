@@ -3,10 +3,10 @@
 //! All commands communicate with the WarpGrid cloud control plane
 //! via its REST API. Credentials are stored in ~/.warpgrid/config.toml.
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 // ── Config ──────────────────────────────────────────────────────
 
@@ -47,9 +47,7 @@ impl CloudConfig {
 
     /// Get the API URL, defaulting to localhost for development.
     pub fn api_url(&self) -> &str {
-        self.api_url
-            .as_deref()
-            .unwrap_or("http://localhost:8443")
+        self.api_url.as_deref().unwrap_or("http://localhost:8443")
     }
 
     /// Get the API key or bail if not logged in.
@@ -112,7 +110,11 @@ struct LogEntryResponse {
 // ── Commands ────────────────────────────────────────────────────
 
 /// Login with an API key or register a new account.
-pub fn login(api_key: Option<&str>, api_url: Option<&str>, email: Option<&str>) -> anyhow::Result<()> {
+pub fn login(
+    api_key: Option<&str>,
+    api_url: Option<&str>,
+    email: Option<&str>,
+) -> anyhow::Result<()> {
     let mut config = CloudConfig::load()?;
 
     if let Some(url) = api_url {
@@ -135,7 +137,10 @@ pub fn login(api_key: Option<&str>, api_url: Option<&str>, email: Option<&str>) 
         if resp.status().is_success() {
             println!("API key verified.");
         } else {
-            println!("Warning: API key could not be verified (server returned {}).", resp.status());
+            println!(
+                "Warning: API key could not be verified (server returned {}).",
+                resp.status()
+            );
         }
     } else if let Some(email) = email {
         // Register new account.
@@ -210,7 +215,12 @@ pub fn deploy(path: &str, region: Option<&str>, lang: Option<&str>) -> anyhow::R
         .context("Failed to read compiled Wasm component")?;
 
     let region = region.unwrap_or("iad");
-    println!("Deploying '{}' to {} ({} bytes)...", deploy_name, region, wasm_bytes.len());
+    println!(
+        "Deploying '{}' to {} ({} bytes)...",
+        deploy_name,
+        region,
+        wasm_bytes.len()
+    );
 
     // Step 4: Upload to cloud.
     let client = reqwest::blocking::Client::new();
@@ -226,7 +236,10 @@ pub fn deploy(path: &str, region: Option<&str>, lang: Option<&str>) -> anyhow::R
     if resp.status().is_success() {
         let body: ApiResponse<serde_json::Value> = resp.json()?;
         if let Some(data) = body.data {
-            let url = data.get("url").and_then(|u| u.as_str()).unwrap_or("(unknown)");
+            let url = data
+                .get("url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("(unknown)");
             let hash = data.get("wasm_hash").and_then(|h| h.as_str()).unwrap_or("");
             println!("Deployed successfully!");
             println!("  Name:      {}", deploy_name);
@@ -253,10 +266,7 @@ pub fn status() -> anyhow::Result<()> {
 
     let client = reqwest::blocking::Client::new();
     let resp = client
-        .get(format!(
-            "{}/api/v1/cloud/deployments",
-            config.api_url()
-        ))
+        .get(format!("{}/api/v1/cloud/deployments", config.api_url()))
         .header("Authorization", format!("Bearer {api_key}"))
         .send()
         .context("Failed to connect to WarpGrid cloud")?;
@@ -363,11 +373,7 @@ pub fn logs(deployment_id: &str, follow: bool) -> anyhow::Result<()> {
     let api_key = config.require_api_key()?;
 
     let client = reqwest::blocking::Client::new();
-    let url = format!(
-        "{}/api/v1/cloud/logs/{}",
-        config.api_url(),
-        deployment_id
-    );
+    let url = format!("{}/api/v1/cloud/logs/{}", config.api_url(), deployment_id);
 
     let fetch_and_print = |seen: &mut HashSet<i64>| -> anyhow::Result<()> {
         let resp = client

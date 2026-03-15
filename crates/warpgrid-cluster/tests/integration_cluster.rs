@@ -32,13 +32,31 @@ async fn three_node_join_leave_lifecycle() {
 
     // Join three nodes with distinct addresses.
     let node_a = mgr
-        .join("10.0.0.1", 8443, labels(&[("zone", "a")]), 8_000_000_000, 1000)
+        .join(
+            "10.0.0.1",
+            8443,
+            labels(&[("zone", "a")]),
+            8_000_000_000,
+            1000,
+        )
         .unwrap();
     let node_b = mgr
-        .join("10.0.0.2", 8443, labels(&[("zone", "b")]), 8_000_000_000, 1000)
+        .join(
+            "10.0.0.2",
+            8443,
+            labels(&[("zone", "b")]),
+            8_000_000_000,
+            1000,
+        )
         .unwrap();
     let node_c = mgr
-        .join("10.0.0.3", 8443, labels(&[("zone", "c")]), 16_000_000_000, 2000)
+        .join(
+            "10.0.0.3",
+            8443,
+            labels(&[("zone", "c")]),
+            16_000_000_000,
+            2000,
+        )
         .unwrap();
 
     // All three IDs are unique.
@@ -129,8 +147,7 @@ async fn dead_node_detection_and_reaping() {
 
     // Use a 0s dead timeout so nodes become dead immediately
     // when their heartbeat is set to the past.
-    let mgr = MembershipManager::new(state.clone())
-        .with_dead_timeout(Duration::from_secs(0));
+    let mgr = MembershipManager::new(state.clone()).with_dead_timeout(Duration::from_secs(0));
 
     // Join three nodes.
     let node_a = mgr
@@ -266,13 +283,9 @@ async fn tls_cert_chain_validation() {
     )
     .unwrap();
 
-    let node2_pair = tls::generate_node_cert(
-        &ca_key,
-        &test_ca_cert,
-        "node-2",
-        &["10.0.0.2".to_string()],
-    )
-    .unwrap();
+    let node2_pair =
+        tls::generate_node_cert(&ca_key, &test_ca_cert, "node-2", &["10.0.0.2".to_string()])
+            .unwrap();
 
     // Both node certs are valid PEM.
     assert!(node1_pair.cert_pem.contains("BEGIN CERTIFICATE"));
@@ -290,14 +303,22 @@ async fn tls_cert_chain_validation() {
     let ca_certs: Vec<_> = rustls_pemfile::certs(&mut ca_reader)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_eq!(ca_certs.len(), 1, "CA should produce exactly one certificate");
+    assert_eq!(
+        ca_certs.len(),
+        1,
+        "CA should produce exactly one certificate"
+    );
 
     // Parse node1 cert.
     let mut node1_reader = std::io::Cursor::new(node1_pair.cert_pem.as_bytes());
     let node1_certs: Vec<_> = rustls_pemfile::certs(&mut node1_reader)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_eq!(node1_certs.len(), 1, "node cert should produce one certificate");
+    assert_eq!(
+        node1_certs.len(),
+        1,
+        "node cert should produce one certificate"
+    );
 
     // Verify the node cert can be validated against the CA using rustls.
     let mut root_store = rustls::RootCertStore::empty();
@@ -327,7 +348,10 @@ async fn tls_cert_chain_validation() {
         &ca_key,
         &test_ca_cert,
         "node-dns",
-        &["api.warpgrid.internal".to_string(), "api.warpgrid.local".to_string()],
+        &[
+            "api.warpgrid.internal".to_string(),
+            "api.warpgrid.local".to_string(),
+        ],
     )
     .unwrap();
     assert!(dns_only_pair.cert_pem.contains("BEGIN CERTIFICATE"));

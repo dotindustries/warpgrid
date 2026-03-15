@@ -25,9 +25,7 @@ impl RaftGrpcServer {
     }
 
     /// Get the tonic service for mounting on a gRPC server.
-    pub fn into_service(
-        self,
-    ) -> proto::raft_service_server::RaftServiceServer<Self> {
+    pub fn into_service(self) -> proto::raft_service_server::RaftServiceServer<Self> {
         proto::raft_service_server::RaftServiceServer::new(self)
     }
 }
@@ -102,9 +100,8 @@ impl RaftService for RaftGrpcServer {
     ) -> Result<Response<proto::RaftResponse>, Status> {
         let data = request.into_inner().data;
 
-        let req: openraft::raft::InstallSnapshotRequest<TypeConfig> =
-            serde_json::from_slice(&data)
-                .map_err(|e| Status::invalid_argument(format!("deserialize: {e}")))?;
+        let req: openraft::raft::InstallSnapshotRequest<TypeConfig> = serde_json::from_slice(&data)
+            .map_err(|e| Status::invalid_argument(format!("deserialize: {e}")))?;
 
         debug!("handling install_snapshot RPC");
 

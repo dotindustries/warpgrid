@@ -9,9 +9,7 @@ use std::collections::HashMap;
 
 use tracing::{debug, info, warn};
 
-use crate::scorer::{
-    NodeResources, PlacementRequirements, ScoringWeights, rank_nodes,
-};
+use crate::scorer::{NodeResources, PlacementRequirements, ScoringWeights, rank_nodes};
 
 /// A placement decision for a single deployment.
 #[derive(Debug, Clone)]
@@ -72,8 +70,7 @@ pub fn compute_placement(
     if remaining > 0 {
         warn!(
             deployment = deployment_id,
-            remaining,
-            "could not place all instances — insufficient cluster capacity"
+            remaining, "could not place all instances — insufficient cluster capacity"
         );
     }
 
@@ -223,10 +220,7 @@ mod tests {
     #[test]
     fn placement_spreads_across_nodes() {
         // Two nodes, each can fit 2 instances. Need 3 total.
-        let nodes = vec![
-            make_node("n1", 256, 0),
-            make_node("n2", 256, 0),
-        ];
+        let nodes = vec![make_node("n1", 256, 0), make_node("n2", 256, 0)];
         let req = default_req(128, 3);
         let weights = ScoringWeights::default();
 
@@ -272,9 +266,8 @@ mod tests {
         }];
 
         let weights = ScoringWeights::default();
-        let plan = compute_placement_with_preemption(
-            &req, "deploy/high", &nodes, &running, &weights,
-        );
+        let plan =
+            compute_placement_with_preemption(&req, "deploy/high", &nodes, &running, &weights);
 
         assert!(!plan.preemptions.is_empty());
         assert_eq!(plan.preemptions[0].victim_deployment_id, "deploy/low");
@@ -302,9 +295,8 @@ mod tests {
         }];
 
         let weights = ScoringWeights::default();
-        let plan = compute_placement_with_preemption(
-            &req, "deploy/low", &nodes, &running, &weights,
-        );
+        let plan =
+            compute_placement_with_preemption(&req, "deploy/low", &nodes, &running, &weights);
 
         assert!(plan.preemptions.is_empty());
     }

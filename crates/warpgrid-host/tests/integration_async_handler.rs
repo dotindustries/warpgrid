@@ -13,19 +13,19 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, OnceLock, Once};
+use std::sync::{Arc, Once, OnceLock};
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
+use warpgrid_host::bindings::async_handler_bindings::WarpgridAsyncHandler;
 use warpgrid_host::bindings::async_handler_bindings::warpgrid::shim::http_types::{
     HttpHeader, HttpRequest,
 };
-use warpgrid_host::bindings::async_handler_bindings::WarpgridAsyncHandler;
 use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
-use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
+use warpgrid_host::filesystem::host::FilesystemHost;
 
 // ── Tracing setup ────────────────────────────────────────────────
 
@@ -37,9 +37,7 @@ static TRACING_INIT: Once = Once::new();
 fn init_tracing() {
     TRACING_INIT.call_once(|| {
         tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::from_default_env(),
-            )
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .with_test_writer()
             .try_init()
             .ok();
@@ -82,8 +80,8 @@ fn build_async_echo_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/async_echo_handler.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/async_echo_handler.wasm");
 
         // Step 2: Convert core module to component with wasm-tools
         let component_path = guest_dir.join("target/async-echo-handler.component.wasm");
@@ -139,13 +137,9 @@ async fn async_handler_instantiates_and_returns_200() {
     let host_state = minimal_host_state();
     let mut store = Store::new(engine.engine(), host_state);
 
-    let handler = WarpgridAsyncHandler::instantiate_async(
-        &mut store,
-        &component,
-        &linker,
-    )
-    .await
-    .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     let request = HttpRequest {
         method: "GET".into(),
@@ -173,13 +167,9 @@ async fn async_handler_echoes_request_body() {
     let host_state = minimal_host_state();
     let mut store = Store::new(engine.engine(), host_state);
 
-    let handler = WarpgridAsyncHandler::instantiate_async(
-        &mut store,
-        &component,
-        &linker,
-    )
-    .await
-    .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     let body = b"Hello, WarpGrid async!".to_vec();
     let request = HttpRequest {
@@ -199,7 +189,10 @@ async fn async_handler_echoes_request_body() {
         .unwrap();
 
     assert_eq!(response.status, 200);
-    assert_eq!(response.body, body, "response body should echo request body");
+    assert_eq!(
+        response.body, body,
+        "response body should echo request body"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -212,13 +205,9 @@ async fn async_handler_sets_x_async_header() {
     let host_state = minimal_host_state();
     let mut store = Store::new(engine.engine(), host_state);
 
-    let handler = WarpgridAsyncHandler::instantiate_async(
-        &mut store,
-        &component,
-        &linker,
-    )
-    .await
-    .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     let request = HttpRequest {
         method: "GET".into(),
@@ -233,9 +222,10 @@ async fn async_handler_sets_x_async_header() {
         .await
         .unwrap();
 
-    let has_async_header = response.headers.iter().any(|h| {
-        h.name == "x-async" && h.value == "true"
-    });
+    let has_async_header = response
+        .headers
+        .iter()
+        .any(|h| h.name == "x-async" && h.value == "true");
     assert!(
         has_async_header,
         "response should have x-async: true header, got: {:?}",
@@ -253,13 +243,9 @@ async fn async_handler_multiple_sequential_requests() {
     let host_state = minimal_host_state();
     let mut store = Store::new(engine.engine(), host_state);
 
-    let handler = WarpgridAsyncHandler::instantiate_async(
-        &mut store,
-        &component,
-        &linker,
-    )
-    .await
-    .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     // Send 10 sequential requests to verify the component handles
     // multiple invocations without issues.
@@ -296,13 +282,9 @@ async fn async_handler_empty_body_returns_empty_response() {
     let host_state = minimal_host_state();
     let mut store = Store::new(engine.engine(), host_state);
 
-    let handler = WarpgridAsyncHandler::instantiate_async(
-        &mut store,
-        &component,
-        &linker,
-    )
-    .await
-    .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     let request = HttpRequest {
         method: "HEAD".into(),
@@ -318,7 +300,10 @@ async fn async_handler_empty_body_returns_empty_response() {
         .unwrap();
 
     assert_eq!(response.status, 200);
-    assert!(response.body.is_empty(), "empty request body should produce empty response body");
+    assert!(
+        response.body.is_empty(),
+        "empty request body should produce empty response body"
+    );
 }
 
 // ── US-502: Multi-chunk and concurrent request tests ─────────────
@@ -335,13 +320,9 @@ async fn async_handler_echoes_multi_chunk_body_with_x_async_header() {
     let host_state = minimal_host_state();
     let mut store = Store::new(engine.engine(), host_state);
 
-    let handler = WarpgridAsyncHandler::instantiate_async(
-        &mut store,
-        &component,
-        &linker,
-    )
-    .await
-    .unwrap();
+    let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
 
     // Compose a multi-chunk body: 10 x 1KB chunks with identifiable patterns.
     // Each chunk contains a repeating byte pattern based on its index so we
@@ -410,9 +391,7 @@ async fn async_handler_10_concurrent_requests_no_deadlock() {
 
     let wasm_bytes = build_async_echo_component();
     let engine = WarpGridEngine::new(ShimConfig::default()).unwrap();
-    let component = Arc::new(
-        Component::new(engine.engine(), wasm_bytes).unwrap(),
-    );
+    let component = Arc::new(Component::new(engine.engine(), wasm_bytes).unwrap());
     let engine = Arc::new(engine);
 
     // Spawn 10 concurrent tasks, each instantiating its own handler
@@ -428,13 +407,9 @@ async fn async_handler_10_concurrent_requests_no_deadlock() {
             let host_state = minimal_host_state();
             let mut store = Store::new(engine.engine(), host_state);
 
-            let handler = WarpgridAsyncHandler::instantiate_async(
-                &mut store,
-                &component,
-                &linker,
-            )
-            .await
-            .unwrap();
+            let handler = WarpgridAsyncHandler::instantiate_async(&mut store, &component, &linker)
+                .await
+                .unwrap();
 
             let body = format!("concurrent-request-{i}").into_bytes();
             let request = HttpRequest {

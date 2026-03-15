@@ -5,10 +5,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use tokio::sync::RwLock;
 
 use warpgrid_rollout::{Rollout, RolloutPhase, RolloutStrategy};
@@ -93,10 +93,10 @@ pub async fn start_rollout(
     let spec = match state.store.get_deployment(&id) {
         Ok(Some(spec)) => spec,
         Ok(None) => {
-            return rollout_error("deployment not found", StatusCode::NOT_FOUND).into_response()
+            return rollout_error("deployment not found", StatusCode::NOT_FOUND).into_response();
         }
         Err(e) => {
-            return rollout_error(&e.to_string(), StatusCode::INTERNAL_SERVER_ERROR).into_response()
+            return rollout_error(&e.to_string(), StatusCode::INTERNAL_SERVER_ERROR).into_response();
         }
     };
 
@@ -107,11 +107,8 @@ pub async fn start_rollout(
             if existing.phase != RolloutPhase::Completed
                 && !matches!(existing.phase, RolloutPhase::RolledBack { .. })
             {
-                return rollout_error(
-                    "rollout already in progress",
-                    StatusCode::CONFLICT,
-                )
-                .into_response();
+                return rollout_error("rollout already in progress", StatusCode::CONFLICT)
+                    .into_response();
             }
         }
     }
@@ -257,12 +254,7 @@ mod tests {
             new_version: "v2".to_string(),
         };
 
-        let resp = start_rollout(
-            State(state),
-            Path("nope/missing".to_string()),
-            Json(req),
-        )
-        .await;
+        let resp = start_rollout(State(state), Path("nope/missing".to_string()), Json(req)).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
@@ -292,12 +284,7 @@ mod tests {
             strategy: RolloutStrategy::default(),
             new_version: "v3".to_string(),
         };
-        let resp = start_rollout(
-            State(state),
-            Path("prod/api".to_string()),
-            Json(req2),
-        )
-        .await;
+        let resp = start_rollout(State(state), Path("prod/api".to_string()), Json(req2)).await;
         assert_eq!(resp.into_response().status(), StatusCode::CONFLICT);
     }
 
@@ -334,11 +321,7 @@ mod tests {
         .await;
 
         // Pause.
-        let resp = pause_rollout(
-            State(state.clone()),
-            Path("prod/api".to_string()),
-        )
-        .await;
+        let resp = pause_rollout(State(state.clone()), Path("prod/api".to_string())).await;
         assert_eq!(resp.into_response().status(), StatusCode::OK);
 
         {
@@ -347,11 +330,7 @@ mod tests {
         }
 
         // Resume.
-        let resp = resume_rollout(
-            State(state.clone()),
-            Path("prod/api".to_string()),
-        )
-        .await;
+        let resp = resume_rollout(State(state.clone()), Path("prod/api".to_string())).await;
         assert_eq!(resp.into_response().status(), StatusCode::OK);
 
         {

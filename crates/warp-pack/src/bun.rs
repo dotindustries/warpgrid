@@ -5,10 +5,10 @@
 //! The Bun handler must export a default object with a `fetch` method matching
 //! the WarpGridHandler interface from `@warpgrid/bun-sdk`.
 
-use anyhow::{Result, Context, bail};
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{info, debug};
+use tracing::{debug, info};
 use warp_core::WarpConfig;
 
 use crate::PackResult;
@@ -156,10 +156,10 @@ fn generate_polyfill_wrapper(
     let wrapper_path = bundle_dir.join(format!("{module_name}-wrapper.ts"));
 
     // Use absolute paths for reliable resolution during bun build
-    let polyfills_abs = std::fs::canonicalize(polyfills_index)
-        .context("Failed to resolve polyfills index path")?;
-    let entry_abs = std::fs::canonicalize(original_entry)
-        .context("Failed to resolve entry point path")?;
+    let polyfills_abs =
+        std::fs::canonicalize(polyfills_index).context("Failed to resolve polyfills index path")?;
+    let entry_abs =
+        std::fs::canonicalize(original_entry).context("Failed to resolve entry point path")?;
 
     // The wrapper imports polyfills, initializes them, then imports the user
     // entry as a side-effect (for addEventListener-based handlers) and
@@ -181,8 +181,7 @@ import "{}";
         entry_abs.display(),
     );
 
-    std::fs::write(&wrapper_path, &wrapper_content)
-        .context("Failed to write polyfill wrapper")?;
+    std::fs::write(&wrapper_path, &wrapper_content).context("Failed to write polyfill wrapper")?;
 
     debug!("Generated polyfill wrapper at {}", wrapper_path.display());
 
@@ -229,7 +228,11 @@ fn extract_wit_imports(wit_dir: &Path) -> Vec<String> {
 fn bun_build(project_path: &Path, entry: &str, output: &Path, externals: &[String]) -> Result<()> {
     let entry_path = {
         let p = Path::new(entry);
-        if p.is_absolute() { p.to_path_buf() } else { project_path.join(entry) }
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            project_path.join(entry)
+        }
     };
     info!("Bundling with bun build: {}", entry_path.display());
 
@@ -247,11 +250,10 @@ fn bun_build(project_path: &Path, entry: &str, output: &Path, externals: &[Strin
         cmd.arg("--external").arg(ext);
     }
 
-    let result = cmd.output()
-        .context(
-            "Failed to execute 'bun build'. Is Bun installed? \
-             Install from https://bun.sh"
-        )?;
+    let result = cmd.output().context(
+        "Failed to execute 'bun build'. Is Bun installed? \
+             Install from https://bun.sh",
+    )?;
 
     if !result.status.success() {
         let stderr = String::from_utf8_lossy(&result.stderr);
@@ -325,7 +327,11 @@ fn jco_componentize(
     }
 
     let size = std::fs::metadata(output)?.len();
-    debug!("jco componentize output: {} ({} bytes)", output.display(), size);
+    debug!(
+        "jco componentize output: {} ({} bytes)",
+        output.display(),
+        size
+    );
 
     Ok(())
 }
@@ -379,7 +385,9 @@ fn validate_component(wasm_path: &Path) -> Result<()> {
 /// 2. `jco componentize` — produce Wasm component
 /// 3. `wasm-tools component wit` — validate exports wasi:http/incoming-handler
 pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> {
-    let build_config = config.build.as_ref()
+    let build_config = config
+        .build
+        .as_ref()
         .context("Missing [build] section in warp.toml")?;
 
     let entry = &build_config.entry;
@@ -401,13 +409,14 @@ pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> 
 
     info!(
         "Packing Bun handler: {} (entry: {}, wit: {})",
-        module_name, entry, wit_dir.display()
+        module_name,
+        entry,
+        wit_dir.display()
     );
 
     // Create output directory
     let output_dir = project_path.join("target/wasm");
-    std::fs::create_dir_all(&output_dir)
-        .context("Failed to create target/wasm/ directory")?;
+    std::fs::create_dir_all(&output_dir).context("Failed to create target/wasm/ directory")?;
 
     // Temp file for the bundled JS (inside target/ to avoid polluting project)
     let bundle_dir = project_path.join("target/bun-bundle");
@@ -422,12 +431,8 @@ pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> 
         Some(polyfills_dir) => {
             let polyfills_index = polyfills_dir.join("src/index.ts");
             info!("Injecting Bun polyfills from {}", polyfills_dir.display());
-            let wrapper = generate_polyfill_wrapper(
-                &bundle_dir,
-                &polyfills_index,
-                &entry_path,
-                module_name,
-            )?;
+            let wrapper =
+                generate_polyfill_wrapper(&bundle_dir, &polyfills_index, &entry_path, module_name)?;
             wrapper.to_string_lossy().to_string()
         }
         None => {
@@ -440,12 +445,7 @@ pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> 
     let wit_externals = extract_wit_imports(&wit_dir);
 
     // Step 1: Bundle with bun build (using wrapper entry if polyfills available)
-    bun_build(
-        project_path,
-        &effective_entry,
-        &bundled_js,
-        &wit_externals,
-    )?;
+    bun_build(project_path, &effective_entry, &bundled_js, &wit_externals)?;
 
     // Step 2: Componentize with jco
     jco_componentize(&jco_bin, &bundled_js, &wit_dir, &wasm_output)?;
@@ -604,7 +604,12 @@ entry = "src/index.ts"
         let dir = tempfile::tempdir().unwrap();
         let result = resolve_wit_dir(dir.path(), Path::new("/nonexistent"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("WIT directory not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("WIT directory not found")
+        );
     }
 
     // ── Integration tests (require bun + jco) ──────────────────────────────
@@ -648,7 +653,8 @@ entry = "src/index.ts"
         fs::write(
             dir.path().join("src/broken.ts"),
             "import { nonexistent } from 'this-package-does-not-exist-anywhere-12345';",
-        ).unwrap();
+        )
+        .unwrap();
 
         let output = dir.path().join("bundle.js");
         let result = bun_build(dir.path(), "src/broken.ts", &output, &[]);
@@ -702,7 +708,11 @@ entry = "src/index.ts"
         );
         assert!(pack_result.size_bytes > 0, "Wasm should be non-empty");
         assert!(!pack_result.sha256.is_empty(), "SHA256 should be computed");
-        assert_eq!(pack_result.sha256.len(), 64, "SHA256 should be 64 hex chars");
+        assert_eq!(
+            pack_result.sha256.len(),
+            64,
+            "SHA256 should be 64 hex chars"
+        );
     }
 
     #[test]
@@ -729,7 +739,11 @@ entry = "src/index.ts"
 
         // Use the top-level pack() dispatcher
         let result = crate::pack(dir.path());
-        assert!(result.is_ok(), "pack() dispatcher failed for bun: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "pack() dispatcher failed for bun: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -754,7 +768,8 @@ entry = "src/index.ts"
         fs::write(
             dir.path().join("warp.toml"),
             config.to_toml_string().unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Copy WIT directory
         let project_root = find_project_root(Path::new("."));
@@ -823,7 +838,11 @@ entry = "src/index.ts"
         let result = resolve_jco(Path::new("."));
         unsafe { std::env::remove_var("WARPGRID_JCO_PATH") };
 
-        assert!(result.is_ok(), "Should resolve valid env var path: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Should resolve valid env var path: {:?}",
+            result.err()
+        );
         assert_eq!(result.unwrap(), fake_jco);
     }
 
@@ -841,7 +860,11 @@ entry = "src/index.ts"
         }
 
         let result = resolve_wit_dir(dir.path(), &project_root);
-        assert!(result.is_ok(), "Should find shared WIT fallback: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Should find shared WIT fallback: {:?}",
+            result.err()
+        );
         assert_eq!(result.unwrap(), shared_wit);
     }
 
@@ -866,11 +889,11 @@ entry = "src/index.ts"
 
     #[test]
     fn test_resolve_polyfills_dir_not_found() {
-        let result = resolve_polyfills_dir(
-            Path::new("/nonexistent"),
-            Path::new("/nonexistent"),
+        let result = resolve_polyfills_dir(Path::new("/nonexistent"), Path::new("/nonexistent"));
+        assert!(
+            result.is_none(),
+            "Should return None when polyfills not found"
         );
-        assert!(result.is_none(), "Should return None when polyfills not found");
     }
 
     #[test]
@@ -882,25 +905,43 @@ entry = "src/index.ts"
         // Create mock polyfills index
         let polyfills_dir = dir.path().join("polyfills");
         fs::create_dir_all(&polyfills_dir).unwrap();
-        fs::write(polyfills_dir.join("index.ts"), "export function installPolyfills() {}").unwrap();
+        fs::write(
+            polyfills_dir.join("index.ts"),
+            "export function installPolyfills() {}",
+        )
+        .unwrap();
 
         // Create mock entry
         let src_dir = dir.path().join("src");
         fs::create_dir_all(&src_dir).unwrap();
-        fs::write(src_dir.join("index.ts"), "export default { fetch() { return new Response('ok') } }").unwrap();
+        fs::write(
+            src_dir.join("index.ts"),
+            "export default { fetch() { return new Response('ok') } }",
+        )
+        .unwrap();
 
         let wrapper = generate_polyfill_wrapper(
             &bundle_dir,
             &polyfills_dir.join("index.ts"),
             &src_dir.join("index.ts"),
             "test-app",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert!(wrapper.exists(), "Wrapper file should be created");
         let content = fs::read_to_string(&wrapper).unwrap();
-        assert!(content.contains("installPolyfills"), "Wrapper should import installPolyfills");
-        assert!(content.contains("export *"), "Wrapper should re-export user module named exports");
-        assert!(content.contains("import \""), "Wrapper should side-effect import user entry");
+        assert!(
+            content.contains("installPolyfills"),
+            "Wrapper should import installPolyfills"
+        );
+        assert!(
+            content.contains("export *"),
+            "Wrapper should re-export user module named exports"
+        );
+        assert!(
+            content.contains("import \""),
+            "Wrapper should side-effect import user entry"
+        );
     }
 
     #[test]
@@ -936,17 +977,17 @@ entry = "src/index.ts"
             &polyfills_dir.join("src/index.ts"),
             &src_dir.join("index.ts"),
             "test-polyfill",
-        ).unwrap();
+        )
+        .unwrap();
 
         // Bundle with the wrapper as entry
         let output = dir.path().join("bundle.js");
-        let result = bun_build(
-            dir.path(),
-            &wrapper.to_string_lossy(),
-            &output,
-            &[],
+        let result = bun_build(dir.path(), &wrapper.to_string_lossy(), &output, &[]);
+        assert!(
+            result.is_ok(),
+            "bun build with polyfill wrapper failed: {:?}",
+            result.err()
         );
-        assert!(result.is_ok(), "bun build with polyfill wrapper failed: {:?}", result.err());
 
         let content = fs::read_to_string(&output).unwrap();
         assert!(

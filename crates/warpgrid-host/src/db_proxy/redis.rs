@@ -139,8 +139,8 @@ impl ConnectionFactory for RedisConnectionFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // ── Mock backend for testing RedisBackend ─────────────────────────
 
@@ -244,7 +244,10 @@ mod tests {
         let mut backend = RedisBackend::new(Box::new(inner));
 
         let healthy = backend.ping();
-        assert!(!healthy, "PING with unexpected response should return false");
+        assert!(
+            !healthy,
+            "PING with unexpected response should return false"
+        );
     }
 
     #[test]
@@ -313,7 +316,11 @@ mod tests {
         // Redis AUTH command as raw RESP bytes — host must not intercept.
         let auth = b"*2\r\n$4\r\nAUTH\r\n$8\r\npassword\r\n";
         let sent = backend.send(auth).unwrap();
-        assert_eq!(sent, auth.len(), "AUTH bytes should pass through unmodified");
+        assert_eq!(
+            sent,
+            auth.len(),
+            "AUTH bytes should pass through unmodified"
+        );
     }
 
     // ── RedisConnectionFactory tests ─────────────────────────────────
@@ -321,8 +328,7 @@ mod tests {
     #[test]
     fn redis_factory_creates_plain_tcp_connection() {
         // Start a minimal TCP server that accepts and holds connections.
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
         let addr = listener.local_addr().expect("local addr");
         std::thread::spawn(move || {
             while let Ok((_stream, _)) = listener.accept() {
@@ -331,10 +337,7 @@ mod tests {
         });
         std::thread::sleep(Duration::from_millis(10));
 
-        let factory = RedisConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = RedisConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::with_protocol(
             "127.0.0.1",
             addr.port(),
@@ -349,17 +352,8 @@ mod tests {
 
     #[test]
     fn redis_factory_connect_refused() {
-        let factory = RedisConnectionFactory::plain(
-            Duration::from_secs(1),
-            Duration::from_secs(1),
-        );
-        let key = PoolKey::with_protocol(
-            "127.0.0.1",
-            1,
-            "",
-            "",
-            super::super::Protocol::Redis,
-        );
+        let factory = RedisConnectionFactory::plain(Duration::from_secs(1), Duration::from_secs(1));
+        let key = PoolKey::with_protocol("127.0.0.1", 1, "", "", super::super::Protocol::Redis);
 
         let result = factory.connect(&key, None);
         assert!(result.is_err());
@@ -370,8 +364,7 @@ mod tests {
     #[test]
     fn redis_backend_send_recv_over_tcp() {
         // Start an echo server.
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
         let addr = listener.local_addr().expect("local addr");
         std::thread::spawn(move || {
             while let Ok((mut stream, _)) = listener.accept() {
@@ -393,10 +386,7 @@ mod tests {
         });
         std::thread::sleep(Duration::from_millis(10));
 
-        let factory = RedisConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = RedisConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::with_protocol(
             "127.0.0.1",
             addr.port(),
@@ -413,7 +403,11 @@ mod tests {
         assert_eq!(sent, set_cmd.len());
 
         let data = backend.recv(1024).unwrap();
-        assert_eq!(data, set_cmd.as_slice(), "RESP bytes must pass through unmodified");
+        assert_eq!(
+            data,
+            set_cmd.as_slice(),
+            "RESP bytes must pass through unmodified"
+        );
     }
 
     // ── Ping with real TCP mock Redis server ─────────────────────────
@@ -421,8 +415,7 @@ mod tests {
     #[test]
     fn redis_ping_over_tcp_with_mock_redis_server() {
         // Start a mock Redis server that responds to PING with +PONG\r\n.
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to random port");
         let addr = listener.local_addr().expect("local addr");
         std::thread::spawn(move || {
             while let Ok((mut stream, _)) = listener.accept() {
@@ -452,10 +445,7 @@ mod tests {
         });
         std::thread::sleep(Duration::from_millis(10));
 
-        let factory = RedisConnectionFactory::plain(
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-        );
+        let factory = RedisConnectionFactory::plain(Duration::from_secs(2), Duration::from_secs(2));
         let key = PoolKey::with_protocol(
             "127.0.0.1",
             addr.port(),
@@ -465,7 +455,10 @@ mod tests {
         );
 
         let mut backend = factory.connect(&key, None).unwrap();
-        assert!(backend.ping(), "PING to mock Redis server should return true");
+        assert!(
+            backend.ping(),
+            "PING to mock Redis server should return true"
+        );
     }
 
     // ── Connection draining shares ConnectionPoolManager behavior ────
@@ -482,7 +475,9 @@ mod tests {
                 _key: &PoolKey,
                 _password: Option<&str>,
             ) -> Result<Box<dyn ConnectionBackend>, String> {
-                Ok(Box::new(RedisBackend::new(Box::new(MockRedisInner::new().with_pong_response()))))
+                Ok(Box::new(RedisBackend::new(Box::new(
+                    MockRedisInner::new().with_pong_response(),
+                ))))
             }
         }
 
@@ -509,9 +504,7 @@ mod tests {
         // Start draining.
         let mgr = Arc::new(mgr);
         let mgr_clone = Arc::clone(&mgr);
-        let drain_handle = tokio::spawn(async move {
-            mgr_clone.drain().await
-        });
+        let drain_handle = tokio::spawn(async move { mgr_clone.drain().await });
 
         // New connections should be rejected during drain.
         // Give drain a moment to set the flag.

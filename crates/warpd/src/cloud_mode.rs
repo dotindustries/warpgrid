@@ -25,7 +25,7 @@ use crate::cloud::domains::DomainStore;
 use crate::cloud::landing::landing_router;
 use crate::cloud::provisioner::FlyProvisioner;
 use crate::cloud::registry::WasmRegistry;
-use crate::cloud::routes::{cloud_router, CloudState};
+use crate::cloud::routes::{CloudState, cloud_router};
 use crate::cloud::sync::RuntimeSync;
 use crate::cloud::teams::TeamStore;
 use crate::cloud::usage::UsageTracker;
@@ -66,13 +66,15 @@ pub async fn run_cloud(
         (Some(_), None) => {
             anyhow::bail!("TURSO_DATABASE_URL is set but TURSO_AUTH_TOKEN is missing");
         }
-        _ => {
-            crate::cloud::db::open_local(&cloud_db_path).await?
-        }
+        _ => crate::cloud::db::open_local(&cloud_db_path).await?,
     };
     let cloud_conn = cloud_db.connect()?;
     crate::cloud::db::migrate(&cloud_conn).await?;
-    let mode_label = if turso_url.is_some() { "turso replica" } else { "local" };
+    let mode_label = if turso_url.is_some() {
+        "turso replica"
+    } else {
+        "local"
+    };
     info!(path = %cloud_db_path, mode = mode_label, "cloud metadata store opened (libSQL)");
 
     // Auth store (backed by libSQL — persists across restarts).
@@ -94,11 +96,15 @@ pub async fn run_cloud(
 
     // Fly Machines provisioner (optional — only if FLY_API_TOKEN is set).
     if let Some(ref token) = fly_api_token {
-        let provisioner = FlyProvisioner::new(token, "warpgrid-edge", "registry.fly.io/warpgrid:latest");
+        let provisioner =
+            FlyProvisioner::new(token, "warpgrid-edge", "registry.fly.io/warpgrid:latest");
         let control_plane_url = format!("http://localhost:{api_port}");
         info!("Fly provisioner initialized, checking edge regions...");
 
-        match provisioner.provision_regions(&regions, &control_plane_url).await {
+        match provisioner
+            .provision_regions(&regions, &control_plane_url)
+            .await
+        {
             Ok(machines) => {
                 for m in &machines {
                     info!(id = %m.id, region = %m.region, state = %m.state, "edge machine ready");
@@ -137,10 +143,14 @@ pub async fn run_cloud(
     let sync_shutdown = shutdown_rx.clone();
     let sync_state = state.clone();
     let sync_conn = cloud_db.connect()?;
-    let sync_region = regions.first().cloned().unwrap_or_else(|| "local".to_string());
+    let sync_region = regions
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "local".to_string());
     let sync_handle = tokio::spawn(async move {
         let sync = RuntimeSync::new(&sync_region, sync_state, sync_conn);
-        sync.run(std::time::Duration::from_secs(30), sync_shutdown).await;
+        sync.run(std::time::Duration::from_secs(30), sync_shutdown)
+            .await;
     });
     info!("runtime sync started (every 30s → Turso)");
 
@@ -157,7 +167,9 @@ pub async fn run_cloud(
     let billing = BillingService::from_env_with_libsql(stripe_secret_key, cloud_conn.clone());
     match &billing {
         BillingService::Active(_) => info!("Stripe billing enabled"),
-        BillingService::Mock(_) => info!("Stripe billing disabled (mock mode, no STRIPE_SECRET_KEY)"),
+        BillingService::Mock(_) => {
+            info!("Stripe billing disabled (mock mode, no STRIPE_SECRET_KEY)")
+        }
     }
 
     // ── Usage tracker ───────────────────────────────────────────
@@ -229,22 +241,10 @@ pub async fn run_cloud(
 
     let addr = SocketAddr::from(([0, 0, 0, 0], api_port));
     info!(%addr, mode = "cloud", "API server starting");
-    info!(
-        "Dashboard: http://localhost:{}/dashboard",
-        api_port
-    );
-    info!(
-        "Cloud API: http://localhost:{}/api/v1/status",
-        api_port
-    );
-    info!(
-        "Console:   http://localhost:{}/console/",
-        api_port
-    );
-    info!(
-        "Landing:   http://localhost:{}/",
-        api_port
-    );
+    info!("Dashboard: http://localhost:{}/dashboard", api_port);
+    info!("Cloud API: http://localhost:{}/api/v1/status", api_port);
+    info!("Console:   http://localhost:{}/console/", api_port);
+    info!("Landing:   http://localhost:{}/", api_port);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
@@ -300,10 +300,7 @@ async fn report_usage_for_active_namespaces(
         let record = usage.snapshot(namespace);
 
         // Skip empty periods (no activity).
-        if record.request_count == 0
-            && record.compute_seconds == 0.0
-            && record.egress_bytes == 0
-        {
+        if record.request_count == 0 && record.compute_seconds == 0.0 && record.egress_bytes == 0 {
             continue;
         }
 

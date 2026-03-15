@@ -7,7 +7,7 @@
 //!
 //! API docs: https://fly.io/docs/machines/api/machines-resource/
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
@@ -174,10 +174,7 @@ impl FlyProvisioner {
 
         let resp = self
             .client
-            .post(format!(
-                "{}/apps/{}/machines",
-                FLY_API_BASE, self.app_name
-            ))
+            .post(format!("{}/apps/{}/machines", FLY_API_BASE, self.app_name))
             .header("Authorization", format!("Bearer {}", self.api_token))
             .json(&body)
             .send()
@@ -303,10 +300,7 @@ impl FlyProvisioner {
     pub async fn list_machines(&self) -> anyhow::Result<Vec<ProvisionedMachine>> {
         let resp = self
             .client
-            .get(format!(
-                "{}/apps/{}/machines",
-                FLY_API_BASE, self.app_name
-            ))
+            .get(format!("{}/apps/{}/machines", FLY_API_BASE, self.app_name))
             .header("Authorization", format!("Bearer {}", self.api_token))
             .send()
             .await

@@ -299,9 +299,9 @@ mod tests {
         queue.register_interest(SignalType::Hangup);
         queue.register_interest(SignalType::Interrupt);
 
-        queue.deliver(SignalType::Terminate);  // [Terminate]
-        queue.deliver(SignalType::Hangup);     // [Terminate, Hangup]
-        queue.deliver(SignalType::Interrupt);  // [Hangup, Interrupt] — Terminate dropped
+        queue.deliver(SignalType::Terminate); // [Terminate]
+        queue.deliver(SignalType::Hangup); // [Terminate, Hangup]
+        queue.deliver(SignalType::Interrupt); // [Hangup, Interrupt] — Terminate dropped
 
         assert_eq!(queue.len(), 2);
         // Oldest remaining is Hangup
@@ -333,8 +333,8 @@ mod tests {
         queue.register_interest(SignalType::Interrupt);
 
         // Deliver 5 signals into a capacity-3 queue
-        queue.deliver(SignalType::Terminate);  // dropped
-        queue.deliver(SignalType::Hangup);     // dropped
+        queue.deliver(SignalType::Terminate); // dropped
+        queue.deliver(SignalType::Hangup); // dropped
         queue.deliver(SignalType::Interrupt);
         queue.deliver(SignalType::Terminate);
         queue.deliver(SignalType::Hangup);
@@ -390,9 +390,9 @@ mod tests {
         // No interest in Hangup
 
         queue.deliver(SignalType::Terminate);
-        queue.deliver(SignalType::Hangup);    // ignored
+        queue.deliver(SignalType::Hangup); // ignored
         queue.deliver(SignalType::Interrupt);
-        queue.deliver(SignalType::Hangup);    // ignored
+        queue.deliver(SignalType::Hangup); // ignored
         queue.deliver(SignalType::Terminate);
 
         assert_eq!(queue.len(), 3);

@@ -27,8 +27,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::bindings::warpgrid::shim::signals::SignalType;
 use warpgrid_host::config::ShimConfig;
@@ -57,12 +57,7 @@ fn build_signal_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for signal-shim-guest fixture");
@@ -72,8 +67,8 @@ fn build_signal_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/signal_shim_guest.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/signal_shim_guest.wasm");
 
         // Step 2: Convert core module to component with wasm-tools
         let component_path = guest_dir.join("target/signal-shim-guest.component.wasm");
@@ -93,8 +88,7 @@ fn build_signal_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        std::fs::read(&component_path)
-            .expect("failed to read compiled signal-shim-guest component")
+        std::fs::read(&component_path).expect("failed to read compiled signal-shim-guest component")
     })
 }
 
@@ -143,7 +137,10 @@ async fn test_register_terminate_deliver_poll() {
     register_fn.post_return_async(&mut store).await.unwrap();
 
     // Host delivers a terminate signal
-    store.data_mut().signals.deliver_signal(SignalType::Terminate);
+    store
+        .data_mut()
+        .signals
+        .deliver_signal(SignalType::Terminate);
 
     // Guest polls — should receive "terminate"
     let poll_fn = instance
@@ -151,13 +148,19 @@ async fn test_register_terminate_deliver_poll() {
         .unwrap();
     let (result,) = poll_fn.call_async(&mut store, ()).await.unwrap();
     let signal_name = result.expect("poll should succeed");
-    assert_eq!(signal_name, "terminate", "first poll should return terminate");
+    assert_eq!(
+        signal_name, "terminate",
+        "first poll should return terminate"
+    );
     poll_fn.post_return_async(&mut store).await.unwrap();
 
     // Guest polls again — queue should be drained
     let (result,) = poll_fn.call_async(&mut store, ()).await.unwrap();
     let signal_name = result.expect("poll should succeed");
-    assert_eq!(signal_name, "none", "second poll should return none (queue drained)");
+    assert_eq!(
+        signal_name, "none",
+        "second poll should return none (queue drained)"
+    );
     poll_fn.post_return_async(&mut store).await.unwrap();
 }
 
@@ -219,7 +222,10 @@ async fn test_20_signals_only_16_retrievable() {
 
     // Host delivers 20 terminate signals (queue capacity is 16)
     for _ in 0..20 {
-        store.data_mut().signals.deliver_signal(SignalType::Terminate);
+        store
+            .data_mut()
+            .signals
+            .deliver_signal(SignalType::Terminate);
     }
 
     // Guest polls — should get exactly 16 signals
@@ -239,7 +245,10 @@ async fn test_20_signals_only_16_retrievable() {
         count += 1;
     }
 
-    assert_eq!(count, 16, "should retrieve exactly 16 signals (queue capacity)");
+    assert_eq!(
+        count, 16,
+        "should retrieve exactly 16 signals (queue capacity)"
+    );
 }
 
 /// AC #4: Signal filtering — delivering an unregistered signal type is ignored.
@@ -270,7 +279,10 @@ async fn test_register_hangup_deliver_terminate_poll_returns_none() {
     register_fn.post_return_async(&mut store).await.unwrap();
 
     // Host delivers a terminate signal (not hangup)
-    store.data_mut().signals.deliver_signal(SignalType::Terminate);
+    store
+        .data_mut()
+        .signals
+        .deliver_signal(SignalType::Terminate);
 
     // Guest polls — should return "none" because terminate is not registered
     let poll_fn = instance
@@ -305,7 +317,11 @@ async fn test_multiple_signal_types_register_and_deliver() {
         .unwrap();
 
     // Register interest in all three signal types
-    for name in ["register-terminate", "register-hangup", "register-interrupt"] {
+    for name in [
+        "register-terminate",
+        "register-hangup",
+        "register-interrupt",
+    ] {
         let register_fn = instance
             .get_typed_func::<(), (Result<(), String>,)>(&mut store, name)
             .unwrap();
@@ -316,8 +332,14 @@ async fn test_multiple_signal_types_register_and_deliver() {
 
     // Deliver one of each in a specific order
     store.data_mut().signals.deliver_signal(SignalType::Hangup);
-    store.data_mut().signals.deliver_signal(SignalType::Terminate);
-    store.data_mut().signals.deliver_signal(SignalType::Interrupt);
+    store
+        .data_mut()
+        .signals
+        .deliver_signal(SignalType::Terminate);
+    store
+        .data_mut()
+        .signals
+        .deliver_signal(SignalType::Interrupt);
 
     // Poll and verify FIFO order
     let poll_fn = instance
@@ -338,6 +360,9 @@ async fn test_multiple_signal_types_register_and_deliver() {
     // Queue should be empty
     let (result,) = poll_fn.call_async(&mut store, ()).await.unwrap();
     let signal_name = result.expect("poll should succeed");
-    assert_eq!(signal_name, "none", "queue should be empty after draining all signals");
+    assert_eq!(
+        signal_name, "none",
+        "queue should be empty after draining all signals"
+    );
     poll_fn.post_return_async(&mut store).await.unwrap();
 }

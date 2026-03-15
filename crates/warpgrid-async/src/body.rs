@@ -186,10 +186,7 @@ mod tests {
         // Bytes::slice() shares the same allocation — first chunk
         // should point into the same backing memory.
         assert_eq!(chunks[0].as_ptr(), ptr_before);
-        assert_eq!(
-            chunks[1].as_ptr(),
-            unsafe { ptr_before.add(4096) }
-        );
+        assert_eq!(chunks[1].as_ptr(), unsafe { ptr_before.add(4096) });
     }
 
     #[test]

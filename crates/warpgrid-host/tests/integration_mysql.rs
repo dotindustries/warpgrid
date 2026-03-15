@@ -32,8 +32,9 @@ fn mysql_server_greeting() -> Vec<u8> {
     let cap_high: u16 = 0x00ff;
     let auth_len: u8 = 21; // length of auth-plugin-data
     let reserved: [u8; 10] = [0; 10];
-    let auth_data_2: [u8; 13] = [0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-                                  0x11, 0x12, 0x13, 0x14, 0x00]; // null-terminated
+    let auth_data_2: [u8; 13] = [
+        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x00,
+    ]; // null-terminated
 
     // Build payload.
     let mut payload = Vec::new();
@@ -287,10 +288,7 @@ async fn do_mysql_handshake(mgr: &ConnectionPoolManager, handle: u64) -> Vec<u8>
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    assert!(
-        !greeting.is_empty(),
-        "should receive MySQL server greeting"
-    );
+    assert!(!greeting.is_empty(), "should receive MySQL server greeting");
     assert_eq!(greeting[4], 0x0a, "protocol version should be 0x0a");
 
     // Send client handshake response.
@@ -488,7 +486,8 @@ async fn mysql_health_check_com_ping_healthy() {
 
     // COM_PING should succeed — connection stays in pool.
     assert_eq!(
-        mgr.stats(&key).await.idle, 1,
+        mgr.stats(&key).await.idle,
+        1,
         "healthy MySQL connection should survive health check"
     );
 }
@@ -514,7 +513,8 @@ async fn mysql_health_check_com_ping_removes_dead_connections() {
     mgr.health_check_idle().await;
 
     assert_eq!(
-        mgr.stats(&key).await.idle, 0,
+        mgr.stats(&key).await.idle,
+        0,
         "dead MySQL connection should be removed by COM_PING health check"
     );
 }

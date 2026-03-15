@@ -93,11 +93,7 @@ impl ProxySync {
     }
 
     /// Event-driven: sync a single deployment after create/update.
-    pub fn on_deploy(
-        &self,
-        spec: &DeploymentSpec,
-        instances: &[InstanceState],
-    ) {
+    pub fn on_deploy(&self, spec: &DeploymentSpec, instances: &[InstanceState]) {
         let service_name = service_key(&spec.namespace, &spec.name);
         let backends = instances_to_backends(instances);
         let addresses: Vec<String> = backends.iter().map(|b| b.endpoint()).collect();
@@ -186,7 +182,12 @@ mod tests {
         }
     }
 
-    fn make_instance(id: &str, deployment: &str, node: &str, status: InstanceStatus) -> InstanceState {
+    fn make_instance(
+        id: &str,
+        deployment: &str,
+        node: &str,
+        status: InstanceStatus,
+    ) -> InstanceState {
         InstanceState {
             id: id.to_string(),
             deployment_id: deployment.to_string(),
@@ -260,9 +261,12 @@ mod tests {
     #[test]
     fn on_undeploy_removes_service() {
         let spec = make_spec("prod", "api");
-        let instances = vec![
-            make_instance("i1", "prod/api", "node-1", InstanceStatus::Running),
-        ];
+        let instances = vec![make_instance(
+            "i1",
+            "prod/api",
+            "node-1",
+            InstanceStatus::Running,
+        )];
 
         let sync = ProxySync::new(Router::new(), DnsResolver::default());
         sync.on_deploy(&spec, &instances);
@@ -285,7 +289,7 @@ mod tests {
         let backends = instances_to_backends(&instances);
         // Running + Unhealthy included, Starting + Stopped excluded.
         assert_eq!(backends.len(), 2);
-        assert!(backends[0].healthy);  // Running
+        assert!(backends[0].healthy); // Running
         assert!(!backends[1].healthy); // Unhealthy
     }
 

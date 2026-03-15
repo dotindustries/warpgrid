@@ -3,5 +3,7 @@
 pub struct FilesystemShim;
 
 impl FilesystemShim {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }

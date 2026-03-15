@@ -8,23 +8,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 use warpgrid_state::*;
 
-use crate::checker::{http_probe, HealthTracker};
+use crate::checker::{HealthTracker, http_probe};
 
 /// Callback invoked when a deployment's health status changes.
 ///
 /// The scheduler can use this to trigger instance replacement.
-pub type HealthCallback =
-    Arc<dyn Fn(String, HealthStatus) -> BoxFuture + Send + Sync>;
+pub type HealthCallback = Arc<dyn Fn(String, HealthStatus) -> BoxFuture + Send + Sync>;
 
-type BoxFuture = std::pin::Pin<
-    Box<dyn std::future::Future<Output = ()> + Send>,
->;
+type BoxFuture = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
 
 /// Per-deployment monitor state.
 struct MonitorSlot {

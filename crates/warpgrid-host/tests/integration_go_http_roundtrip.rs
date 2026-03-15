@@ -30,8 +30,8 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use wasmtime::{Config, Engine, Linker, Memory, Module, Store, TypedFunc};
-use wasmtime_wasi::p1::WasiP1Ctx;
 use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::p1::WasiP1Ctx;
 
 // ── Build helpers ─────────────────────────────────────────────────
 
@@ -137,8 +137,8 @@ struct GuestResponse {
 impl GoHttpInstance {
     /// Create a new instance, initialize the Go runtime, and return the handle.
     fn new(wasm_bytes: &[u8]) -> Self {
-        let engine = Engine::new(Config::new().wasm_memory64(false))
-            .expect("failed to create engine");
+        let engine =
+            Engine::new(Config::new().wasm_memory64(false)).expect("failed to create engine");
 
         let mut linker: Linker<WasiP1Ctx> = Linker::new(&engine);
         wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx| ctx)
@@ -147,8 +147,7 @@ impl GoHttpInstance {
         let wasi_ctx = WasiCtxBuilder::new().build_p1();
         let mut store = Store::new(&engine, wasi_ctx);
 
-        let module =
-            Module::new(&engine, wasm_bytes).expect("failed to compile wasm module");
+        let module = Module::new(&engine, wasm_bytes).expect("failed to compile wasm module");
         let instance = linker
             .instantiate(&mut store, &module)
             .expect("failed to instantiate module");
@@ -324,7 +323,11 @@ fn parse_null_separated_headers(data: &[u8]) -> Vec<(String, String)> {
 
     while i < data.len() {
         // Find name end
-        let name_end = data[i..].iter().position(|b| *b == 0).unwrap_or(data.len() - i) + i;
+        let name_end = data[i..]
+            .iter()
+            .position(|b| *b == 0)
+            .unwrap_or(data.len() - i)
+            + i;
         if name_end >= data.len() {
             break;
         }
@@ -332,9 +335,11 @@ fn parse_null_separated_headers(data: &[u8]) -> Vec<(String, String)> {
 
         // Find value end
         let val_start = name_end + 1;
-        let val_end =
-            data[val_start..].iter().position(|b| *b == 0).unwrap_or(data.len() - val_start)
-                + val_start;
+        let val_end = data[val_start..]
+            .iter()
+            .position(|b| *b == 0)
+            .unwrap_or(data.len() - val_start)
+            + val_start;
         let value = String::from_utf8_lossy(&data[val_start..val_end]).to_string();
 
         headers.push((name, value));
@@ -384,12 +389,7 @@ fn go_http_roundtrip_status_codes() {
     let mut instance = GoHttpInstance::new(wasm_bytes);
 
     for code in [200, 201, 400, 404, 500] {
-        let response = instance.send_request(
-            "GET",
-            &format!("/status?code={code}"),
-            &[],
-            &[],
-        );
+        let response = instance.send_request("GET", &format!("/status?code={code}"), &[], &[]);
 
         assert_eq!(
             response.status, code,
@@ -412,10 +412,7 @@ fn go_http_roundtrip_headers_preserved() {
     let response = instance.send_request(
         "GET",
         "/headers",
-        &[
-            ("X-Custom-Header", "test-value"),
-            ("Accept", "text/plain"),
-        ],
+        &[("X-Custom-Header", "test-value"), ("Accept", "text/plain")],
         &[],
     );
 

@@ -4,9 +4,9 @@
 //! No authentication required. Designed to be the public-facing site
 //! served by WarpGrid itself (dogfooding).
 
+use axum::Router;
 use axum::response::Html;
 use axum::routing::get;
-use axum::Router;
 
 // ── Router ─────────────────────────────────────────────────────
 

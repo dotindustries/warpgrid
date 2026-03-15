@@ -23,7 +23,7 @@
 //! The handler uses `wasmtime-wasi-http` for type conversions and
 //! the proxy world binding.
 
-pub mod handler;
 pub mod convert;
+pub mod handler;
 
 pub use handler::HttpTrigger;

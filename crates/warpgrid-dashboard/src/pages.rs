@@ -13,9 +13,10 @@ use crate::DashboardState;
 use crate::views::*;
 
 fn render<T: Template>(tmpl: T) -> Html<String> {
-    Html(tmpl.render().unwrap_or_else(|e| {
-        format!("<pre>Template error: {e}</pre>")
-    }))
+    Html(
+        tmpl.render()
+            .unwrap_or_else(|e| format!("<pre>Template error: {e}</pre>")),
+    )
 }
 
 // ── Overview ────────────────────────────────────────────────────
@@ -47,11 +48,7 @@ pub async fn overview(State(state): State<DashboardState>) -> Html<String> {
             .list_metrics_for_deployment(&spec.id, 1)
             .unwrap_or_default();
         all_instances.extend(instances.clone());
-        deployment_views.push(DeploymentView::from_spec(
-            spec,
-            &instances,
-            metrics.first(),
-        ));
+        deployment_views.push(DeploymentView::from_spec(spec, &instances, metrics.first()));
     }
 
     let active_rollout_count = {
@@ -164,7 +161,8 @@ pub async fn deployment_detail(
         .list_metrics_for_deployment(&id, 20)
         .unwrap_or_default();
 
-    let instance_views: Vec<InstanceView> = instances.iter().map(InstanceView::from_state).collect();
+    let instance_views: Vec<InstanceView> =
+        instances.iter().map(InstanceView::from_state).collect();
     let metrics = build_metrics_rows(&snapshots);
 
     let rollout = {
@@ -453,11 +451,7 @@ mod tests {
         };
         state.store.put_instance(&inst).unwrap();
 
-        let resp = deployment_detail(
-            State(state),
-            Path("default/api".to_string()),
-        )
-        .await;
+        let resp = deployment_detail(State(state), Path("default/api".to_string())).await;
         let resp = resp.into_response();
         assert_eq!(resp.status(), 200);
     }

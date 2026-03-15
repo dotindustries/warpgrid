@@ -4,7 +4,7 @@
 //! Phase 2: adds Bun compilation via bun build + jco componentize.
 
 use anyhow::{Result, bail};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use tracing::info;
 use warp_core::WarpConfig;
@@ -124,9 +124,7 @@ mod tests {
             Some(l) => format!("\n[build]\nlang = \"{l}\"\nentry = \"src/index.ts\""),
             None => String::new(),
         };
-        let content = format!(
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"{build_section}"
-        );
+        let content = format!("[package]\nname = \"test\"\nversion = \"0.1.0\"{build_section}");
         fs::write(dir.join("warp.toml"), content).unwrap();
     }
 
@@ -184,7 +182,8 @@ mod tests {
         fs::write(
             dir.path().join("package.json"),
             r#"{"name": "test", "version": "1.0.0"}"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = detect_language(dir.path());
         assert!(result.is_ok());
@@ -197,7 +196,8 @@ mod tests {
         fs::write(
             dir.path().join("Cargo.toml"),
             "[package]\nname = \"test\"\nversion = \"0.1.0\"",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = detect_language(dir.path());
         assert!(result.is_ok());
@@ -210,10 +210,14 @@ mod tests {
         fs::write(
             dir.path().join("Cargo.toml"),
             "[workspace]\nmembers = [\"crates/*\"]",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = detect_language(dir.path());
-        assert!(result.is_err(), "Workspace Cargo.toml should not auto-detect as rust");
+        assert!(
+            result.is_err(),
+            "Workspace Cargo.toml should not auto-detect as rust"
+        );
     }
 
     #[test]
@@ -291,6 +295,9 @@ mod tests {
         assert!(err.contains("rust"), "Should list rust in error: {err}");
         assert!(err.contains("go"), "Should list go in error: {err}");
         assert!(err.contains("js"), "Should list js in error: {err}");
-        assert!(err.contains("typescript"), "Should list typescript in error: {err}");
+        assert!(
+            err.contains("typescript"),
+            "Should list typescript in error: {err}"
+        );
     }
 }

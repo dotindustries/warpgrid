@@ -6,7 +6,7 @@ mod bun;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// A single file to write during scaffolding.
 struct TemplateFile {

@@ -12,8 +12,8 @@ use http_body_util::BodyExt;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
 
-use warpgrid_dashboard::{dashboard_router, DashboardState};
 use warpgrid_dashboard::views;
+use warpgrid_dashboard::{DashboardState, dashboard_router};
 use warpgrid_state::*;
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -106,10 +106,7 @@ async fn overview_page_renders_200_with_html() {
     let state = populated_state();
     let router = dashboard_router(state);
 
-    let req = Request::builder()
-        .uri("/")
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri("/").body(Body::empty()).unwrap();
 
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -136,7 +133,10 @@ async fn deployments_page_renders_200_with_html() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let html = body_string(resp).await;
-    assert!(html.contains("<html"), "deployments page should return HTML");
+    assert!(
+        html.contains("<html"),
+        "deployments page should return HTML"
+    );
 }
 
 #[tokio::test]
@@ -188,7 +188,10 @@ async fn density_demo_page_renders_200() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let html = body_string(resp).await;
-    assert!(html.contains("<html"), "density demo page should return HTML");
+    assert!(
+        html.contains("<html"),
+        "density demo page should return HTML"
+    );
 }
 
 #[tokio::test]
@@ -199,10 +202,7 @@ async fn empty_state_pages_still_render() {
     let pages = ["/", "/deployments", "/nodes", "/rollouts", "/density-demo"];
 
     for page in pages {
-        let req = Request::builder()
-            .uri(page)
-            .body(Body::empty())
-            .unwrap();
+        let req = Request::builder().uri(page).body(Body::empty()).unwrap();
 
         let resp = router.clone().oneshot(req).await.unwrap();
         assert_eq!(
@@ -507,7 +507,10 @@ fn format_relative_time_recent_shows_seconds() {
         .as_secs();
 
     let result = views::format_relative_time(now - 30);
-    assert!(result.contains("30s ago"), "expected '30s ago', got: {result}");
+    assert!(
+        result.contains("30s ago"),
+        "expected '30s ago', got: {result}"
+    );
 }
 
 #[test]
@@ -518,7 +521,10 @@ fn format_relative_time_shows_minutes() {
         .as_secs();
 
     let result = views::format_relative_time(now - 120);
-    assert!(result.contains("2m ago"), "expected '2m ago', got: {result}");
+    assert!(
+        result.contains("2m ago"),
+        "expected '2m ago', got: {result}"
+    );
 }
 
 #[test]
@@ -529,7 +535,10 @@ fn format_relative_time_shows_hours() {
         .as_secs();
 
     let result = views::format_relative_time(now - 7200);
-    assert!(result.contains("2h ago"), "expected '2h ago', got: {result}");
+    assert!(
+        result.contains("2h ago"),
+        "expected '2h ago', got: {result}"
+    );
 }
 
 #[test]
@@ -540,7 +549,10 @@ fn format_relative_time_shows_days() {
         .as_secs();
 
     let result = views::format_relative_time(now - 172800);
-    assert!(result.contains("2d ago"), "expected '2d ago', got: {result}");
+    assert!(
+        result.contains("2d ago"),
+        "expected '2d ago', got: {result}"
+    );
 }
 
 #[test]

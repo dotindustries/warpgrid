@@ -21,8 +21,7 @@ use tracing::{error, info};
 ///
 /// The router provides this callback to the trigger — it maps requests
 /// to the appropriate Wasm component and returns responses.
-pub type RequestHandler =
-    Arc<dyn Fn(Request<Incoming>) -> BoxFuture + Send + Sync>;
+pub type RequestHandler = Arc<dyn Fn(Request<Incoming>) -> BoxFuture + Send + Sync>;
 
 type BoxFuture = std::pin::Pin<
     Box<dyn std::future::Future<Output = anyhow::Result<Response<Full<Bytes>>>> + Send>,
@@ -48,7 +47,10 @@ impl HttpTrigger {
     ///
     /// This runs until the shutdown signal is received. Spawns a
     /// tokio task per connection using HTTP/1.1.
-    pub async fn serve(self, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+    pub async fn serve(
+        self,
+        mut shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> anyhow::Result<()> {
         let listener = TcpListener::bind(self.bind_addr)
             .await
             .context("failed to bind HTTP trigger")?;
@@ -104,11 +106,7 @@ impl HttpTrigger {
 pub fn echo_handler() -> RequestHandler {
     Arc::new(|req: Request<Incoming>| {
         Box::pin(async move {
-            let body = format!(
-                "{} {}",
-                req.method(),
-                req.uri().path()
-            );
+            let body = format!("{} {}", req.method(), req.uri().path());
             Ok(Response::builder()
                 .status(200)
                 .header("content-type", "text/plain")
@@ -138,9 +136,7 @@ mod tests {
 
         let (tx, rx) = tokio::sync::watch::channel(false);
 
-        let server = tokio::spawn(async move {
-            trigger.serve(rx).await
-        });
+        let server = tokio::spawn(async move { trigger.serve(rx).await });
 
         // Give it a moment to bind.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;

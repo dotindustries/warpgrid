@@ -10,7 +10,10 @@ pub enum Verdict {
     /// Works via the shim layer with zero code changes.
     ShimCompatible { shim: String },
     /// Incompatible, but a known alternative exists.
-    Incompatible { reason: String, alternative: Option<String> },
+    Incompatible {
+        reason: String,
+        alternative: Option<String>,
+    },
     /// Fundamentally incompatible, no workaround.
     Blocked { reason: String },
     /// Unknown — not yet in the compatibility database.

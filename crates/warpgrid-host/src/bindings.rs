@@ -195,25 +195,15 @@ mod tests {
         struct MockHost;
 
         impl warpgrid::shim::filesystem::Host for MockHost {
-            fn open_virtual(
-                &mut self,
-                _path: String,
-            ) -> Result<u64, String> {
+            fn open_virtual(&mut self, _path: String) -> Result<u64, String> {
                 Ok(0)
             }
 
-            fn read_virtual(
-                &mut self,
-                _handle: u64,
-                _len: u32,
-            ) -> Result<Vec<u8>, String> {
+            fn read_virtual(&mut self, _handle: u64, _len: u32) -> Result<Vec<u8>, String> {
                 Ok(vec![])
             }
 
-            fn stat_virtual(
-                &mut self,
-                _path: String,
-            ) -> Result<FileStat, String> {
+            fn stat_virtual(&mut self, _path: String) -> Result<FileStat, String> {
                 Ok(FileStat {
                     size: 0,
                     is_file: true,
@@ -221,10 +211,7 @@ mod tests {
                 })
             }
 
-            fn close_virtual(
-                &mut self,
-                _handle: u64,
-            ) -> Result<(), String> {
+            fn close_virtual(&mut self, _handle: u64) -> Result<(), String> {
                 Ok(())
             }
         }
@@ -239,10 +226,7 @@ mod tests {
         }
 
         impl warpgrid::shim::signals::Host for MockHost {
-            fn on_signal(
-                &mut self,
-                _signal: SignalType,
-            ) -> Result<(), String> {
+            fn on_signal(&mut self, _signal: SignalType) -> Result<(), String> {
                 Ok(())
             }
 
@@ -252,42 +236,25 @@ mod tests {
         }
 
         impl warpgrid::shim::database_proxy::Host for MockHost {
-            fn connect(
-                &mut self,
-                _config: ConnectConfig,
-            ) -> Result<u64, String> {
+            fn connect(&mut self, _config: ConnectConfig) -> Result<u64, String> {
                 Ok(1)
             }
 
-            fn send(
-                &mut self,
-                _handle: u64,
-                _data: Vec<u8>,
-            ) -> Result<u32, String> {
+            fn send(&mut self, _handle: u64, _data: Vec<u8>) -> Result<u32, String> {
                 Ok(0)
             }
 
-            fn recv(
-                &mut self,
-                _handle: u64,
-                _max_bytes: u32,
-            ) -> Result<Vec<u8>, String> {
+            fn recv(&mut self, _handle: u64, _max_bytes: u32) -> Result<Vec<u8>, String> {
                 Ok(vec![])
             }
 
-            fn close(
-                &mut self,
-                _handle: u64,
-            ) -> Result<(), String> {
+            fn close(&mut self, _handle: u64) -> Result<(), String> {
                 Ok(())
             }
         }
 
         impl warpgrid::shim::threading::Host for MockHost {
-            fn declare_threading_model(
-                &mut self,
-                _model: ThreadingModel,
-            ) -> Result<(), String> {
+            fn declare_threading_model(&mut self, _model: ThreadingModel) -> Result<(), String> {
                 Ok(())
             }
         }
@@ -295,23 +262,16 @@ mod tests {
         // Exercise the mock to prove the traits are callable
         let mut host = MockHost;
 
-        assert!(warpgrid::shim::filesystem::Host::open_virtual(
-            &mut host,
-            "/etc/hosts".into()
-        )
-        .is_ok());
+        assert!(
+            warpgrid::shim::filesystem::Host::open_virtual(&mut host, "/etc/hosts".into()).is_ok()
+        );
 
-        assert!(warpgrid::shim::dns::Host::resolve_address(
-            &mut host,
-            "db.test.warp.local".into()
-        )
-        .is_ok());
+        assert!(
+            warpgrid::shim::dns::Host::resolve_address(&mut host, "db.test.warp.local".into())
+                .is_ok()
+        );
 
-        assert!(warpgrid::shim::signals::Host::on_signal(
-            &mut host,
-            SignalType::Terminate
-        )
-        .is_ok());
+        assert!(warpgrid::shim::signals::Host::on_signal(&mut host, SignalType::Terminate).is_ok());
         assert!(warpgrid::shim::signals::Host::poll_signal(&mut host).is_none());
 
         let config = ConnectConfig {
@@ -323,11 +283,13 @@ mod tests {
         };
         assert!(warpgrid::shim::database_proxy::Host::connect(&mut host, config).is_ok());
 
-        assert!(warpgrid::shim::threading::Host::declare_threading_model(
-            &mut host,
-            ThreadingModel::Cooperative
-        )
-        .is_ok());
+        assert!(
+            warpgrid::shim::threading::Host::declare_threading_model(
+                &mut host,
+                ThreadingModel::Cooperative
+            )
+            .is_ok()
+        );
     }
 
     // ── World-level binding exists ─────────────────────────────────
@@ -380,8 +342,8 @@ mod tests {
         // The `with` parameter in bindgen! ensures that import-side types
         // from the async handler world are identical to the shim world types.
         // This is a compile-time assertion that both use the same types.
-        use super::warpgrid::shim::filesystem::FileStat;
         use super::warpgrid::shim::dns::IpAddressRecord;
+        use super::warpgrid::shim::filesystem::FileStat;
 
         let _stat: FileStat = FileStat {
             size: 0,

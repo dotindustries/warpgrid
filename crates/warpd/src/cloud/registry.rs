@@ -58,11 +58,7 @@ impl WasmRegistry {
     }
 
     /// Delete all stored components for a deployment.
-    pub fn delete_deployment(
-        &self,
-        namespace: &str,
-        deployment_name: &str,
-    ) -> anyhow::Result<()> {
+    pub fn delete_deployment(&self, namespace: &str, deployment_name: &str) -> anyhow::Result<()> {
         let dir = self.base_dir.join(namespace).join(deployment_name);
         if dir.exists() {
             std::fs::remove_dir_all(&dir)?;

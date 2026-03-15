@@ -26,9 +26,7 @@ impl ClusterServer {
     }
 
     /// Get the tonic service for mounting on a gRPC server.
-    pub fn into_service(
-        self,
-    ) -> proto::cluster_service_server::ClusterServiceServer<Self> {
+    pub fn into_service(self) -> proto::cluster_service_server::ClusterServiceServer<Self> {
         proto::cluster_service_server::ClusterServiceServer::new(self)
     }
 }

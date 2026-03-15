@@ -4,7 +4,7 @@
 //! When no `POSTHOG_API_KEY` is configured, falls back to a no-op
 //! client that logs events via `tracing::debug`.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::debug;
 
 // ── Event constants ────────────────────────────────────────────
@@ -94,9 +94,7 @@ impl AnalyticsService {
     /// is `None` or empty.
     pub fn from_env(api_key: Option<&str>) -> Self {
         match api_key {
-            Some(key) if !key.is_empty() => {
-                Self::Active(AnalyticsClient::new(key, None))
-            }
+            Some(key) if !key.is_empty() => Self::Active(AnalyticsClient::new(key, None)),
             _ => Self::Noop,
         }
     }
@@ -123,10 +121,7 @@ impl AnalyticsService {
         match self {
             Self::Active(client) => client.identify(distinct_id, properties),
             Self::Noop => {
-                debug!(
-                    distinct_id = distinct_id,
-                    "analytics identify (noop)"
-                );
+                debug!(distinct_id = distinct_id, "analytics identify (noop)");
             }
         }
     }
@@ -153,10 +148,7 @@ mod tests {
             EVENT_ROLLOUT_STARTED,
         ];
         for event in events {
-            assert!(
-                !event.is_empty(),
-                "event constant must not be empty"
-            );
+            assert!(!event.is_empty(), "event constant must not be empty");
             assert!(
                 event.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
                 "event '{event}' must be snake_case"
@@ -173,12 +165,18 @@ mod tests {
 
     #[test]
     fn from_env_none_yields_noop() {
-        assert!(matches!(AnalyticsService::from_env(None), AnalyticsService::Noop));
+        assert!(matches!(
+            AnalyticsService::from_env(None),
+            AnalyticsService::Noop
+        ));
     }
 
     #[test]
     fn from_env_empty_yields_noop() {
-        assert!(matches!(AnalyticsService::from_env(Some("")), AnalyticsService::Noop));
+        assert!(matches!(
+            AnalyticsService::from_env(Some("")),
+            AnalyticsService::Noop
+        ));
     }
 
     #[test]

@@ -363,10 +363,7 @@ mod tests {
             .build();
         match map.lookup("/etc/resolv.conf") {
             VirtualContent::Found(bytes) => {
-                assert_eq!(
-                    String::from_utf8_lossy(&bytes),
-                    "nameserver 10.0.0.1\n"
-                );
+                assert_eq!(String::from_utf8_lossy(&bytes), "nameserver 10.0.0.1\n");
             }
             other => panic!("expected Found, got {:?}", other),
         }
@@ -484,7 +481,10 @@ mod tests {
                 assert!(bytes.starts_with(b"TZif"), "missing TZif magic");
                 assert_eq!(bytes[4], b'2', "expected TZif version 2");
                 // Real TZif v2: must have two headers (v1 + v2).
-                assert!(bytes.len() > 88, "too small for TZif v2 (two 44-byte headers)");
+                assert!(
+                    bytes.len() > 88,
+                    "too small for TZif v2 (two 44-byte headers)"
+                );
                 // Should contain "UTC" abbreviation.
                 assert!(bytes.windows(3).any(|w| w == b"UTC"));
                 // Footer should end with newline.
@@ -570,9 +570,7 @@ mod tests {
         let mut zones = HashMap::new();
         zones.insert("Custom/Zone".to_string(), b"TZif2custom-data".to_vec());
 
-        let map = VirtualFileMap::builder()
-            .with_timezone_data(zones)
-            .build();
+        let map = VirtualFileMap::builder().with_timezone_data(zones).build();
         match map.lookup("/usr/share/zoneinfo/Custom/Zone") {
             VirtualContent::Found(bytes) => {
                 assert_eq!(bytes, b"TZif2custom-data");
@@ -650,10 +648,7 @@ mod tests {
     fn path_traversal_beyond_root_is_clamped() {
         let map = VirtualFileMap::with_defaults();
         // `/../../../dev/null` should still resolve to `/dev/null`.
-        assert_eq!(
-            map.lookup("/../../../dev/null"),
-            VirtualContent::DevNull
-        );
+        assert_eq!(map.lookup("/../../../dev/null"), VirtualContent::DevNull);
     }
 
     // ── Non-virtual paths return NotFound ─────────────────────────────

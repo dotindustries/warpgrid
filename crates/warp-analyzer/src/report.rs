@@ -10,7 +10,10 @@ pub fn format_report(report: &AnalysisReport) -> String {
     out.push_str(&format!("╠══════════════════════════════════════════╣\n"));
     out.push_str(&format!("║  Project:  {:<29}║\n", report.project_name));
     out.push_str(&format!("║  Language: {:<29}║\n", report.language));
-    out.push_str(&format!("║  Verdict:  {:<29}║\n", report.overall_verdict.label()));
+    out.push_str(&format!(
+        "║  Verdict:  {:<29}║\n",
+        report.overall_verdict.label()
+    ));
     out.push_str(&format!("╚══════════════════════════════════════════╝\n\n"));
 
     let total = report.dependencies.len();
@@ -74,17 +77,37 @@ fn format_bun_compat_table(out: &mut String, report: &AnalysisReport) {
         .collect();
 
     out.push_str("Bun Compatibility Table:\n\n");
-    out.push_str("  ┌──────────────────────────┬──────────┬──────────────┬─────────────────────────┐\n");
-    out.push_str("  │ Package                  │ Version  │ Status       │ Notes                   │\n");
-    out.push_str("  ├──────────────────────────┼──────────┼──────────────┼─────────────────────────┤\n");
+    out.push_str(
+        "  ┌──────────────────────────┬──────────┬──────────────┬─────────────────────────┐\n",
+    );
+    out.push_str(
+        "  │ Package                  │ Version  │ Status       │ Notes                   │\n",
+    );
+    out.push_str(
+        "  ├──────────────────────────┼──────────┼──────────────┼─────────────────────────┤\n",
+    );
 
     for dep in &report.dependencies {
         let version = dep.version.as_deref().unwrap_or("-");
         let (status, notes) = if let Some(entry) = bun_db.get(&dep.name) {
             if entry.status == "pass" {
-                ("✅ pass", format!("bundle:{} componentize:{}", ok_str(entry.bundle_ok), ok_str(entry.componentize_ok)))
+                (
+                    "✅ pass",
+                    format!(
+                        "bundle:{} componentize:{}",
+                        ok_str(entry.bundle_ok),
+                        ok_str(entry.componentize_ok)
+                    ),
+                )
             } else {
-                ("❌ fail", format!("bundle:{} componentize:{}", ok_str(entry.bundle_ok), ok_str(entry.componentize_ok)))
+                (
+                    "❌ fail",
+                    format!(
+                        "bundle:{} componentize:{}",
+                        ok_str(entry.bundle_ok),
+                        ok_str(entry.componentize_ok)
+                    ),
+                )
             }
         } else if blocker_set.contains(dep.name.as_str()) {
             ("❌ fail", "blocked".to_string())
@@ -101,7 +124,9 @@ fn format_bun_compat_table(out: &mut String, report: &AnalysisReport) {
         ));
     }
 
-    out.push_str("  └──────────────────────────┴──────────┴──────────────┴─────────────────────────┘\n\n");
+    out.push_str(
+        "  └──────────────────────────┴──────────┴──────────────┴─────────────────────────┘\n\n",
+    );
 }
 
 fn ok_str(ok: bool) -> &'static str {
@@ -134,5 +159,8 @@ struct BunTableFile {
 fn load_bun_table_entries() -> std::collections::HashMap<String, BunTableEntry> {
     const BUN_JSON: &str = include_str!("../../../compat-db/bun/results.json");
     let file: BunTableFile = serde_json::from_str(BUN_JSON).expect("invalid results.json");
-    file.results.into_iter().map(|e| (e.name.clone(), e)).collect()
+    file.results
+        .into_iter()
+        .map(|e| (e.name.clone(), e))
+        .collect()
 }

@@ -18,8 +18,8 @@
 
 use std::sync::Arc;
 
-use crate::bindings::warpgrid::shim::dns::{Host, IpAddressRecord};
 use super::CachedDnsResolver;
+use crate::bindings::warpgrid::shim::dns::{Host, IpAddressRecord};
 
 /// Host-side implementation of the `warpgrid:shim/dns` interface.
 ///
@@ -47,19 +47,15 @@ impl DnsHost {
 }
 
 impl Host for DnsHost {
-    fn resolve_address(
-        &mut self,
-        hostname: String,
-    ) -> Result<Vec<IpAddressRecord>, String> {
+    fn resolve_address(&mut self, hostname: String) -> Result<Vec<IpAddressRecord>, String> {
         tracing::debug!(hostname = %hostname, "dns intercept: resolve_address");
 
         let resolver = Arc::clone(&self.resolver);
         let hostname_clone = hostname.clone();
 
         let handle = self.runtime_handle.clone();
-        let result = tokio::task::block_in_place(|| {
-            handle.block_on(resolver.resolve(&hostname_clone))
-        });
+        let result =
+            tokio::task::block_in_place(|| handle.block_on(resolver.resolve(&hostname_clone)));
 
         match result {
             Ok(addrs) => {
@@ -99,10 +95,7 @@ mod tests {
     use crate::dns::{DnsResolver, cache::DnsCacheConfig};
 
     /// Create a `DnsHost` with the given registry, hosts content, and default cache.
-    fn make_host(
-        registry: HashMap<String, Vec<IpAddr>>,
-        hosts_content: &str,
-    ) -> DnsHost {
+    fn make_host(registry: HashMap<String, Vec<IpAddr>>, hosts_content: &str) -> DnsHost {
         let resolver = DnsResolver::new(registry, hosts_content);
         let cached = Arc::new(CachedDnsResolver::new(resolver, DnsCacheConfig::default()));
         let handle = tokio::runtime::Handle::current();
@@ -176,9 +169,7 @@ mod tests {
     async fn host_resolve_nonexistent_returns_error() {
         let mut host = make_host(HashMap::new(), "");
 
-        let result = host.resolve_address(
-            "this-definitely-does-not-exist.invalid".into(),
-        );
+        let result = host.resolve_address("this-definitely-does-not-exist.invalid".into());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("HostNotFound"));

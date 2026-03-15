@@ -3,5 +3,7 @@
 pub struct DnsShim;
 
 impl DnsShim {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }

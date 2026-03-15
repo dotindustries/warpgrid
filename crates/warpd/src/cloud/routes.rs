@@ -84,18 +84,9 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
             delete(remove_team_member),
         )
         // Domain management routes
-        .route(
-            "/api/v1/cloud/domains",
-            get(list_domains).post(add_domain),
-        )
-        .route(
-            "/api/v1/cloud/domains/{domain}",
-            delete(remove_domain),
-        )
-        .route(
-            "/api/v1/cloud/domains/{domain}/verify",
-            post(verify_domain),
-        )
+        .route("/api/v1/cloud/domains", get(list_domains).post(add_domain))
+        .route("/api/v1/cloud/domains/{domain}", delete(remove_domain))
+        .route("/api/v1/cloud/domains/{domain}/verify", post(verify_domain))
         // Logs route
         .route("/api/v1/cloud/logs/{deployment_id}", get(get_logs))
         // Scale route
@@ -175,17 +166,13 @@ fn extract_user(headers: &HeaderMap, auth: &AuthStore) -> Result<User, (StatusCo
             "Missing Authorization header".to_string(),
         ))?;
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Invalid Authorization format (expected: Bearer wg_live_...)".to_string(),
-        ))?;
-
-    auth.validate_sync(token).ok_or((
+    let token = auth_header.strip_prefix("Bearer ").ok_or((
         StatusCode::UNAUTHORIZED,
-        "Invalid API key".to_string(),
-    ))
+        "Invalid Authorization format (expected: Bearer wg_live_...)".to_string(),
+    ))?;
+
+    auth.validate_sync(token)
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()))
 }
 
 // ── Route handlers ──────────────────────────────────────────────
@@ -331,7 +318,7 @@ async fn upload_and_deploy(
         Some(n) if !n.is_empty() => n.to_string(),
         _ => {
             return error_response(StatusCode::BAD_REQUEST, "X-WarpGrid-Name header required")
-                .into_response()
+                .into_response();
         }
     };
     let region = headers
@@ -379,10 +366,13 @@ async fn upload_and_deploy(
 
     // Check for duplicate deployment name.
     let deployment_id = tenants::scoped_deployment_id(&user.namespace, &name);
-    let existing = state.cloud_db.query(
-        "SELECT id FROM cloud_deployments WHERE id = ?",
-        libsql::params![deployment_id.clone()],
-    ).await;
+    let existing = state
+        .cloud_db
+        .query(
+            "SELECT id FROM cloud_deployments WHERE id = ?",
+            libsql::params![deployment_id.clone()],
+        )
+        .await;
     if let Ok(mut rows) = existing {
         if rows.next().await.ok().flatten().is_some() {
             return error_response(
@@ -479,12 +469,19 @@ async fn upload_and_deploy(
     );
 
     // Push log entry.
-    push_log(&state.logs, LogEntry {
-        timestamp: now,
-        deployment_id: deployment_id.clone(),
-        level: "info".to_string(),
-        message: format!("Deployment created: {} (region={}, size={} bytes)", name, region, wasm_size),
-    }).await;
+    push_log(
+        &state.logs,
+        LogEntry {
+            timestamp: now,
+            deployment_id: deployment_id.clone(),
+            level: "info".to_string(),
+            message: format!(
+                "Deployment created: {} (region={}, size={} bytes)",
+                name, region, wasm_size
+            ),
+        },
+    )
+    .await;
 
     (
         StatusCode::CREATED,
@@ -522,10 +519,13 @@ async fn delete_deployment(
     }
 
     // Delete from Turso (source of truth).
-    let deleted = state.cloud_db.execute(
-        "DELETE FROM cloud_deployments WHERE id = ? AND namespace = ?",
-        libsql::params![id.clone(), user.namespace.clone()],
-    ).await;
+    let deleted = state
+        .cloud_db
+        .execute(
+            "DELETE FROM cloud_deployments WHERE id = ? AND namespace = ?",
+            libsql::params![id.clone(), user.namespace.clone()],
+        )
+        .await;
 
     // Also clean up from local redb.
     let _ = state.state_store.delete_deployment(&id);
@@ -542,12 +542,16 @@ async fn delete_deployment(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    push_log(&state.logs, LogEntry {
-        timestamp: now,
-        deployment_id: id.clone(),
-        level: "info".to_string(),
-        message: format!("Deployment deleted: {}", id),
-    }).await;
+    push_log(
+        &state.logs,
+        LogEntry {
+            timestamp: now,
+            deployment_id: id.clone(),
+            level: "info".to_string(),
+            message: format!("Deployment deleted: {}", id),
+        },
+    )
+    .await;
 
     match deleted {
         Ok(affected) if affected > 0 => CloudResponse::ok("Deployment deleted").into_response(),
@@ -614,11 +618,8 @@ async fn scale_deployment(
     };
 
     if body.min > body.max {
-        return error_response(
-            StatusCode::BAD_REQUEST,
-            "min cannot be greater than max",
-        )
-        .into_response();
+        return error_response(StatusCode::BAD_REQUEST, "min cannot be greater than max")
+            .into_response();
     }
 
     // Verify the deployment belongs to this user's namespace.
@@ -629,16 +630,20 @@ async fn scale_deployment(
     }
 
     // Update spec_json in cloud_deployments table.
-    let row_result = state.cloud_db.query(
-        "SELECT spec_json FROM cloud_deployments WHERE id = ? AND namespace = ?",
-        libsql::params![id.clone(), user.namespace.clone()],
-    ).await;
+    let row_result = state
+        .cloud_db
+        .query(
+            "SELECT spec_json FROM cloud_deployments WHERE id = ? AND namespace = ?",
+            libsql::params![id.clone(), user.namespace.clone()],
+        )
+        .await;
 
     let spec_json = match row_result {
         Ok(mut rows) => match rows.next().await {
             Ok(Some(row)) => row.get::<String>(0).unwrap_or_default(),
             _ => {
-                return error_response(StatusCode::NOT_FOUND, "Deployment not found").into_response();
+                return error_response(StatusCode::NOT_FOUND, "Deployment not found")
+                    .into_response();
             }
         },
         Err(e) => {
@@ -753,10 +758,7 @@ async fn create_team(
     (StatusCode::CREATED, CloudResponse::ok(team)).into_response()
 }
 
-async fn list_teams(
-    State(state): State<Arc<CloudState>>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+async fn list_teams(State(state): State<Arc<CloudState>>, headers: HeaderMap) -> impl IntoResponse {
     let user = match extract_user(&headers, &state.auth) {
         Ok(u) => u,
         Err((status, msg)) => return error_response(status, &msg).into_response(),
@@ -790,7 +792,11 @@ async fn add_team_member(
         .into_response();
     }
 
-    match state.teams.add_member(&team_id, &body.user_id, body.role).await {
+    match state
+        .teams
+        .add_member(&team_id, &body.user_id, body.role)
+        .await
+    {
         Ok(team) => (StatusCode::CREATED, CloudResponse::ok(team)).into_response(),
         Err(e) => error_response(StatusCode::BAD_REQUEST, &e.to_string()).into_response(),
     }
@@ -879,7 +885,10 @@ async fn list_domains(
         Err((status, msg)) => return error_response(status, &msg).into_response(),
     };
 
-    let domains = state.domains.list_domains_for_namespace(&user.namespace).await;
+    let domains = state
+        .domains
+        .list_domains_for_namespace(&user.namespace)
+        .await;
     CloudResponse::ok(domains).into_response()
 }
 
@@ -1112,9 +1121,7 @@ async fn stripe_webhook(
                     timestamp: now,
                     deployment_id: format!("billing:{customer_id}"),
                     level: "warn".to_string(),
-                    message: format!(
-                        "Invoice payment failed for customer {customer_id}"
-                    ),
+                    message: format!("Invoice payment failed for customer {customer_id}"),
                 },
             )
             .await;

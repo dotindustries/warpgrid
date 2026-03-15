@@ -19,13 +19,13 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
+use warpgrid_host::config::ShimConfig;
 use warpgrid_host::db_proxy::host::DbProxyHost;
 use warpgrid_host::db_proxy::tcp::TcpConnectionFactory;
 use warpgrid_host::db_proxy::{ConnectionPoolManager, PoolConfig};
-use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
 
 // ── Postgres protocol constants ─────────────────────────────────────
@@ -51,9 +51,9 @@ fn command_complete(tag: &str) -> Vec<u8> {
 /// Build a RowDescription message for (id, name, email) columns.
 fn row_description_users() -> Vec<u8> {
     let columns = [
-        ("id", 23_i32, 4_i16),       // int4, 4 bytes
-        ("name", 25_i32, -1_i16),     // text, variable
-        ("email", 25_i32, -1_i16),    // text, variable
+        ("id", 23_i32, 4_i16),     // int4, 4 bytes
+        ("name", 25_i32, -1_i16),  // text, variable
+        ("email", 25_i32, -1_i16), // text, variable
     ];
 
     let mut fields = Vec::new();
@@ -238,12 +238,7 @@ fn build_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for t4-db-proxy-guest");
@@ -253,8 +248,8 @@ fn build_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/t4_db_proxy_guest.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/t4_db_proxy_guest.wasm");
 
         // Step 2: Convert core module to component with wasm-tools
         let component_path = guest_dir.join("target/t4-db-proxy-guest.component.wasm");
@@ -494,10 +489,7 @@ async fn test_t4_query_then_close() {
         .unwrap();
 
     let query_func = inst2
-        .get_typed_func::<(String, String), (Result<Vec<u8>, String>,)>(
-            &mut store,
-            "test-db-query",
-        )
+        .get_typed_func::<(String, String), (Result<Vec<u8>, String>,)>(&mut store, "test-db-query")
         .unwrap();
 
     let (query_result,) = query_func

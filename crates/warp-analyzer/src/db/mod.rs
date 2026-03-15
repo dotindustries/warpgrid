@@ -32,61 +32,154 @@ fn builtin_rules() -> HashMap<String, CompatEntry> {
         ("tracing", "compatible", None, None, None),
         ("sqlx", "compatible", None, None, None),
         ("rustls", "compatible", None, None, None),
-        ("openssl-sys", "incompatible", Some("FFI to native OpenSSL"), Some("rustls"), None),
-        ("openssl", "incompatible", Some("FFI to native OpenSSL"), Some("rustls"), None),
-        ("libz-sys", "incompatible", Some("FFI to native zlib"), Some("flate2 with rust backend"), None),
-        ("ring", "incompatible", Some("Contains platform-specific assembly"), Some("aws-lc-rs or rustls"), None),
-        ("nix", "incompatible", Some("Direct Unix syscall wrappers"), None, None),
+        (
+            "openssl-sys",
+            "incompatible",
+            Some("FFI to native OpenSSL"),
+            Some("rustls"),
+            None,
+        ),
+        (
+            "openssl",
+            "incompatible",
+            Some("FFI to native OpenSSL"),
+            Some("rustls"),
+            None,
+        ),
+        (
+            "libz-sys",
+            "incompatible",
+            Some("FFI to native zlib"),
+            Some("flate2 with rust backend"),
+            None,
+        ),
+        (
+            "ring",
+            "incompatible",
+            Some("Contains platform-specific assembly"),
+            Some("aws-lc-rs or rustls"),
+            None,
+        ),
+        (
+            "nix",
+            "incompatible",
+            Some("Direct Unix syscall wrappers"),
+            None,
+            None,
+        ),
         ("libc", "shim_compatible", None, None, Some("filesystem")),
     ];
     for (name, verdict, reason, alt, shim) in rust_rules {
-        rules.insert(name.to_string(), CompatEntry {
-            name: name.to_string(),
-            verdict: verdict.to_string(),
-            reason: reason.map(String::from),
-            alternative: alt.map(String::from),
-            shim: shim.map(String::from),
-            migration_guide: None,
-        });
+        rules.insert(
+            name.to_string(),
+            CompatEntry {
+                name: name.to_string(),
+                verdict: verdict.to_string(),
+                reason: reason.map(String::from),
+                alternative: alt.map(String::from),
+                shim: shim.map(String::from),
+                migration_guide: None,
+            },
+        );
     }
 
     // Go ecosystem
     let go_rules = vec![
-        ("github.com/gin-gonic/gin", "incompatible", Some("Uses net/http extensively"), Some("TinyGo-compatible HTTP framework"), None),
-        ("github.com/lib/pq", "shim_compatible", Some("Raw TCP via net.Dial"), None, Some("database_proxy")),
-        ("github.com/jackc/pgx", "shim_compatible", Some("TCP sockets"), None, Some("database_proxy")),
-        ("github.com/go-sql-driver/mysql", "shim_compatible", Some("TCP sockets via net.Dial"), None, Some("database_proxy")),
-        ("github.com/redis/go-redis/v9", "shim_compatible", Some("TCP sockets via net.Dial"), None, Some("database_proxy")),
+        (
+            "github.com/gin-gonic/gin",
+            "incompatible",
+            Some("Uses net/http extensively"),
+            Some("TinyGo-compatible HTTP framework"),
+            None,
+        ),
+        (
+            "github.com/lib/pq",
+            "shim_compatible",
+            Some("Raw TCP via net.Dial"),
+            None,
+            Some("database_proxy"),
+        ),
+        (
+            "github.com/jackc/pgx",
+            "shim_compatible",
+            Some("TCP sockets"),
+            None,
+            Some("database_proxy"),
+        ),
+        (
+            "github.com/go-sql-driver/mysql",
+            "shim_compatible",
+            Some("TCP sockets via net.Dial"),
+            None,
+            Some("database_proxy"),
+        ),
+        (
+            "github.com/redis/go-redis/v9",
+            "shim_compatible",
+            Some("TCP sockets via net.Dial"),
+            None,
+            Some("database_proxy"),
+        ),
     ];
     for (name, verdict, reason, alt, shim) in go_rules {
-        rules.insert(name.to_string(), CompatEntry {
-            name: name.to_string(),
-            verdict: verdict.to_string(),
-            reason: reason.map(String::from),
-            alternative: alt.map(String::from),
-            shim: shim.map(String::from),
-            migration_guide: None,
-        });
+        rules.insert(
+            name.to_string(),
+            CompatEntry {
+                name: name.to_string(),
+                verdict: verdict.to_string(),
+                reason: reason.map(String::from),
+                alternative: alt.map(String::from),
+                shim: shim.map(String::from),
+                migration_guide: None,
+            },
+        );
     }
 
     // TypeScript ecosystem
     let ts_rules = vec![
         ("express", "compatible", None, None, None),
         ("hono", "compatible", None, None, None),
-        ("sharp", "incompatible", Some("Native C++ binding (libvips)"), Some("wasm-vips"), None),
-        ("bcrypt", "incompatible", Some("Native C binding"), Some("bcryptjs"), None),
-        ("better-sqlite3", "incompatible", Some("Native C binding"), Some("sql.js"), None),
-        ("pg", "shim_compatible", Some("TCP sockets"), None, Some("database_proxy")),
+        (
+            "sharp",
+            "incompatible",
+            Some("Native C++ binding (libvips)"),
+            Some("wasm-vips"),
+            None,
+        ),
+        (
+            "bcrypt",
+            "incompatible",
+            Some("Native C binding"),
+            Some("bcryptjs"),
+            None,
+        ),
+        (
+            "better-sqlite3",
+            "incompatible",
+            Some("Native C binding"),
+            Some("sql.js"),
+            None,
+        ),
+        (
+            "pg",
+            "shim_compatible",
+            Some("TCP sockets"),
+            None,
+            Some("database_proxy"),
+        ),
     ];
     for (name, verdict, reason, alt, shim) in ts_rules {
-        rules.insert(name.to_string(), CompatEntry {
-            name: name.to_string(),
-            verdict: verdict.to_string(),
-            reason: reason.map(String::from),
-            alternative: alt.map(String::from),
-            shim: shim.map(String::from),
-            migration_guide: None,
-        });
+        rules.insert(
+            name.to_string(),
+            CompatEntry {
+                name: name.to_string(),
+                verdict: verdict.to_string(),
+                reason: reason.map(String::from),
+                alternative: alt.map(String::from),
+                shim: shim.map(String::from),
+                migration_guide: None,
+            },
+        );
     }
 
     rules
@@ -149,7 +242,9 @@ pub fn evaluate_dependencies(
                     blockers.push(Blocker {
                         dependency: dep.name.clone(),
                         reason: entry.reason.clone().unwrap_or_default(),
-                        fix: entry.alternative.as_ref()
+                        fix: entry
+                            .alternative
+                            .as_ref()
                             .map(|a| format!("Replace with: {a}"))
                             .unwrap_or_else(|| "No known alternative".to_string()),
                         effort_hours: Some(2.0),
@@ -239,7 +334,10 @@ mod tests {
         let rules = bun_compat_rules();
         assert!(!rules.is_empty(), "Bun compat rules should not be empty");
         assert!(rules.contains_key("hono"), "Should contain hono");
-        assert!(rules.contains_key("marked"), "Should contain marked (failing)");
+        assert!(
+            rules.contains_key("marked"),
+            "Should contain marked (failing)"
+        );
     }
 
     #[test]
@@ -270,10 +368,10 @@ mod tests {
     #[test]
     fn test_bun_mixed_deps() {
         let deps = vec![
-            make_dep("hono"),      // pass
-            make_dep("zod"),       // pass
-            make_dep("marked"),    // fail
-            make_dep("unknown"),   // not in DB
+            make_dep("hono"),    // pass
+            make_dep("zod"),     // pass
+            make_dep("marked"),  // fail
+            make_dep("unknown"), // not in DB
         ];
         let (blockers, _) = evaluate_dependencies(&deps, "bun");
         assert_eq!(blockers.len(), 1);

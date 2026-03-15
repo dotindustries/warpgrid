@@ -16,5 +16,7 @@
 pub struct DatabaseShim;
 
 impl DatabaseShim {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }

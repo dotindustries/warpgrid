@@ -5,17 +5,17 @@
 //! openraft request to JSON, sends it via gRPC, and deserializes the
 //! response.
 
+use openraft::BasicNode;
 use openraft::error::{InstallSnapshotError, RPCError, RaftError, RemoteError, Unreachable};
 use openraft::network::{RPCOption, RaftNetwork, RaftNetworkFactory};
 use openraft::raft::{
-    AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
-    InstallSnapshotResponse, VoteRequest, VoteResponse,
+    AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest, InstallSnapshotResponse,
+    VoteRequest, VoteResponse,
 };
-use openraft::BasicNode;
 use tracing::{debug, warn};
 
-use crate::proto::raft_service_client::RaftServiceClient;
 use crate::proto::RaftRequest;
+use crate::proto::raft_service_client::RaftServiceClient;
 use crate::typ::TypeConfig;
 
 /// Factory that creates per-peer gRPC connections.
@@ -29,13 +29,19 @@ pub struct NetworkConnection {
 }
 
 impl NetworkConnection {
-    fn mk_unreachable<E: std::error::Error>(target: u64, addr: &str, msg: &str) -> RPCError<u64, BasicNode, E> {
+    fn mk_unreachable<E: std::error::Error>(
+        target: u64,
+        addr: &str,
+        msg: &str,
+    ) -> RPCError<u64, BasicNode, E> {
         RPCError::Unreachable(Unreachable::new(&std::io::Error::other(format!(
             "raft gRPC to node {target} ({addr}): {msg}",
         ))))
     }
 
-    async fn get_client(&mut self) -> Result<&mut RaftServiceClient<tonic::transport::Channel>, String> {
+    async fn get_client(
+        &mut self,
+    ) -> Result<&mut RaftServiceClient<tonic::transport::Channel>, String> {
         if self.client.is_some() {
             return Ok(self.client.as_mut().unwrap());
         }
@@ -44,11 +50,10 @@ impl NetworkConnection {
         let ep = tonic::transport::Endpoint::from_shared(endpoint.clone())
             .map_err(|e| format!("invalid endpoint {endpoint}: {e}"))?;
 
-        let channel = ep.connect().await
-            .map_err(|e| {
-                warn!(target_node = self.target, addr = %self.addr, error = %e, "failed to connect");
-                format!("connect to {endpoint}: {e}")
-            })?;
+        let channel = ep.connect().await.map_err(|e| {
+            warn!(target_node = self.target, addr = %self.addr, error = %e, "failed to connect");
+            format!("connect to {endpoint}: {e}")
+        })?;
 
         debug!(target_node = self.target, addr = %self.addr, "connected to raft peer");
         self.client = Some(RaftServiceClient::new(channel));
@@ -74,17 +79,17 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         &mut self,
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<
-        AppendEntriesResponse<u64>,
-        RPCError<u64, BasicNode, RaftError<u64>>,
-    > {
+    ) -> Result<AppendEntriesResponse<u64>, RPCError<u64, BasicNode, RaftError<u64>>> {
         let target = self.target;
         let addr = self.addr.clone();
 
-        let data = serde_json::to_vec(&rpc)
-            .map_err(|e| Self::mk_unreachable::<RaftError<u64>>(target, &addr, &format!("serialize: {e}")))?;
+        let data = serde_json::to_vec(&rpc).map_err(|e| {
+            Self::mk_unreachable::<RaftError<u64>>(target, &addr, &format!("serialize: {e}"))
+        })?;
 
-        let client = self.get_client().await
+        let client = self
+            .get_client()
+            .await
             .map_err(|e| Self::mk_unreachable::<RaftError<u64>>(target, &addr, &e))?;
 
         let response = client
@@ -117,18 +122,28 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         let target = self.target;
         let addr = self.addr.clone();
 
-        let data = serde_json::to_vec(&rpc)
-            .map_err(|e| Self::mk_unreachable::<RaftError<u64, InstallSnapshotError>>(target, &addr, &format!("serialize: {e}")))?;
+        let data = serde_json::to_vec(&rpc).map_err(|e| {
+            Self::mk_unreachable::<RaftError<u64, InstallSnapshotError>>(
+                target,
+                &addr,
+                &format!("serialize: {e}"),
+            )
+        })?;
 
-        let client = self.get_client().await
-            .map_err(|e| Self::mk_unreachable::<RaftError<u64, InstallSnapshotError>>(target, &addr, &e))?;
+        let client = self.get_client().await.map_err(|e| {
+            Self::mk_unreachable::<RaftError<u64, InstallSnapshotError>>(target, &addr, &e)
+        })?;
 
         let response = client
             .install_snapshot(RaftRequest { data })
             .await
             .map_err(|e| {
                 self.client = None;
-                Self::mk_unreachable::<RaftError<u64, InstallSnapshotError>>(target, &addr, &format!("gRPC: {e}"))
+                Self::mk_unreachable::<RaftError<u64, InstallSnapshotError>>(
+                    target,
+                    &addr,
+                    &format!("gRPC: {e}"),
+                )
             })?;
 
         let inner = response.into_inner();
@@ -150,19 +165,19 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         let target = self.target;
         let addr = self.addr.clone();
 
-        let data = serde_json::to_vec(&rpc)
-            .map_err(|e| Self::mk_unreachable::<RaftError<u64>>(target, &addr, &format!("serialize: {e}")))?;
+        let data = serde_json::to_vec(&rpc).map_err(|e| {
+            Self::mk_unreachable::<RaftError<u64>>(target, &addr, &format!("serialize: {e}"))
+        })?;
 
-        let client = self.get_client().await
+        let client = self
+            .get_client()
+            .await
             .map_err(|e| Self::mk_unreachable::<RaftError<u64>>(target, &addr, &e))?;
 
-        let response = client
-            .vote(RaftRequest { data })
-            .await
-            .map_err(|e| {
-                self.client = None;
-                Self::mk_unreachable::<RaftError<u64>>(target, &addr, &format!("gRPC: {e}"))
-            })?;
+        let response = client.vote(RaftRequest { data }).await.map_err(|e| {
+            self.client = None;
+            Self::mk_unreachable::<RaftError<u64>>(target, &addr, &format!("gRPC: {e}"))
+        })?;
 
         let inner = response.into_inner();
         if !inner.error.is_empty() {
@@ -193,7 +208,10 @@ mod tests {
     #[test]
     fn serialization_roundtrips() {
         let vote = openraft::Vote::<u64>::new(1, 2);
-        let req = VoteRequest::<u64> { vote, last_log_id: None };
+        let req = VoteRequest::<u64> {
+            vote,
+            last_log_id: None,
+        };
         let data = serde_json::to_vec(&req).unwrap();
         let back: VoteRequest<u64> = serde_json::from_slice(&data).unwrap();
         assert_eq!(back.vote, vote);

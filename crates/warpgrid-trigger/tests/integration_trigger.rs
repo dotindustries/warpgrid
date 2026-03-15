@@ -12,7 +12,7 @@ use http_body_util::{BodyExt, Empty};
 use hyper_util::rt::TokioExecutor;
 
 use warpgrid_trigger::convert;
-use warpgrid_trigger::handler::{echo_handler, HttpTrigger, RequestHandler};
+use warpgrid_trigger::handler::{HttpTrigger, RequestHandler, echo_handler};
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -93,9 +93,8 @@ async fn handles_concurrent_requests() {
 
 #[tokio::test]
 async fn handler_error_returns_500() {
-    let failing_handler: RequestHandler = Arc::new(|_req| {
-        Box::pin(async { Err(anyhow::anyhow!("simulated failure")) })
-    });
+    let failing_handler: RequestHandler =
+        Arc::new(|_req| Box::pin(async { Err(anyhow::anyhow!("simulated failure")) }));
 
     let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -137,10 +136,7 @@ fn header_roundtrip_preserves_values() {
     assert_eq!(tuples.len(), 3);
 
     let restored = convert::headers_from_tuples(tuples);
-    assert_eq!(
-        restored.get("content-type").unwrap(),
-        "application/json"
-    );
+    assert_eq!(restored.get("content-type").unwrap(), "application/json");
     assert_eq!(restored.get("x-request-id").unwrap(), "abc-123");
     assert_eq!(restored.get("authorization").unwrap(), "Bearer tok");
 }
@@ -208,7 +204,10 @@ fn status_from_valid_codes() {
         convert::status_from_u16(500),
         StatusCode::INTERNAL_SERVER_ERROR
     );
-    assert_eq!(convert::status_from_u16(503), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        convert::status_from_u16(503),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
 }
 
 #[test]

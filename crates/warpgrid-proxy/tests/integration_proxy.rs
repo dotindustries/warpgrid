@@ -36,12 +36,7 @@ fn make_spec(ns: &str, name: &str) -> DeploymentSpec {
     }
 }
 
-fn make_instance(
-    id: &str,
-    deployment: &str,
-    node: &str,
-    status: InstanceStatus,
-) -> InstanceState {
+fn make_instance(id: &str, deployment: &str, node: &str, status: InstanceStatus) -> InstanceState {
     InstanceState {
         id: id.to_string(),
         deployment_id: deployment.to_string(),
@@ -86,13 +81,28 @@ fn full_sync_registers_all_deployments_as_services() {
 
     // Add running instances for both deployments.
     store
-        .put_instance(&make_instance("i1", "prod/api", "node-1", InstanceStatus::Running))
+        .put_instance(&make_instance(
+            "i1",
+            "prod/api",
+            "node-1",
+            InstanceStatus::Running,
+        ))
         .unwrap();
     store
-        .put_instance(&make_instance("i2", "prod/api", "node-2", InstanceStatus::Running))
+        .put_instance(&make_instance(
+            "i2",
+            "prod/api",
+            "node-2",
+            InstanceStatus::Running,
+        ))
         .unwrap();
     store
-        .put_instance(&make_instance("i3", "prod/web", "node-1", InstanceStatus::Running))
+        .put_instance(&make_instance(
+            "i3",
+            "prod/web",
+            "node-1",
+            InstanceStatus::Running,
+        ))
         .unwrap();
 
     let sync = ProxySync::new(Router::new(), DnsResolver::default());
@@ -151,8 +161,10 @@ fn sync_removes_services_not_in_state_store() {
     let sync = ProxySync::new(Router::new(), DnsResolver::default());
 
     // Pre-populate the router with a service that does not exist in the store.
-    sync.router()
-        .update_service("stale/old-svc", vec![make_backend("n1", "10.0.0.1", 8080, true)]);
+    sync.router().update_service(
+        "stale/old-svc",
+        vec![make_backend("n1", "10.0.0.1", 8080, true)],
+    );
 
     // Sync with empty store should remove the stale service.
     let stats = sync.sync(&store).unwrap();
@@ -168,13 +180,20 @@ fn sync_removes_stale_but_keeps_valid_services() {
     // Pre-populate router with two services.
     sync.router()
         .update_service("prod/api", vec![make_backend("n1", "10.0.0.1", 8080, true)]);
-    sync.router()
-        .update_service("stale/gone", vec![make_backend("n2", "10.0.0.2", 8080, true)]);
+    sync.router().update_service(
+        "stale/gone",
+        vec![make_backend("n2", "10.0.0.2", 8080, true)],
+    );
 
     // Only put prod/api in the state store.
     store.put_deployment(&make_spec("prod", "api")).unwrap();
     store
-        .put_instance(&make_instance("i1", "prod/api", "node-1", InstanceStatus::Running))
+        .put_instance(&make_instance(
+            "i1",
+            "prod/api",
+            "node-1",
+            InstanceStatus::Running,
+        ))
         .unwrap();
 
     let stats = sync.sync(&store).unwrap();

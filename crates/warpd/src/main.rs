@@ -117,7 +117,11 @@ enum Command {
         fly_api_token: Option<String>,
 
         /// Tigris S3 bucket for Wasm component registry.
-        #[arg(long, env = "WARPGRID_REGISTRY_BUCKET", default_value = "warpgrid-registry")]
+        #[arg(
+            long,
+            env = "WARPGRID_REGISTRY_BUCKET",
+            default_value = "warpgrid-registry"
+        )]
         registry_bucket: String,
 
         /// Comma-separated list of edge regions to provision.
@@ -202,9 +206,7 @@ async fn main() -> anyhow::Result<()> {
             data_dir,
             metrics_interval,
             autoscale_interval,
-        } => {
-            run_standalone(port, data_dir, metrics_interval, autoscale_interval).await
-        }
+        } => run_standalone(port, data_dir, metrics_interval, autoscale_interval).await,
         Command::Cloud {
             config: config_path,
             api_port,
@@ -219,10 +221,7 @@ async fn main() -> anyhow::Result<()> {
             stripe_secret_key,
         } => {
             // Load config file (CLI args and env vars take precedence).
-            let cfg = config::WarpGridConfig::load(
-                config_path.as_deref(),
-                Some(&data_dir),
-            );
+            let cfg = config::WarpGridConfig::load(config_path.as_deref(), Some(&data_dir));
             let c = &cfg.cloud;
 
             cloud_mode::run_cloud(
@@ -402,14 +401,13 @@ async fn run_standalone(
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
     // Graceful shutdown on Ctrl-C.
-    let server = axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("failed to install CTRL+C handler");
-            info!("shutdown signal received");
-            let _ = shutdown_tx.send(true);
-        });
+    let server = axum::serve(listener, router).with_graceful_shutdown(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install CTRL+C handler");
+        info!("shutdown signal received");
+        let _ = shutdown_tx.send(true);
+    });
 
     server.await?;
 

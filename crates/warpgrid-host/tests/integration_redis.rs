@@ -96,13 +96,7 @@ impl MockRedisServer {
     }
 
     fn pool_key(&self) -> PoolKey {
-        PoolKey::with_protocol(
-            "127.0.0.1",
-            self.addr.port(),
-            "",
-            "",
-            Protocol::Redis,
-        )
+        PoolKey::with_protocol("127.0.0.1", self.addr.port(), "", "", Protocol::Redis)
     }
 }
 
@@ -171,10 +165,7 @@ async fn redis_binary_data_passthrough() {
     assert_eq!(sent, binary.len());
 
     let data = mgr.recv(h, 4096).await.unwrap();
-    assert_eq!(
-        data, binary,
-        "binary bytes must pass through unmodified"
-    );
+    assert_eq!(data, binary, "binary bytes must pass through unmodified");
 
     mgr.release(h).await.unwrap();
 }
@@ -238,7 +229,8 @@ async fn redis_health_check_ping_healthy() {
 
     // PING should succeed — connection stays in pool.
     assert_eq!(
-        mgr.stats(&key).await.idle, 1,
+        mgr.stats(&key).await.idle,
+        1,
         "healthy Redis connection should survive health check"
     );
 }
@@ -263,7 +255,8 @@ async fn redis_health_check_ping_removes_dead_connections() {
     mgr.health_check_idle().await;
 
     assert_eq!(
-        mgr.stats(&key).await.idle, 0,
+        mgr.stats(&key).await.idle,
+        0,
         "dead Redis connection should be removed by PING health check"
     );
 }

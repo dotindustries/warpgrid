@@ -79,10 +79,7 @@ impl FromIterator<Header> for HeaderMap {
 impl FromIterator<(String, String)> for HeaderMap {
     fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
         Self {
-            entries: iter
-                .into_iter()
-                .map(|(n, v)| Header::new(n, v))
-                .collect(),
+            entries: iter.into_iter().map(|(n, v)| Header::new(n, v)).collect(),
         }
     }
 }

@@ -12,13 +12,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, OnceLock};
 
-use wasmtime::component::Component;
 use wasmtime::Store;
+use wasmtime::component::Component;
 
 use warpgrid_host::config::ShimConfig;
 use warpgrid_host::engine::{HostState, WarpGridEngine};
-use warpgrid_host::filesystem::host::FilesystemHost;
 use warpgrid_host::filesystem::VirtualFileMapBuilder;
+use warpgrid_host::filesystem::host::FilesystemHost;
 
 // ── Build helpers ─────────────────────────────────────────────────
 
@@ -42,12 +42,7 @@ fn build_guest_component() -> &'static [u8] {
 
         // Step 1: Build the guest crate to a core Wasm module
         let status = Command::new("cargo")
-            .args([
-                "build",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--release",
-            ])
+            .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
             .current_dir(&guest_dir)
             .status()
             .expect("failed to run cargo build for guest fixture");
@@ -57,8 +52,8 @@ fn build_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        let core_wasm_path = guest_dir
-            .join("target/wasm32-unknown-unknown/release/fs_shim_guest.wasm");
+        let core_wasm_path =
+            guest_dir.join("target/wasm32-unknown-unknown/release/fs_shim_guest.wasm");
 
         // Step 2: Convert core module to component with wasm-tools
         let component_path = guest_dir.join("target/fs-shim-guest.component.wasm");
@@ -78,8 +73,7 @@ fn build_guest_component() -> &'static [u8] {
             status.code()
         );
 
-        std::fs::read(&component_path)
-            .expect("failed to read compiled component")
+        std::fs::read(&component_path).expect("failed to read compiled component")
     })
 }
 

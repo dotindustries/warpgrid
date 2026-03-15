@@ -27,8 +27,8 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 
 use wasmtime::{Caller, Config, Engine, Linker, Memory, Module, Store, TypedFunc};
-use wasmtime_wasi::p1::WasiP1Ctx;
 use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::p1::WasiP1Ctx;
 
 // ── Build helpers ─────────────────────────────────────────────────
 
@@ -209,8 +209,7 @@ fn register_dns_shim(linker: &mut Linker<TestHostState>) {
                         }
                         IpAddr::V6(v6) => {
                             data[offset] = 6; // family marker
-                            data[offset + 1..offset + RECORD_SIZE]
-                                .copy_from_slice(&v6.octets());
+                            data[offset + 1..offset + RECORD_SIZE].copy_from_slice(&v6.octets());
                         }
                     }
                 }
@@ -250,8 +249,7 @@ impl GoDnsDialInstance {
         };
         let mut store = Store::new(&engine, host_state);
 
-        let module =
-            Module::new(&engine, wasm_bytes).expect("failed to compile wasm module");
+        let module = Module::new(&engine, wasm_bytes).expect("failed to compile wasm module");
         let instance = linker
             .instantiate(&mut store, &module)
             .expect("failed to instantiate module");
@@ -260,9 +258,7 @@ impl GoDnsDialInstance {
         let initialize = instance
             .get_typed_func::<(), ()>(&mut store, "_initialize")
             .expect("_initialize export not found");
-        initialize
-            .call(&mut store, ())
-            .expect("_initialize failed");
+        initialize.call(&mut store, ()).expect("_initialize failed");
 
         let memory = instance
             .get_memory(&mut store, "memory")

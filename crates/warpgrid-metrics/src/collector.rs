@@ -4,8 +4,8 @@
 //! histogram for latency tracking.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::RwLock;
@@ -84,12 +84,7 @@ impl MetricsCollector {
     }
 
     /// Record a request for a deployment.
-    pub async fn record_request(
-        &self,
-        deployment_id: &str,
-        latency_us: u64,
-        is_error: bool,
-    ) {
+    pub async fn record_request(&self, deployment_id: &str, latency_us: u64, is_error: bool) {
         let metrics = self.metrics.read().await;
         if let Some(m) = metrics.get(deployment_id) {
             m.request_count.fetch_add(1, Ordering::Relaxed);
@@ -141,10 +136,8 @@ impl MetricsCollector {
                 .filter(|i| i.status == InstanceStatus::Running)
                 .count();
             let total_mem: u64 = instances.iter().map(|i| i.memory_bytes).sum();
-            m.active_instances
-                .store(running as u64, Ordering::Relaxed);
-            m.total_memory_bytes
-                .store(total_mem, Ordering::Relaxed);
+            m.active_instances.store(running as u64, Ordering::Relaxed);
+            m.total_memory_bytes.store(total_mem, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -485,13 +478,28 @@ mod tests {
 
         // Add running and stopped instances.
         state
-            .put_instance(&make_instance("i-1", "deploy-1", InstanceStatus::Running, 32_000_000))
+            .put_instance(&make_instance(
+                "i-1",
+                "deploy-1",
+                InstanceStatus::Running,
+                32_000_000,
+            ))
             .unwrap();
         state
-            .put_instance(&make_instance("i-2", "deploy-1", InstanceStatus::Running, 48_000_000))
+            .put_instance(&make_instance(
+                "i-2",
+                "deploy-1",
+                InstanceStatus::Running,
+                48_000_000,
+            ))
             .unwrap();
         state
-            .put_instance(&make_instance("i-3", "deploy-1", InstanceStatus::Stopped, 16_000_000))
+            .put_instance(&make_instance(
+                "i-3",
+                "deploy-1",
+                InstanceStatus::Stopped,
+                16_000_000,
+            ))
             .unwrap();
 
         collector.refresh_resource_usage().await.unwrap();
@@ -503,6 +511,9 @@ mod tests {
         // Only running instances count.
         assert_eq!(snap.active_instances, 2);
         // Memory sums all instances (running + stopped).
-        assert_eq!(snap.total_memory_bytes, 32_000_000 + 48_000_000 + 16_000_000);
+        assert_eq!(
+            snap.total_memory_bytes,
+            32_000_000 + 48_000_000 + 16_000_000
+        );
     }
 }

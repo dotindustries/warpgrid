@@ -80,10 +80,7 @@ mod tests {
         let tuples = headers_to_tuples(&original);
         let restored = headers_from_tuples(tuples);
 
-        assert_eq!(
-            restored.get("content-type").unwrap(),
-            "application/json"
-        );
+        assert_eq!(restored.get("content-type").unwrap(), "application/json");
         assert_eq!(restored.get("x-custom").unwrap(), "hello");
     }
 

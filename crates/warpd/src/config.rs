@@ -91,6 +91,7 @@ pub struct PosthogConfig {
 #[derive(Debug, Default, Deserialize)]
 pub struct StripeConfig {
     pub secret_key: Option<String>,
+    pub webhook_secret: Option<String>,
 }
 
 impl WarpGridConfig {
@@ -207,16 +208,19 @@ secret_key = "sk_test_123"
 
         let config: WarpGridConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.cloud.api_port, Some(9443));
-        assert_eq!(
-            config.cloud.data_dir,
-            Some(PathBuf::from("/data/warpgrid"))
-        );
+        assert_eq!(config.cloud.data_dir, Some(PathBuf::from("/data/warpgrid")));
         assert_eq!(config.cloud.edge_regions.as_deref(), Some("iad,ams,sin"));
-        assert_eq!(config.cloud.turso.url.as_deref(), Some("libsql://test.turso.io"));
+        assert_eq!(
+            config.cloud.turso.url.as_deref(),
+            Some("libsql://test.turso.io")
+        );
         assert_eq!(config.cloud.turso.auth_token.as_deref(), Some("token123"));
         assert_eq!(config.cloud.fly.api_token.as_deref(), Some("fo1_test"));
         assert_eq!(config.cloud.posthog.api_key.as_deref(), Some("phc_test"));
-        assert_eq!(config.cloud.stripe.secret_key.as_deref(), Some("sk_test_123"));
+        assert_eq!(
+            config.cloud.stripe.secret_key.as_deref(),
+            Some("sk_test_123")
+        );
     }
 
     #[test]
@@ -237,7 +241,10 @@ url = "libsql://db.turso.io"
 "#;
         let config: WarpGridConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.cloud.api_port, Some(3000));
-        assert_eq!(config.cloud.turso.url.as_deref(), Some("libsql://db.turso.io"));
+        assert_eq!(
+            config.cloud.turso.url.as_deref(),
+            Some("libsql://db.turso.io")
+        );
         assert!(config.cloud.turso.auth_token.is_none());
         assert!(config.cloud.fly.api_token.is_none());
     }

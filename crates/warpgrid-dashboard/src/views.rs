@@ -497,10 +497,7 @@ impl MetricsRow {
 }
 
 pub fn build_metrics_rows(snapshots: &[MetricsSnapshot]) -> Vec<MetricsRow> {
-    let max_rps = snapshots
-        .iter()
-        .map(|s| s.rps)
-        .fold(0.0_f64, f64::max);
+    let max_rps = snapshots.iter().map(|s| s.rps).fold(0.0_f64, f64::max);
     let max_latency = snapshots
         .iter()
         .map(|s| s.latency_p99_ms)
@@ -600,10 +597,7 @@ fn instance_status_color(status: InstanceStatus, health: HealthStatus) -> &'stat
 
 fn format_trigger(trigger: &TriggerConfig) -> (String, &'static str) {
     match trigger {
-        TriggerConfig::Http { port } => (
-            format!("HTTP :{}", port.unwrap_or(8080)),
-            "HTTP",
-        ),
+        TriggerConfig::Http { port } => (format!("HTTP :{}", port.unwrap_or(8080)), "HTTP"),
         TriggerConfig::Cron { schedule } => (format!("Cron {schedule}"), "CRON"),
         TriggerConfig::Queue { topic } => (format!("Queue {topic}"), "Q"),
     }
@@ -668,10 +662,7 @@ pub fn build_cluster_summary(
     }
 }
 
-pub fn build_alerts(
-    deployments: &[DeploymentView],
-    rollouts: &[RolloutView],
-) -> Vec<AlertView> {
+pub fn build_alerts(deployments: &[DeploymentView], rollouts: &[RolloutView]) -> Vec<AlertView> {
     let mut alerts = Vec::new();
 
     for d in deployments {
@@ -839,39 +830,35 @@ mod tests {
 
     #[test]
     fn cluster_summary_aggregation() {
-        let deployments = vec![
-            DeploymentSpec {
-                id: "default/a".to_string(),
-                namespace: "default".to_string(),
-                name: "a".to_string(),
-                source: "test".to_string(),
-                trigger: TriggerConfig::Http { port: None },
-                instances: warpgrid_state::InstanceConstraints { min: 1, max: 5 },
-                resources: warpgrid_state::ResourceLimits {
-                    memory_bytes: 64 * 1024 * 1024,
-                    cpu_weight: 100,
-                },
-                scaling: None,
-                health: None,
-                shims: warpgrid_state::ShimsEnabled::default(),
-                env: std::collections::HashMap::new(),
-                created_at: 1000,
-                updated_at: 1000,
+        let deployments = vec![DeploymentSpec {
+            id: "default/a".to_string(),
+            namespace: "default".to_string(),
+            name: "a".to_string(),
+            source: "test".to_string(),
+            trigger: TriggerConfig::Http { port: None },
+            instances: warpgrid_state::InstanceConstraints { min: 1, max: 5 },
+            resources: warpgrid_state::ResourceLimits {
+                memory_bytes: 64 * 1024 * 1024,
+                cpu_weight: 100,
             },
-        ];
-        let instances = vec![
-            InstanceState {
-                id: "i-0".to_string(),
-                deployment_id: "default/a".to_string(),
-                node_id: "node-1".to_string(),
-                status: InstanceStatus::Running,
-                health: HealthStatus::Healthy,
-                restart_count: 0,
-                memory_bytes: 32 * 1024 * 1024,
-                started_at: 1000,
-                updated_at: 1000,
-            },
-        ];
+            scaling: None,
+            health: None,
+            shims: warpgrid_state::ShimsEnabled::default(),
+            env: std::collections::HashMap::new(),
+            created_at: 1000,
+            updated_at: 1000,
+        }];
+        let instances = vec![InstanceState {
+            id: "i-0".to_string(),
+            deployment_id: "default/a".to_string(),
+            node_id: "node-1".to_string(),
+            status: InstanceStatus::Running,
+            health: HealthStatus::Healthy,
+            restart_count: 0,
+            memory_bytes: 32 * 1024 * 1024,
+            started_at: 1000,
+            updated_at: 1000,
+        }];
         let nodes = vec![];
 
         let summary = build_cluster_summary(&deployments, &instances, &nodes, 0);
@@ -991,15 +978,42 @@ pub fn build_density_demo(instance_count: usize, pool_size: usize) -> DensityDem
         connection_ratio: format!("{:.0}x fewer", docker_connections as f64 / pool_size as f64),
         binary_ratio: format!("{:.0}x smaller", 45.0_f64 / 8.0),
         stack_items: vec![
-            StackItem { label: "Application".into(), detail: "wastebin (pastebin)".into() },
-            StackItem { label: "Database".into(), detail: "PostgreSQL 16 via libpq FFI".into() },
-            StackItem { label: "Runtime".into(), detail: "wasm32-wasip2 (Wasmtime)".into() },
-            StackItem { label: "HTTP".into(), detail: "wasi:http/incoming-handler".into() },
-            StackItem { label: "DB Proxy".into(), detail: "Shared connection pool".into() },
-            StackItem { label: "TLS".into(), detail: "Host-terminated (transparent)".into() },
-            StackItem { label: "DNS".into(), detail: "WarpGrid DNS shim".into() },
-            StackItem { label: "Filesystem".into(), detail: "Virtual (proxy.conf, etc.)".into() },
-            StackItem { label: "Isolation".into(), detail: "Wasm sandbox + instance_id".into() },
+            StackItem {
+                label: "Application".into(),
+                detail: "wastebin (pastebin)".into(),
+            },
+            StackItem {
+                label: "Database".into(),
+                detail: "PostgreSQL 16 via libpq FFI".into(),
+            },
+            StackItem {
+                label: "Runtime".into(),
+                detail: "wasm32-wasip2 (Wasmtime)".into(),
+            },
+            StackItem {
+                label: "HTTP".into(),
+                detail: "wasi:http/incoming-handler".into(),
+            },
+            StackItem {
+                label: "DB Proxy".into(),
+                detail: "Shared connection pool".into(),
+            },
+            StackItem {
+                label: "TLS".into(),
+                detail: "Host-terminated (transparent)".into(),
+            },
+            StackItem {
+                label: "DNS".into(),
+                detail: "WarpGrid DNS shim".into(),
+            },
+            StackItem {
+                label: "Filesystem".into(),
+                detail: "Virtual (proxy.conf, etc.)".into(),
+            },
+            StackItem {
+                label: "Isolation".into(),
+                detail: "Wasm sandbox + instance_id".into(),
+            },
         ],
     }
 }
@@ -1026,7 +1040,9 @@ pub fn build_density_demo_live(store: &warpgrid_state::StateStore) -> DensityDem
         .filter(|i| i.status == warpgrid_state::InstanceStatus::Running)
         .count();
     let total_memory: u64 = instances.iter().map(|i| i.memory_bytes).sum();
-    let pool_size = spec.env.get("WARPGRID_POOL_SIZE")
+    let pool_size = spec
+        .env
+        .get("WARPGRID_POOL_SIZE")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(10);
 

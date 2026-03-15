@@ -491,7 +491,11 @@ mod tests {
         assert_eq!(first.len(), 1);
 
         let second = watcher.poll_once().await.unwrap();
-        assert_eq!(second.len(), 0, "second poll should return no new deployments");
+        assert_eq!(
+            second.len(),
+            0,
+            "second poll should return no new deployments"
+        );
     }
 
     #[tokio::test]
@@ -503,9 +507,15 @@ mod tests {
         insert_wasm_blob(&conn, "hash-2", b"wasm-2").await;
 
         // Deployment in our region.
-        insert_deployment(&conn, "dep-iad", "ns1", "app-iad", "hash-1", "iad", "active").await;
+        insert_deployment(
+            &conn, "dep-iad", "ns1", "app-iad", "hash-1", "iad", "active",
+        )
+        .await;
         // Deployment in a different region.
-        insert_deployment(&conn, "dep-sfo", "ns1", "app-sfo", "hash-2", "sfo", "active").await;
+        insert_deployment(
+            &conn, "dep-sfo", "ns1", "app-sfo", "hash-2", "sfo", "active",
+        )
+        .await;
 
         let mut watcher = DeploymentWatcher::new(conn, state, "iad".to_string());
         let new = watcher.poll_once().await.unwrap();
