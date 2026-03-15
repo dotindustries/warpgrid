@@ -485,6 +485,22 @@ impl BillingService {
             Self::Mock(mock) => mock.get_plan(customer_id).await,
         }
     }
+
+    /// Set the plan for a customer (used by webhook handlers).
+    pub async fn set_plan(&self, customer_id: &str, plan: Plan) {
+        match self {
+            Self::Active(_) => {
+                // In production with a live Stripe client, the plan is
+                // managed by Stripe subscriptions — this is a no-op.
+                debug!(
+                    customer_id = %customer_id,
+                    plan = ?plan,
+                    "stripe: set_plan is a no-op for live Stripe (subscription is source of truth)"
+                );
+            }
+            Self::Mock(mock) => mock.set_plan(customer_id, plan).await,
+        }
+    }
 }
 
 fn epoch_secs() -> u64 {

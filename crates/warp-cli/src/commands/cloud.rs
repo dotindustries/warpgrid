@@ -409,6 +409,45 @@ pub fn logs(deployment_id: &str, follow: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Verify DNS for a custom domain.
+pub fn domains_verify(domain: &str) -> anyhow::Result<()> {
+    let config = CloudConfig::load()?;
+    let api_key = config.require_api_key()?;
+
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/api/v1/cloud/domains/{}/verify",
+            config.api_url(),
+            domain
+        ))
+        .header("Authorization", format!("Bearer {api_key}"))
+        .send()
+        .context("Failed to connect to WarpGrid cloud")?;
+
+    if resp.status().is_success() {
+        let body: ApiResponse<serde_json::Value> = resp.json()?;
+        if let Some(data) = body.data {
+            let status = data
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("unknown");
+            println!("Domain '{}' verified successfully.", domain);
+            println!("  Status: {}", status);
+        } else {
+            println!("Domain '{}' verified.", domain);
+        }
+    } else {
+        let body: ApiResponse<()> = resp.json()?;
+        bail!(
+            "Verification failed: {}",
+            body.error.unwrap_or_else(|| "Unknown error".to_string())
+        );
+    }
+
+    Ok(())
+}
+
 /// Scale a deployment's instance count.
 pub fn scale(deployment_id: &str, min: u32, max: u32) -> anyhow::Result<()> {
     let config = CloudConfig::load()?;

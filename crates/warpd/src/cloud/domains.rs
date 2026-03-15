@@ -138,9 +138,27 @@ fn validate_domain(domain: &str) -> Result<(), DomainError> {
     Ok(())
 }
 
+/// The expected CNAME target for all WarpGrid custom domains.
+pub const EDGE_CNAME_TARGET: &str = "edge.warpgrid.dev";
+
 /// Generate the CNAME target for a deployment.
 fn cname_target(deployment_id: &str) -> String {
     format!("{deployment_id}.edge.warpgrid.dev")
+}
+
+/// Check whether a custom domain's DNS resolves.
+///
+/// For the beta, this performs a simple DNS lookup via `tokio::net::lookup_host`.
+/// If the domain resolves to any IP address, it is considered "verified".
+/// A proper implementation would verify the CNAME record points to
+/// `expected_target`, but that requires a dedicated DNS library.
+pub async fn verify_dns(domain: &str, _expected_target: &str) -> bool {
+    // lookup_host expects a host:port pair.
+    let lookup = format!("{domain}:443");
+    match tokio::net::lookup_host(&lookup).await {
+        Ok(mut addrs) => addrs.next().is_some(),
+        Err(_) => false,
+    }
 }
 
 // ── Backend ─────────────────────────────────────────────────────

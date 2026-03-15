@@ -105,6 +105,20 @@ enum Commands {
         #[arg(long)]
         api_url: Option<String>,
     },
+    /// Manage custom domains.
+    Domains {
+        #[command(subcommand)]
+        action: DomainsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DomainsAction {
+    /// Verify DNS configuration for a custom domain.
+    Verify {
+        /// The domain to verify (e.g. app.example.com).
+        domain: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -183,5 +197,10 @@ fn main() -> anyhow::Result<()> {
         Commands::Ping { api_url } => {
             commands::cloud::platform_status(api_url.as_deref())
         }
+        Commands::Domains { action } => match action {
+            DomainsAction::Verify { domain } => {
+                commands::cloud::domains_verify(&domain)
+            }
+        },
     }
 }

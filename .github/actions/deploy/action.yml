@@ -29,10 +29,24 @@ runs:
     - name: Install warp CLI
       shell: bash
       run: |
-        # For now, build from source. In production, download prebuilt binary.
-        echo "Installing warp CLI..."
-        cargo install --path crates/warp-cli --root $HOME/.local
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        ARCH=$(uname -m)
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        case "${OS}-${ARCH}" in
+          linux-x86_64)  BINARY="warp-linux-x64" ;;
+          linux-aarch64) BINARY="warp-linux-arm64" ;;
+          darwin-x86_64) BINARY="warp-darwin-x64" ;;
+          darwin-arm64)  BINARY="warp-darwin-arm64" ;;
+          *) echo "Unsupported: ${OS}-${ARCH}"; exit 1 ;;
+        esac
+        # Try prebuilt binary first, fall back to cargo install
+        if curl -fsSL "https://github.com/dotindustries/warpgrid/releases/latest/download/${BINARY}" -o /usr/local/bin/warp 2>/dev/null; then
+          chmod +x /usr/local/bin/warp
+          echo "Installed prebuilt warp CLI"
+        else
+          echo "Prebuilt not available, building from source..."
+          cargo install --path crates/warp-cli --root $HOME/.local
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        fi
     - name: Configure credentials
       shell: bash
       run: |

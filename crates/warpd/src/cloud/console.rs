@@ -10,14 +10,16 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Multipart, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::Router;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
-use super::routes::CloudState;
+use super::routes::{push_log, CloudState, LogEntry};
+use super::tenants;
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -35,7 +37,8 @@ pub fn console_router(state: CloudState) -> Router {
     Router::new()
         .route("/console/", get(console_overview))
         .route("/console/deployments", get(console_deployments))
-        .route("/console/deploy", get(console_deploy))
+        .route("/console/deploy", get(console_deploy).post(console_deploy_submit))
+        .route("/console/logs/{deployment_id}", get(console_logs))
         .route("/console/teams", get(console_teams))
         .route("/console/settings", get(console_settings))
         .route("/console/login", get(console_login_page))
@@ -274,6 +277,7 @@ async fn console_deployments(
   <td>{running} / {max}</td>
   <td class="mono text-muted">{source}</td>
   <td>
+    <a href="/console/logs/{id}" class="btn" style="padding:4px 10px;font-size:11px;margin-right:4px;background:#1e2030;color:#94a3b8;border:1px solid #2a2d3a">View Logs</a>
     <a href="/console/deploy" class="btn btn-primary" style="padding:4px 10px;font-size:11px;margin-right:4px">Redeploy</a>
     <form method="POST" action="/api/v1/cloud/deploy/{id}" style="display:inline">
       <button type="submit" class="btn btn-danger" style="padding:4px 10px;font-size:11px">Delete</button>
@@ -328,16 +332,27 @@ async fn console_deploy(
     headers: HeaderMap,
 ) -> Result<Html<String>, Redirect> {
     let user = require_user(&headers, &state)?;
+    Ok(Html(render_deploy_page(&user, None)))
+}
+
+fn render_deploy_page(user: &super::auth::User, error: Option<&str>) -> String {
+    let error_banner = match error {
+        Some(msg) => format!(
+            r#"<div style="background:#7f1d1d20;border:1px solid #f8717140;border-radius:6px;padding:10px 14px;margin-bottom:16px;color:#f87171;font-size:13px">{msg}</div>"#,
+        ),
+        None => String::new(),
+    };
 
     let content = format!(
         r#"<h2>Deploy</h2>
 <div class="card">
   <h3>Deploy a Wasm Component</h3>
+  {error_banner}
   <p class="text-muted" style="margin-bottom:20px;font-size:14px">
-    Upload a compiled <code>.wasm</code> component or provide a URL to deploy.
+    Upload a compiled <code>.wasm</code> component to deploy.
     Deployments run in namespace <span class="mono" style="color:#818cf8">{namespace}</span>.
   </p>
-  <form method="POST" action="/api/v1/cloud/deploy" enctype="multipart/form-data">
+  <form method="POST" action="/console/deploy" enctype="multipart/form-data">
     <div class="grid-2">
       <div>
         <div class="form-group">
@@ -345,41 +360,315 @@ async fn console_deploy(
           <input type="text" name="name" placeholder="my-app" required>
         </div>
         <div class="form-group">
-          <label>Wasm Source URL</label>
-          <input type="url" name="source_url" placeholder="https://example.com/app.wasm">
+          <label>Region</label>
+          <select name="region" style="background:#1e2030;border:1px solid #2a2d3a;border-radius:6px;padding:10px 14px;color:#e2e8f0;font-size:14px;width:100%">
+            <option value="iad" selected>iad (US East)</option>
+            <option value="lax">lax (US West)</option>
+            <option value="ams">ams (Europe)</option>
+          </select>
         </div>
         <div class="form-group">
-          <label>Or Upload .wasm File</label>
-          <input type="file" name="wasm_file" accept=".wasm" style="padding:8px">
+          <label>Upload .wasm File</label>
+          <input type="file" name="wasm" accept=".wasm" style="padding:8px" required>
         </div>
       </div>
       <div>
         <div class="form-group">
-          <label>Min Instances</label>
-          <input type="number" name="min_instances" value="1" min="0" max="10">
+          <label>Max Wasm Size</label>
+          <div class="mono text-muted" style="padding:10px 0;font-size:13px">{max_wasm_size}</div>
         </div>
         <div class="form-group">
           <label>Max Instances</label>
-          <input type="number" name="max_instances" value="3" min="1" max="{max_per_deployment}">
-        </div>
-        <div class="form-group">
-          <label>Memory Limit</label>
-          <input type="text" name="memory" value="64MB" placeholder="64MB">
+          <div class="mono text-muted" style="padding:10px 0;font-size:13px">{max_per_deployment}</div>
         </div>
       </div>
-    </div>
-    <div class="form-group">
-      <label>Environment Variables (KEY=VALUE, one per line)</label>
-      <textarea name="env_vars" rows="3" placeholder="DATABASE_URL=postgres://..."></textarea>
     </div>
     <button type="submit" class="btn btn-primary">Deploy</button>
   </form>
 </div>"#,
         namespace = user.namespace,
         max_per_deployment = user.quota.max_instances_per_deployment,
+        max_wasm_size = format_bytes(user.quota.max_wasm_size_bytes),
     );
 
-    Ok(Html(page_shell("Deploy", "deploy", &user.email, &content)))
+    page_shell("Deploy", "deploy", &user.email, &content)
+}
+
+async fn console_deploy_submit(
+    State(state): State<ConsoleState>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<impl IntoResponse, Redirect> {
+    let user = require_user(&headers, &state)?;
+
+    let mut name: Option<String> = None;
+    let mut region: Option<String> = None;
+    let mut wasm_bytes: Option<Vec<u8>> = None;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "name" => {
+                name = field.text().await.ok().map(|s| s.trim().to_string());
+            }
+            "region" => {
+                region = field.text().await.ok().map(|s| s.trim().to_string());
+            }
+            "wasm" => {
+                wasm_bytes = field.bytes().await.ok().map(|b| b.to_vec());
+            }
+            _ => {}
+        }
+    }
+
+    let deploy_name = match &name {
+        Some(n) if !n.is_empty() => n.clone(),
+        _ => {
+            return Ok(deploy_error_response(&user, "Deployment name is required"));
+        }
+    };
+
+    let region = region
+        .filter(|r| !r.is_empty())
+        .unwrap_or_else(|| "iad".to_string());
+
+    let wasm = match &wasm_bytes {
+        Some(b) if !b.is_empty() => b,
+        _ => {
+            return Ok(deploy_error_response(&user, "A .wasm file is required"));
+        }
+    };
+
+    let wasm_size = wasm.len() as u64;
+    if wasm_size > user.quota.max_wasm_size_bytes {
+        return Ok(deploy_error_response(
+            &user,
+            &format!(
+                "Wasm file too large ({}, max {})",
+                format_bytes(wasm_size),
+                format_bytes(user.quota.max_wasm_size_bytes),
+            ),
+        ));
+    }
+
+    // Compute SHA-256 hash of the wasm bytes.
+    let mut hasher = Sha256::new();
+    hasher.update(wasm);
+    let wasm_hash = hex::encode(hasher.finalize());
+
+    let deployment_id = tenants::scoped_deployment_id(&user.namespace, &deploy_name);
+
+    // Check for duplicate deployment name.
+    let existing = state.cloud_db.query(
+        "SELECT id FROM cloud_deployments WHERE id = ?",
+        libsql::params![deployment_id.clone()],
+    ).await;
+    if let Ok(mut rows) = existing {
+        if rows.next().await.ok().flatten().is_some() {
+            return Ok(deploy_error_response(
+                &user,
+                &format!("Deployment '{}' already exists", deploy_name),
+            ));
+        }
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    // Store Wasm blob in Turso.
+    if let Err(e) = state.cloud_db.execute(
+        "INSERT OR IGNORE INTO cloud_wasm_blobs (hash, wasm, size_bytes, uploaded_at) VALUES (?, ?, ?, ?)",
+        libsql::params![wasm_hash.clone(), wasm.clone(), wasm_size as i64, now],
+    ).await {
+        return Ok(deploy_error_response(
+            &user,
+            &format!("Failed to store Wasm blob: {e}"),
+        ));
+    }
+
+    // Create deployment spec.
+    let spec = serde_json::json!({
+        "trigger": {"type": "http", "port": 8080},
+        "instances": {"min": 1, "max": 5},
+        "resources": {"memory_bytes": 67108864, "cpu_weight": 100},
+        "shims": {},
+        "env": {},
+    });
+
+    // Store deployment in Turso.
+    if let Err(e) = state.cloud_db.execute(
+        "INSERT INTO cloud_deployments (id, namespace, name, wasm_hash, region, status, spec_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)",
+        libsql::params![
+            deployment_id.clone(),
+            user.namespace.clone(),
+            deploy_name.clone(),
+            wasm_hash.clone(),
+            region.clone(),
+            spec.to_string(),
+            now,
+            now
+        ],
+    ).await {
+        return Ok(deploy_error_response(
+            &user,
+            &format!("Failed to create deployment: {e}"),
+        ));
+    }
+
+    // Mirror to local redb state store for dashboard compatibility.
+    let redb_spec = warpgrid_state::DeploymentSpec {
+        id: deployment_id.clone(),
+        namespace: user.namespace.clone(),
+        name: deploy_name.clone(),
+        source: format!("turso://{}", wasm_hash),
+        trigger: warpgrid_state::TriggerConfig::Http { port: Some(8080) },
+        instances: warpgrid_state::InstanceConstraints { min: 1, max: 5 },
+        resources: warpgrid_state::ResourceLimits {
+            memory_bytes: 64 * 1024 * 1024,
+            cpu_weight: 100,
+        },
+        scaling: None,
+        health: None,
+        shims: warpgrid_state::ShimsEnabled::default(),
+        env: std::collections::HashMap::new(),
+        created_at: now as u64,
+        updated_at: now as u64,
+    };
+    let _ = state.state_store.put_deployment(&redb_spec);
+
+    // Push log entry.
+    push_log(&state.logs, LogEntry {
+        timestamp: now,
+        deployment_id: deployment_id.clone(),
+        level: "info".to_string(),
+        message: format!(
+            "Deployment created via console: {} (region={}, size={} bytes)",
+            deploy_name, region, wasm_size
+        ),
+    }).await;
+
+    // Redirect to deployments page on success.
+    Ok((
+        StatusCode::SEE_OTHER,
+        {
+            let mut h = HeaderMap::new();
+            h.insert("location", "/console/deployments".parse().expect("valid location"));
+            h
+        },
+        Html(String::new()),
+    ))
+}
+
+fn deploy_error_response(
+    user: &super::auth::User,
+    msg: &str,
+) -> (StatusCode, HeaderMap, Html<String>) {
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        HeaderMap::new(),
+        Html(render_deploy_page(user, Some(msg))),
+    )
+}
+
+// ── Log viewer handler ─────────────────────────────────────────
+
+async fn console_logs(
+    State(state): State<ConsoleState>,
+    headers: HeaderMap,
+    Path(deployment_id): Path<String>,
+) -> Result<Html<String>, Redirect> {
+    let user = require_user(&headers, &state)?;
+
+    let buf = state.logs.read().await;
+    let entries: Vec<&LogEntry> = buf
+        .iter()
+        .filter(|e| e.deployment_id == deployment_id)
+        .collect();
+
+    let log_lines: String = if entries.is_empty() {
+        r#"<div style="color:#64748b;padding:16px">No log entries for this deployment.</div>"#
+            .to_string()
+    } else {
+        entries
+            .iter()
+            .map(|e| {
+                let ts = chrono::DateTime::from_timestamp(e.timestamp, 0)
+                    .map(|dt| dt.format("%H:%M:%S").to_string())
+                    .unwrap_or_else(|| "??:??:??".to_string());
+                let level_color = match e.level.as_str() {
+                    "error" => "#f87171",
+                    "warn" => "#fbbf24",
+                    _ => "#34d399",
+                };
+                format!(
+                    r#"<div style="padding:4px 0;border-bottom:1px solid #1e2030"><span style="color:#64748b">[{ts}]</span> <span style="color:{level_color}">[{level}]</span> {message}</div>"#,
+                    level = e.level.to_uppercase(),
+                    message = html_escape(&e.message),
+                )
+            })
+            .collect()
+    };
+
+    let content = format!(
+        r#"<div class="flex justify-between items-center mb-4">
+  <h2>Logs: <span class="mono" style="color:#818cf8">{deployment_id}</span></h2>
+  <a href="/console/deployments" class="btn btn-primary" style="font-size:12px">Back to Deployments</a>
+</div>
+<div class="card" style="font-family:'SF Mono','Fira Code',monospace;font-size:13px;max-height:70vh;overflow-y:auto;background:#0a0c12">
+  {log_lines}
+</div>
+<p class="text-muted" style="margin-top:8px;font-size:11px">Auto-refreshes every 5 seconds</p>"#,
+    );
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="5">
+  <title>Logs: {deployment_id} — WarpGrid Console</title>
+  <style>{CSS}</style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>WarpGrid</h1>
+        <span>Cloud Console</span>
+      </div>
+      <nav>
+        {nav_overview}
+        {nav_deployments}
+        {nav_deploy}
+        {nav_teams}
+        {nav_settings}
+      </nav>
+      <div class="footer">
+        <div style="margin-bottom:8px;font-size:12px;color:#94a3b8">{user_email}</div>
+        <form method="POST" action="/console/logout" style="display:inline">
+          <button type="submit" class="btn btn-danger" style="padding:4px 10px;font-size:11px">Logout</button>
+        </form>
+        <div style="margin-top:12px">Served by WarpGrid</div>
+      </div>
+    </aside>
+    <main class="main">
+      {content}
+    </main>
+  </div>
+</body>
+</html>"#,
+        nav_overview = nav_link("/console/", "Overview", "logs", "overview"),
+        nav_deployments = nav_link("/console/deployments", "Deployments", "logs", "deployments"),
+        nav_deploy = nav_link("/console/deploy", "Deploy", "logs", "deploy"),
+        nav_teams = nav_link("/console/teams", "Teams", "logs", "teams"),
+        nav_settings = nav_link("/console/settings", "Settings", "logs", "settings"),
+        user_email = user.email,
+    );
+
+    Ok(Html(html))
 }
 
 async fn console_teams(
@@ -674,6 +963,13 @@ fn truncate_source(source: &str) -> String {
     } else {
         source.to_string()
     }
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn format_bytes(bytes: u64) -> String {

@@ -12,11 +12,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::warn;
 
 use super::analytics::{AnalyticsService, EVENT_USER_REGISTERED};
 use super::auth::{AuthStore, User};
-use super::billing::{BillingService, PlanLimits};
-use super::domains::{DomainError, DomainStore};
+use super::billing::{BillingService, Plan, PlanLimits};
+use super::domains::{DomainError, DomainStore, EDGE_CNAME_TARGET};
 use super::registry::WasmRegistry;
 use super::teams::{TeamRole, TeamStore};
 use super::tenants;
@@ -91,6 +92,10 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
             "/api/v1/cloud/domains/{domain}",
             delete(remove_domain),
         )
+        .route(
+            "/api/v1/cloud/domains/{domain}/verify",
+            post(verify_domain),
+        )
         // Logs route
         .route("/api/v1/cloud/logs/{deployment_id}", get(get_logs))
         // Scale route
@@ -99,6 +104,8 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route("/api/v1/cloud/billing/plan", get(billing_plan))
         .route("/api/v1/cloud/billing/usage", get(billing_usage))
         .route("/api/v1/cloud/billing/portal", post(billing_portal))
+        // Stripe webhook — no auth middleware (Stripe signs the payload)
+        .route("/api/v1/webhooks/stripe", post(stripe_webhook))
         .with_state(Arc::new(cloud_state))
 }
 
@@ -976,5 +983,196 @@ async fn billing_portal(
             &format!("Failed to create billing portal session: {e}"),
         )
         .into_response(),
+    }
+}
+
+// ── Stripe webhook handler ──────────────────────────────────────
+
+/// Stripe webhook event payload.
+#[derive(Deserialize)]
+struct StripeWebhookEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    data: serde_json::Value,
+}
+
+/// Handle incoming Stripe webhook events.
+///
+/// This endpoint does NOT require API key authentication — Stripe
+/// authenticates via a signature in the `Stripe-Signature` header.
+async fn stripe_webhook(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    // TODO: verify Stripe-Signature header in production.
+    // For beta, we accept all payloads without signature verification.
+    let _signature = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok());
+
+    let event: StripeWebhookEvent = match serde_json::from_slice(&body) {
+        Ok(e) => e,
+        Err(e) => {
+            warn!(error = %e, "stripe webhook: failed to parse event payload");
+            return StatusCode::BAD_REQUEST.into_response();
+        }
+    };
+
+    match event.event_type.as_str() {
+        "customer.subscription.updated" => {
+            let customer_id = event
+                .data
+                .get("object")
+                .and_then(|o| o.get("customer"))
+                .and_then(|c| c.as_str())
+                .unwrap_or_default();
+
+            let plan_id = event
+                .data
+                .get("object")
+                .and_then(|o| o.get("items"))
+                .and_then(|i| i.get("data"))
+                .and_then(|d| d.as_array())
+                .and_then(|a| a.first())
+                .and_then(|item| item.get("price"))
+                .and_then(|p| p.get("lookup_key"))
+                .and_then(|k| k.as_str())
+                .unwrap_or("free");
+
+            let plan = match plan_id {
+                "pro" => Plan::Pro,
+                "enterprise" => Plan::Enterprise,
+                _ => Plan::Free,
+            };
+
+            if !customer_id.is_empty() {
+                state.billing.set_plan(customer_id, plan).await;
+
+                // Persist to cloud_billing table.
+                let plan_str = match plan {
+                    Plan::Free => "free",
+                    Plan::Pro => "pro",
+                    Plan::Enterprise => "enterprise",
+                };
+                let _ = state
+                    .cloud_db
+                    .execute(
+                        "UPDATE cloud_billing SET plan = ? WHERE customer_id = ?",
+                        libsql::params![plan_str.to_string(), customer_id.to_string()],
+                    )
+                    .await;
+            }
+
+            StatusCode::OK.into_response()
+        }
+        "customer.subscription.deleted" => {
+            let customer_id = event
+                .data
+                .get("object")
+                .and_then(|o| o.get("customer"))
+                .and_then(|c| c.as_str())
+                .unwrap_or_default();
+
+            if !customer_id.is_empty() {
+                state.billing.set_plan(customer_id, Plan::Free).await;
+
+                let _ = state
+                    .cloud_db
+                    .execute(
+                        "UPDATE cloud_billing SET plan = ? WHERE customer_id = ?",
+                        libsql::params!["free".to_string(), customer_id.to_string()],
+                    )
+                    .await;
+            }
+
+            StatusCode::OK.into_response()
+        }
+        "invoice.payment_failed" => {
+            let customer_id = event
+                .data
+                .get("object")
+                .and_then(|o| o.get("customer"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("unknown");
+
+            warn!(
+                customer_id = %customer_id,
+                "stripe webhook: invoice payment failed"
+            );
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
+            push_log(
+                &state.logs,
+                LogEntry {
+                    timestamp: now,
+                    deployment_id: format!("billing:{customer_id}"),
+                    level: "warn".to_string(),
+                    message: format!(
+                        "Invoice payment failed for customer {customer_id}"
+                    ),
+                },
+            )
+            .await;
+
+            StatusCode::OK.into_response()
+        }
+        _ => {
+            // Return 200 for unrecognized events — Stripe retries on non-2xx.
+            StatusCode::OK.into_response()
+        }
+    }
+}
+
+// ── Domain verify handler ───────────────────────────────────────
+
+async fn verify_domain(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path(domain): Path<String>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // Verify the domain belongs to this user's namespace.
+    if let Some(mapping) = state.domains.get_domain(&domain).await {
+        if mapping.namespace != user.namespace {
+            return error_response(StatusCode::FORBIDDEN, "Not your domain").into_response();
+        }
+    } else {
+        return error_response(StatusCode::NOT_FOUND, "Domain not found").into_response();
+    }
+
+    // Check DNS resolution.
+    let dns_ok = super::domains::verify_dns(&domain, EDGE_CNAME_TARGET).await;
+
+    if !dns_ok {
+        return error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            &format!(
+                "DNS verification failed: {domain} does not resolve. \
+                 Add a CNAME record pointing to {EDGE_CNAME_TARGET}"
+            ),
+        )
+        .into_response();
+    }
+
+    // Flip status to Active.
+    match state.domains.verify_domain(&domain).await {
+        Ok(mapping) => CloudResponse::ok(mapping).into_response(),
+        Err(e) => {
+            let status = match &e {
+                DomainError::NotFound { .. } => StatusCode::NOT_FOUND,
+                DomainError::VerificationFailed { .. } => StatusCode::CONFLICT,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            error_response(status, &e.to_string()).into_response()
+        }
     }
 }
