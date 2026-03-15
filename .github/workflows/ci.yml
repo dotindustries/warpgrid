@@ -13,7 +13,7 @@ env:
 jobs:
   check:
     name: Check & Test
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -29,7 +29,7 @@ jobs:
 
   wasi-libc:
     name: Build & Test wasi-libc
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
@@ -64,7 +64,7 @@ jobs:
 
   tinygo:
     name: Build & Verify TinyGo
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
@@ -105,7 +105,7 @@ jobs:
 
   componentize-js:
     name: Build & Verify ComponentizeJS
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
