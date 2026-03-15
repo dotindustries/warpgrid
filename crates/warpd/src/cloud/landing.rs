@@ -35,8 +35,7 @@ async fn pricing_page() -> Html<String> {
 }
 
 fn benchmarks_html() -> String {
-    format!(
-        r#"<!DOCTYPE html>
+    r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -90,12 +89,11 @@ fn benchmarks_html() -> String {
   </div>
 </body>
 </html>"#
-    )
+        .to_string()
 }
 
 fn pricing_html() -> String {
-    format!(
-        r#"<!DOCTYPE html>
+    r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -173,7 +171,7 @@ fn pricing_html() -> String {
   </div>
 </body>
 </html>"#
-    )
+        .to_string()
 }
 
 #[cfg(test)]
