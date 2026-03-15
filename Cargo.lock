@@ -4043,6 +4043,7 @@ dependencies = [
  "openraft",
  "rand",
  "redb",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",

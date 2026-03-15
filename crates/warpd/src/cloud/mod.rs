@@ -4,6 +4,7 @@
 //! for the hosted WarpGrid platform (`warpd cloud` mode).
 
 pub mod auth;
+pub mod provisioner;
 pub mod registry;
 pub mod routes;
 pub mod tenants;

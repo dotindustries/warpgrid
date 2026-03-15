@@ -15,9 +15,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use tokio::sync::watch;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::cloud::auth::AuthStore;
+use crate::cloud::provisioner::FlyProvisioner;
 use crate::cloud::registry::WasmRegistry;
 use crate::cloud::routes::{cloud_router, CloudState};
 
@@ -25,7 +26,7 @@ pub async fn run_cloud(
     api_port: u16,
     data_dir: PathBuf,
     _postgres_url: Option<String>,
-    _fly_api_token: Option<String>,
+    fly_api_token: Option<String>,
     _registry_bucket: String,
     edge_regions: String,
     metrics_interval: u64,
@@ -58,6 +59,29 @@ pub async fn run_cloud(
         .filter(|s| !s.is_empty())
         .collect();
     info!(?regions, "edge regions configured");
+
+    // Fly Machines provisioner (optional — only if FLY_API_TOKEN is set).
+    if let Some(ref token) = fly_api_token {
+        let provisioner = FlyProvisioner::new(token, "warpgrid-edge", "registry.fly.io/warpgrid:latest");
+        let control_plane_url = format!("http://localhost:{api_port}");
+        info!("Fly provisioner initialized, checking edge regions...");
+
+        match provisioner.provision_regions(&regions, &control_plane_url).await {
+            Ok(machines) => {
+                for m in &machines {
+                    info!(id = %m.id, region = %m.region, state = %m.state, "edge machine ready");
+                }
+                if machines.is_empty() {
+                    info!("all edge regions already provisioned");
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "edge provisioning failed (will retry on next deploy)");
+            }
+        }
+    } else {
+        info!("no FLY_API_TOKEN set — running in local-only mode (no edge provisioning)");
+    }
 
     // Metrics collector.
     let metrics = warpgrid_metrics::MetricsCollector::new(
