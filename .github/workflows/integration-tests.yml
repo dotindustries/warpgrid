@@ -8,6 +8,7 @@ on:
   schedule:
     # Nightly at 3am UTC — catches flaky regressions on main
     - cron: '0 3 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -148,6 +149,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+          --tmpfs /var/lib/postgresql/data
+
     steps:
       - uses: actions/checkout@v4
 
@@ -184,7 +201,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache wasm-tools
+        id: wasm-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-tools
+          key: wasm-tools-${{ runner.os }}-v1
+
       - name: Install wasm-tools
+        if: steps.wasm-tools-cache.outputs.cache-hit != 'true'
         run: cargo install wasm-tools
 
       - name: Cache ComponentizeJS
@@ -230,7 +255,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache wasm-tools
+        id: wasm-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-tools
+          key: wasm-tools-${{ runner.os }}-v1
+
       - name: Install wasm-tools
+        if: steps.wasm-tools-cache.outputs.cache-hit != 'true'
         run: cargo install wasm-tools
 
       - name: Cache ComponentizeJS
@@ -315,7 +348,15 @@ jobs:
         with:
           version: "v41.0.0"
 
+      - name: Cache wasm-tools
+        id: wasm-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-tools
+          key: wasm-tools-${{ runner.os }}-v1
+
       - name: Install wasm-tools
+        if: steps.wasm-tools-cache.outputs.cache-hit != 'true'
         run: cargo install wasm-tools
 
       - name: Cache ComponentizeJS
@@ -376,6 +417,14 @@ jobs:
           path: test-results/
           pattern: test-results-*
           merge-multiple: true
+
+      - name: Annotate trigger context
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "::notice::This run was triggered by the nightly schedule (cron). Failures may indicate flaky regressions."
+            echo "> **Nightly scheduled run** — failures here may indicate flaky regressions on main." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Summary
         run: |
