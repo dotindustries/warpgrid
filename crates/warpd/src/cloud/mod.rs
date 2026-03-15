@@ -7,4 +7,5 @@ pub mod auth;
 pub mod provisioner;
 pub mod registry;
 pub mod routes;
+pub mod teams;
 pub mod tenants;

@@ -21,6 +21,7 @@ use crate::cloud::auth::AuthStore;
 use crate::cloud::provisioner::FlyProvisioner;
 use crate::cloud::registry::WasmRegistry;
 use crate::cloud::routes::{cloud_router, CloudState};
+use crate::cloud::teams::TeamStore;
 
 pub async fn run_cloud(
     api_port: u16,
@@ -110,6 +111,7 @@ pub async fn run_cloud(
         auth,
         registry,
         state_store: state,
+        teams: TeamStore::new(),
     };
     let cloud_routes = cloud_router(cloud_state);
 

@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use super::auth::{AuthStore, User};
 use super::registry::WasmRegistry;
+use super::teams::{TeamRole, TeamStore};
 use super::tenants;
 
 /// Shared state for cloud API routes.
@@ -21,6 +22,7 @@ pub struct CloudState {
     pub auth: AuthStore,
     pub registry: WasmRegistry,
     pub state_store: warpgrid_state::StateStore,
+    pub teams: TeamStore,
 }
 
 /// Build the cloud API router with all routes.
@@ -31,6 +33,13 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route("/api/v1/cloud/deploy", post(create_deployment))
         .route("/api/v1/cloud/deploy/{id}", delete(delete_deployment))
         .route("/api/v1/cloud/status", get(platform_status))
+        // Team management routes
+        .route("/api/v1/cloud/teams", get(list_teams).post(create_team))
+        .route("/api/v1/cloud/teams/{id}/members", post(add_team_member))
+        .route(
+            "/api/v1/cloud/teams/{id}/members/{user_id}",
+            delete(remove_team_member),
+        )
         .with_state(Arc::new(cloud_state))
 }
 
@@ -244,4 +253,121 @@ async fn platform_status() -> impl IntoResponse {
         "version": env!("CARGO_PKG_VERSION"),
         "mode": "cloud",
     }))
+}
+
+// ── Team request/response types ─────────────────────────────────
+
+#[derive(Deserialize)]
+struct CreateTeamRequest {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct AddMemberRequest {
+    user_id: String,
+    #[serde(default = "default_member_role")]
+    role: TeamRole,
+}
+
+fn default_member_role() -> TeamRole {
+    TeamRole::Member
+}
+
+// ── Team route handlers ─────────────────────────────────────────
+
+async fn create_team(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateTeamRequest>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    if body.name.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "Team name is required").into_response();
+    }
+
+    let team = state.teams.create_team(&body.name, &user.id);
+
+    (StatusCode::CREATED, CloudResponse::ok(team)).into_response()
+}
+
+async fn list_teams(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    let teams = state.teams.list_teams_for_user(&user.id);
+    CloudResponse::ok(teams).into_response()
+}
+
+async fn add_team_member(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(body): Json<AddMemberRequest>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // Only admins and owners can add members.
+    if !state
+        .teams
+        .check_permission(&team_id, &user.id, TeamRole::Admin)
+    {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            "Only team admins and owners can add members",
+        )
+        .into_response();
+    }
+
+    match state.teams.add_member(&team_id, &body.user_id, body.role) {
+        Ok(team) => (StatusCode::CREATED, CloudResponse::ok(team)).into_response(),
+        Err(e) => error_response(StatusCode::BAD_REQUEST, &e.to_string()).into_response(),
+    }
+}
+
+async fn remove_team_member(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path((team_id, member_user_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // Only admins and owners can remove members.
+    if !state
+        .teams
+        .check_permission(&team_id, &user.id, TeamRole::Admin)
+    {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            "Only team admins and owners can remove members",
+        )
+        .into_response();
+    }
+
+    match state.teams.remove_member(&team_id, &member_user_id) {
+        Ok(team) => CloudResponse::ok(team).into_response(),
+        Err(e) => {
+            let status = match &e {
+                super::teams::TeamError::CannotRemoveOwner => StatusCode::FORBIDDEN,
+                super::teams::TeamError::TeamNotFound { .. } => StatusCode::NOT_FOUND,
+                super::teams::TeamError::UserNotMember { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            error_response(status, &e.to_string()).into_response()
+        }
+    }
 }
