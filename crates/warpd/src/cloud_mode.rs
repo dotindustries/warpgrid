@@ -142,7 +142,7 @@ pub async fn run_cloud(
 
     // ── Billing ──────────────────────────────────────────────────
 
-    let billing = BillingService::from_env(stripe_secret_key);
+    let billing = BillingService::from_env_with_libsql(stripe_secret_key, cloud_conn.clone());
     match &billing {
         BillingService::Active(_) => info!("Stripe billing enabled"),
         BillingService::Mock(_) => info!("Stripe billing disabled (mock mode, no STRIPE_SECRET_KEY)"),
@@ -162,10 +162,10 @@ pub async fn run_cloud(
         auth,
         registry,
         state_store: state,
-        cloud_db: cloud_conn,
-        teams: TeamStore::new(),
+        cloud_db: cloud_conn.clone(),
+        teams: TeamStore::with_libsql(cloud_conn.clone()),
         analytics,
-        domains: DomainStore::new(),
+        domains: DomainStore::with_libsql(cloud_conn.clone()),
         billing,
         usage,
     };

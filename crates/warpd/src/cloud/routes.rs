@@ -539,7 +539,7 @@ async fn create_team(
         return error_response(StatusCode::BAD_REQUEST, "Team name is required").into_response();
     }
 
-    let team = state.teams.create_team(&body.name, &user.id);
+    let team = state.teams.create_team(&body.name, &user.id).await;
 
     (StatusCode::CREATED, CloudResponse::ok(team)).into_response()
 }
@@ -553,7 +553,7 @@ async fn list_teams(
         Err((status, msg)) => return error_response(status, &msg).into_response(),
     };
 
-    let teams = state.teams.list_teams_for_user(&user.id);
+    let teams = state.teams.list_teams_for_user(&user.id).await;
     CloudResponse::ok(teams).into_response()
 }
 
@@ -572,6 +572,7 @@ async fn add_team_member(
     if !state
         .teams
         .check_permission(&team_id, &user.id, TeamRole::Admin)
+        .await
     {
         return error_response(
             StatusCode::FORBIDDEN,
@@ -580,7 +581,7 @@ async fn add_team_member(
         .into_response();
     }
 
-    match state.teams.add_member(&team_id, &body.user_id, body.role) {
+    match state.teams.add_member(&team_id, &body.user_id, body.role).await {
         Ok(team) => (StatusCode::CREATED, CloudResponse::ok(team)).into_response(),
         Err(e) => error_response(StatusCode::BAD_REQUEST, &e.to_string()).into_response(),
     }
@@ -600,6 +601,7 @@ async fn remove_team_member(
     if !state
         .teams
         .check_permission(&team_id, &user.id, TeamRole::Admin)
+        .await
     {
         return error_response(
             StatusCode::FORBIDDEN,
@@ -608,7 +610,7 @@ async fn remove_team_member(
         .into_response();
     }
 
-    match state.teams.remove_member(&team_id, &member_user_id) {
+    match state.teams.remove_member(&team_id, &member_user_id).await {
         Ok(team) => CloudResponse::ok(team).into_response(),
         Err(e) => {
             let status = match &e {
@@ -645,6 +647,7 @@ async fn add_domain(
     match state
         .domains
         .add_domain(&body.domain, &body.deployment_id, &user.namespace)
+        .await
     {
         Ok(resp) => (StatusCode::CREATED, CloudResponse::ok(resp)).into_response(),
         Err(e) => {
@@ -667,7 +670,7 @@ async fn list_domains(
         Err((status, msg)) => return error_response(status, &msg).into_response(),
     };
 
-    let domains = state.domains.list_domains_for_namespace(&user.namespace);
+    let domains = state.domains.list_domains_for_namespace(&user.namespace).await;
     CloudResponse::ok(domains).into_response()
 }
 
@@ -682,13 +685,13 @@ async fn remove_domain(
     };
 
     // Verify the domain belongs to this user's namespace.
-    if let Some(mapping) = state.domains.get_domain(&domain) {
+    if let Some(mapping) = state.domains.get_domain(&domain).await {
         if mapping.namespace != user.namespace {
             return error_response(StatusCode::FORBIDDEN, "Not your domain").into_response();
         }
     }
 
-    match state.domains.remove_domain(&domain) {
+    match state.domains.remove_domain(&domain).await {
         Ok(()) => CloudResponse::ok("Domain removed").into_response(),
         Err(e) => {
             let status = match &e {

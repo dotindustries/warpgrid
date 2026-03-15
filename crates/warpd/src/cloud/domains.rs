@@ -4,6 +4,10 @@
 //! WarpGrid deployments. Each domain goes through a verification flow:
 //! Pending -> Active (or Failed). Users receive CNAME instructions when
 //! adding a domain.
+//!
+//! Supports two backends:
+//! - In-memory (for tests and development without persistence)
+//! - libSQL (for production — persists across restarts, edge-replicable)
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -62,6 +66,7 @@ pub enum DomainError {
     AlreadyExists { domain: String },
     NotFound { domain: String },
     VerificationFailed { domain: String },
+    Storage(String),
 }
 
 impl fmt::Display for DomainError {
@@ -75,6 +80,7 @@ impl fmt::Display for DomainError {
             Self::VerificationFailed { domain } => {
                 write!(f, "verification failed for domain: {domain}")
             }
+            Self::Storage(msg) => write!(f, "storage error: {msg}"),
         }
     }
 }
@@ -137,21 +143,43 @@ fn cname_target(deployment_id: &str) -> String {
     format!("{deployment_id}.edge.warpgrid.dev")
 }
 
-/// In-memory domain store. Will be replaced with Postgres in production.
+// ── Backend ─────────────────────────────────────────────────────
+
+/// Domain store with pluggable backend (in-memory or libSQL).
 #[derive(Clone)]
 pub struct DomainStore {
-    domains: Arc<RwLock<HashMap<String, DomainMapping>>>,
+    backend: DomainBackend,
+}
+
+#[derive(Clone)]
+enum DomainBackend {
+    Memory {
+        domains: Arc<RwLock<HashMap<String, DomainMapping>>>,
+    },
+    LibSql {
+        conn: libsql::Connection,
+    },
 }
 
 impl DomainStore {
+    /// Create an in-memory domain store (for tests and dev without persistence).
     pub fn new() -> Self {
         Self {
-            domains: Arc::new(RwLock::new(HashMap::new())),
+            backend: DomainBackend::Memory {
+                domains: Arc::new(RwLock::new(HashMap::new())),
+            },
+        }
+    }
+
+    /// Create a persistent domain store backed by libSQL.
+    pub fn with_libsql(conn: libsql::Connection) -> Self {
+        Self {
+            backend: DomainBackend::LibSql { conn },
         }
     }
 
     /// Add a custom domain mapping. Returns the mapping and DNS instructions.
-    pub fn add_domain(
+    pub async fn add_domain(
         &self,
         domain: &str,
         deployment_id: &str,
@@ -160,85 +188,257 @@ impl DomainStore {
         let domain = domain.trim().to_lowercase();
         validate_domain(&domain)?;
 
-        let mut domains = self.domains.write().unwrap();
+        match &self.backend {
+            DomainBackend::Memory { domains } => {
+                let mut store = domains.write().unwrap();
 
-        if domains.contains_key(&domain) {
-            return Err(DomainError::AlreadyExists {
-                domain: domain.clone(),
-            });
+                if store.contains_key(&domain) {
+                    return Err(DomainError::AlreadyExists {
+                        domain: domain.clone(),
+                    });
+                }
+
+                let mapping = DomainMapping {
+                    domain: domain.clone(),
+                    deployment_id: deployment_id.to_string(),
+                    namespace: namespace.to_string(),
+                    status: DomainStatus::Pending,
+                    created_at: epoch_secs(),
+                    verified_at: None,
+                };
+
+                store.insert(domain.clone(), mapping.clone());
+
+                let dns = DnsInstructions {
+                    record_type: "CNAME".to_string(),
+                    name: domain,
+                    target: cname_target(deployment_id),
+                };
+
+                Ok(AddDomainResponse { mapping, dns })
+            }
+            DomainBackend::LibSql { conn } => {
+                // Check if domain already exists.
+                let existing = self.get_domain(&domain).await;
+                if existing.is_some() {
+                    return Err(DomainError::AlreadyExists {
+                        domain: domain.clone(),
+                    });
+                }
+
+                let now = epoch_secs();
+                let mapping = DomainMapping {
+                    domain: domain.clone(),
+                    deployment_id: deployment_id.to_string(),
+                    namespace: namespace.to_string(),
+                    status: DomainStatus::Pending,
+                    created_at: now,
+                    verified_at: None,
+                };
+
+                conn.execute(
+                    "INSERT INTO cloud_domains (domain, deployment_id, namespace, status, created_at, verified_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    libsql::params![
+                        domain.clone(),
+                        deployment_id.to_string(),
+                        namespace.to_string(),
+                        "pending".to_string(),
+                        now as i64,
+                        libsql::Value::Null
+                    ],
+                )
+                .await
+                .map_err(|e| DomainError::Storage(e.to_string()))?;
+
+                let dns = DnsInstructions {
+                    record_type: "CNAME".to_string(),
+                    name: domain,
+                    target: cname_target(deployment_id),
+                };
+
+                Ok(AddDomainResponse { mapping, dns })
+            }
         }
-
-        let mapping = DomainMapping {
-            domain: domain.clone(),
-            deployment_id: deployment_id.to_string(),
-            namespace: namespace.to_string(),
-            status: DomainStatus::Pending,
-            created_at: epoch_secs(),
-            verified_at: None,
-        };
-
-        domains.insert(domain.clone(), mapping.clone());
-
-        let dns = DnsInstructions {
-            record_type: "CNAME".to_string(),
-            name: domain,
-            target: cname_target(deployment_id),
-        };
-
-        Ok(AddDomainResponse { mapping, dns })
     }
 
     /// Remove a custom domain mapping.
-    pub fn remove_domain(&self, domain: &str) -> Result<(), DomainError> {
+    pub async fn remove_domain(&self, domain: &str) -> Result<(), DomainError> {
         let domain = domain.trim().to_lowercase();
-        let mut domains = self.domains.write().unwrap();
 
-        if domains.remove(&domain).is_none() {
-            return Err(DomainError::NotFound {
-                domain: domain.clone(),
-            });
+        match &self.backend {
+            DomainBackend::Memory { domains } => {
+                let mut store = domains.write().unwrap();
+
+                if store.remove(&domain).is_none() {
+                    return Err(DomainError::NotFound {
+                        domain: domain.clone(),
+                    });
+                }
+
+                Ok(())
+            }
+            DomainBackend::LibSql { conn } => {
+                let affected = conn
+                    .execute(
+                        "DELETE FROM cloud_domains WHERE domain = ?",
+                        libsql::params![domain.clone()],
+                    )
+                    .await
+                    .map_err(|e| DomainError::Storage(e.to_string()))?;
+
+                if affected == 0 {
+                    return Err(DomainError::NotFound {
+                        domain: domain.clone(),
+                    });
+                }
+
+                Ok(())
+            }
         }
-
-        Ok(())
     }
 
     /// List all domains for a given namespace.
-    pub fn list_domains_for_namespace(&self, namespace: &str) -> Vec<DomainMapping> {
-        let domains = self.domains.read().unwrap();
-        domains
-            .values()
-            .filter(|m| m.namespace == namespace)
-            .cloned()
-            .collect()
+    pub async fn list_domains_for_namespace(&self, namespace: &str) -> Vec<DomainMapping> {
+        match &self.backend {
+            DomainBackend::Memory { domains } => {
+                let store = domains.read().unwrap();
+                store
+                    .values()
+                    .filter(|m| m.namespace == namespace)
+                    .cloned()
+                    .collect()
+            }
+            DomainBackend::LibSql { conn } => {
+                let mut rows = match conn
+                    .query(
+                        "SELECT domain, deployment_id, namespace, status, created_at, verified_at FROM cloud_domains WHERE namespace = ?",
+                        libsql::params![namespace.to_string()],
+                    )
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => return Vec::new(),
+                };
+
+                let mut result = Vec::new();
+                while let Ok(Some(row)) = rows.next().await {
+                    if let Some(mapping) = row_to_mapping(&row) {
+                        result.push(mapping);
+                    }
+                }
+
+                result
+            }
+        }
     }
 
     /// Get a domain mapping by domain name.
-    pub fn get_domain(&self, domain: &str) -> Option<DomainMapping> {
+    pub async fn get_domain(&self, domain: &str) -> Option<DomainMapping> {
         let domain = domain.trim().to_lowercase();
-        let domains = self.domains.read().unwrap();
-        domains.get(&domain).cloned()
+
+        match &self.backend {
+            DomainBackend::Memory { domains } => {
+                let store = domains.read().unwrap();
+                store.get(&domain).cloned()
+            }
+            DomainBackend::LibSql { conn } => {
+                let mut rows = conn
+                    .query(
+                        "SELECT domain, deployment_id, namespace, status, created_at, verified_at FROM cloud_domains WHERE domain = ?",
+                        libsql::params![domain],
+                    )
+                    .await
+                    .ok()?;
+
+                let row = rows.next().await.ok()??;
+                row_to_mapping(&row)
+            }
+        }
     }
 
     /// Mark a domain as verified (Active). Only pending domains can be verified.
-    pub fn verify_domain(&self, domain: &str) -> Result<DomainMapping, DomainError> {
+    pub async fn verify_domain(&self, domain: &str) -> Result<DomainMapping, DomainError> {
         let domain = domain.trim().to_lowercase();
-        let mut domains = self.domains.write().unwrap();
 
-        let mapping = domains.get_mut(&domain).ok_or_else(|| DomainError::NotFound {
-            domain: domain.clone(),
-        })?;
+        match &self.backend {
+            DomainBackend::Memory { domains } => {
+                let mut store = domains.write().unwrap();
 
-        if mapping.status != DomainStatus::Pending {
-            return Err(DomainError::VerificationFailed {
-                domain: domain.clone(),
-            });
+                let mapping =
+                    store
+                        .get_mut(&domain)
+                        .ok_or_else(|| DomainError::NotFound {
+                            domain: domain.clone(),
+                        })?;
+
+                if mapping.status != DomainStatus::Pending {
+                    return Err(DomainError::VerificationFailed {
+                        domain: domain.clone(),
+                    });
+                }
+
+                mapping.status = DomainStatus::Active;
+                mapping.verified_at = Some(epoch_secs());
+
+                Ok(mapping.clone())
+            }
+            DomainBackend::LibSql { conn } => {
+                let existing = self.get_domain(&domain).await.ok_or_else(|| {
+                    DomainError::NotFound {
+                        domain: domain.clone(),
+                    }
+                })?;
+
+                if existing.status != DomainStatus::Pending {
+                    return Err(DomainError::VerificationFailed {
+                        domain: domain.clone(),
+                    });
+                }
+
+                let now = epoch_secs();
+                conn.execute(
+                    "UPDATE cloud_domains SET status = ?, verified_at = ? WHERE domain = ?",
+                    libsql::params!["active".to_string(), now as i64, domain.clone()],
+                )
+                .await
+                .map_err(|e| DomainError::Storage(e.to_string()))?;
+
+                self.get_domain(&domain).await.ok_or_else(|| {
+                    DomainError::NotFound {
+                        domain: domain.clone(),
+                    }
+                })
+            }
         }
-
-        mapping.status = DomainStatus::Active;
-        mapping.verified_at = Some(epoch_secs());
-
-        Ok(mapping.clone())
     }
+}
+
+/// Convert a libSQL row to a DomainMapping.
+fn row_to_mapping(row: &libsql::Row) -> Option<DomainMapping> {
+    let domain: String = row.get(0).ok()?;
+    let deployment_id: String = row.get(1).ok()?;
+    let namespace: String = row.get(2).ok()?;
+    let status_str: String = row.get(3).ok()?;
+    let created_at = row.get::<i64>(4).ok()? as u64;
+    let verified_at: Option<u64> = row
+        .get::<i64>(5)
+        .ok()
+        .map(|v| v as u64);
+
+    let status = match status_str.as_str() {
+        "active" => DomainStatus::Active,
+        "failed" => DomainStatus::Failed,
+        _ => DomainStatus::Pending,
+    };
+
+    Some(DomainMapping {
+        domain,
+        deployment_id,
+        namespace,
+        status,
+        created_at,
+        verified_at,
+    })
 }
 
 fn epoch_secs() -> u64 {
@@ -252,12 +452,15 @@ fn epoch_secs() -> u64 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn add_and_remove_roundtrip() {
+    // ── In-memory backend tests (existing) ──────────────────────
+
+    #[tokio::test]
+    async fn add_and_remove_roundtrip() {
         let store = DomainStore::new();
 
         let resp = store
             .add_domain("app.example.com", "dep_123", "ns_alice")
+            .await
             .unwrap();
 
         assert_eq!(resp.mapping.domain, "app.example.com");
@@ -269,164 +472,177 @@ mod tests {
         assert_eq!(resp.dns.target, "dep_123.edge.warpgrid.dev");
 
         // Domain should be retrievable.
-        assert!(store.get_domain("app.example.com").is_some());
+        assert!(store.get_domain("app.example.com").await.is_some());
 
         // Remove it.
-        store.remove_domain("app.example.com").unwrap();
+        store.remove_domain("app.example.com").await.unwrap();
 
         // Should be gone.
-        assert!(store.get_domain("app.example.com").is_none());
+        assert!(store.get_domain("app.example.com").await.is_none());
     }
 
-    #[test]
-    fn duplicate_domain_rejected() {
+    #[tokio::test]
+    async fn duplicate_domain_rejected() {
         let store = DomainStore::new();
 
         store
             .add_domain("app.example.com", "dep_123", "ns_alice")
+            .await
             .unwrap();
 
         let err = store
             .add_domain("app.example.com", "dep_456", "ns_bob")
+            .await
             .unwrap_err();
         assert!(matches!(err, DomainError::AlreadyExists { .. }));
     }
 
-    #[test]
-    fn invalid_domain_no_dot() {
+    #[tokio::test]
+    async fn invalid_domain_no_dot() {
         let store = DomainStore::new();
         let err = store
             .add_domain("localhost", "dep_123", "ns_alice")
+            .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 
-    #[test]
-    fn invalid_domain_with_protocol() {
+    #[tokio::test]
+    async fn invalid_domain_with_protocol() {
         let store = DomainStore::new();
         let err = store
             .add_domain("https://app.example.com", "dep_123", "ns_alice")
+            .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 
-    #[test]
-    fn invalid_domain_with_wildcard() {
+    #[tokio::test]
+    async fn invalid_domain_with_wildcard() {
         let store = DomainStore::new();
         let err = store
             .add_domain("*.example.com", "dep_123", "ns_alice")
+            .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 
-    #[test]
-    fn invalid_domain_empty() {
+    #[tokio::test]
+    async fn invalid_domain_empty() {
         let store = DomainStore::new();
-        let err = store.add_domain("", "dep_123", "ns_alice").unwrap_err();
+        let err = store.add_domain("", "dep_123", "ns_alice").await.unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 
-    #[test]
-    fn invalid_domain_with_spaces() {
+    #[tokio::test]
+    async fn invalid_domain_with_spaces() {
         let store = DomainStore::new();
         let err = store
             .add_domain("app .example.com", "dep_123", "ns_alice")
+            .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 
-    #[test]
-    fn invalid_domain_with_path() {
+    #[tokio::test]
+    async fn invalid_domain_with_path() {
         let store = DomainStore::new();
         let err = store
             .add_domain("app.example.com/path", "dep_123", "ns_alice")
+            .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidDomain { .. }));
     }
 
-    #[test]
-    fn list_filters_by_namespace() {
+    #[tokio::test]
+    async fn list_filters_by_namespace() {
         let store = DomainStore::new();
 
         store
             .add_domain("alice.example.com", "dep_1", "ns_alice")
+            .await
             .unwrap();
         store
             .add_domain("alice2.example.com", "dep_2", "ns_alice")
+            .await
             .unwrap();
         store
             .add_domain("bob.example.com", "dep_3", "ns_bob")
+            .await
             .unwrap();
 
-        let alice_domains = store.list_domains_for_namespace("ns_alice");
+        let alice_domains = store.list_domains_for_namespace("ns_alice").await;
         assert_eq!(alice_domains.len(), 2);
         assert!(alice_domains.iter().all(|d| d.namespace == "ns_alice"));
 
-        let bob_domains = store.list_domains_for_namespace("ns_bob");
+        let bob_domains = store.list_domains_for_namespace("ns_bob").await;
         assert_eq!(bob_domains.len(), 1);
         assert_eq!(bob_domains[0].domain, "bob.example.com");
 
-        let empty = store.list_domains_for_namespace("ns_nobody");
+        let empty = store.list_domains_for_namespace("ns_nobody").await;
         assert!(empty.is_empty());
     }
 
-    #[test]
-    fn verify_transitions_status_to_active() {
+    #[tokio::test]
+    async fn verify_transitions_status_to_active() {
         let store = DomainStore::new();
 
         store
             .add_domain("app.example.com", "dep_123", "ns_alice")
+            .await
             .unwrap();
 
         // Verify the domain.
-        let verified = store.verify_domain("app.example.com").unwrap();
+        let verified = store.verify_domain("app.example.com").await.unwrap();
         assert_eq!(verified.status, DomainStatus::Active);
         assert!(verified.verified_at.is_some());
 
         // Confirm persisted.
-        let fetched = store.get_domain("app.example.com").unwrap();
+        let fetched = store.get_domain("app.example.com").await.unwrap();
         assert_eq!(fetched.status, DomainStatus::Active);
     }
 
-    #[test]
-    fn verify_already_active_domain_fails() {
+    #[tokio::test]
+    async fn verify_already_active_domain_fails() {
         let store = DomainStore::new();
 
         store
             .add_domain("app.example.com", "dep_123", "ns_alice")
+            .await
             .unwrap();
-        store.verify_domain("app.example.com").unwrap();
+        store.verify_domain("app.example.com").await.unwrap();
 
         // Trying to verify again should fail.
-        let err = store.verify_domain("app.example.com").unwrap_err();
+        let err = store.verify_domain("app.example.com").await.unwrap_err();
         assert!(matches!(err, DomainError::VerificationFailed { .. }));
     }
 
-    #[test]
-    fn verify_nonexistent_domain_fails() {
+    #[tokio::test]
+    async fn verify_nonexistent_domain_fails() {
         let store = DomainStore::new();
-        let err = store.verify_domain("ghost.example.com").unwrap_err();
+        let err = store.verify_domain("ghost.example.com").await.unwrap_err();
         assert!(matches!(err, DomainError::NotFound { .. }));
     }
 
-    #[test]
-    fn remove_nonexistent_domain_fails() {
+    #[tokio::test]
+    async fn remove_nonexistent_domain_fails() {
         let store = DomainStore::new();
-        let err = store.remove_domain("ghost.example.com").unwrap_err();
+        let err = store.remove_domain("ghost.example.com").await.unwrap_err();
         assert!(matches!(err, DomainError::NotFound { .. }));
     }
 
-    #[test]
-    fn domain_normalized_to_lowercase() {
+    #[tokio::test]
+    async fn domain_normalized_to_lowercase() {
         let store = DomainStore::new();
 
         store
             .add_domain("App.Example.COM", "dep_123", "ns_alice")
+            .await
             .unwrap();
 
         // Should be retrievable with any case.
-        assert!(store.get_domain("app.example.com").is_some());
-        assert!(store.get_domain("APP.EXAMPLE.COM").is_some());
+        assert!(store.get_domain("app.example.com").await.is_some());
+        assert!(store.get_domain("APP.EXAMPLE.COM").await.is_some());
     }
 
     #[test]
@@ -457,5 +673,59 @@ mod tests {
             domain: "x.com".to_string(),
         };
         assert_eq!(err.to_string(), "verification failed for domain: x.com");
+    }
+
+    // ── libSQL backend tests ────────────────────────────────────
+
+    #[tokio::test]
+    async fn libsql_add_and_get_domain() {
+        let db = crate::cloud::db::open_memory().await.unwrap();
+        let conn = db.connect().unwrap();
+        crate::cloud::db::migrate(&conn).await.unwrap();
+
+        let store = DomainStore::with_libsql(conn);
+
+        let resp = store
+            .add_domain("app.example.com", "dep_123", "ns_alice")
+            .await
+            .unwrap();
+
+        assert_eq!(resp.mapping.domain, "app.example.com");
+        assert_eq!(resp.mapping.status, DomainStatus::Pending);
+        assert_eq!(resp.dns.record_type, "CNAME");
+
+        // Read it back.
+        let fetched = store.get_domain("app.example.com").await.unwrap();
+        assert_eq!(fetched.deployment_id, "dep_123");
+        assert_eq!(fetched.namespace, "ns_alice");
+        assert_eq!(fetched.status, DomainStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn libsql_list_and_remove_domain() {
+        let db = crate::cloud::db::open_memory().await.unwrap();
+        let conn = db.connect().unwrap();
+        crate::cloud::db::migrate(&conn).await.unwrap();
+
+        let store = DomainStore::with_libsql(conn);
+
+        store
+            .add_domain("a.example.com", "dep_1", "ns_alice")
+            .await
+            .unwrap();
+        store
+            .add_domain("b.example.com", "dep_2", "ns_alice")
+            .await
+            .unwrap();
+
+        let domains = store.list_domains_for_namespace("ns_alice").await;
+        assert_eq!(domains.len(), 2);
+
+        // Remove one.
+        store.remove_domain("a.example.com").await.unwrap();
+
+        let domains = store.list_domains_for_namespace("ns_alice").await;
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0].domain, "b.example.com");
     }
 }

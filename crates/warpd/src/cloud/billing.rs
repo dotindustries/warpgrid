@@ -3,6 +3,10 @@
 //! Provides plan management, usage reporting, and billing portal access
 //! via the Stripe API. When no `STRIPE_SECRET_KEY` is configured, falls
 //! back to a mock client that logs operations via `tracing::debug`.
+//!
+//! Supports two backends for plan storage:
+//! - In-memory (for tests and development without persistence)
+//! - libSQL (for production — persists across restarts, edge-replicable)
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -203,17 +207,38 @@ impl StripeBillingClient {
 /// Mock billing client for development and beta.
 ///
 /// Logs all operations via `tracing::debug` and stores plan data
-/// in memory. Used when no `STRIPE_SECRET_KEY` is set.
+/// either in memory or in libSQL. Used when no `STRIPE_SECRET_KEY` is set.
 #[derive(Clone)]
 pub struct MockBillingClient {
-    plans: Arc<RwLock<HashMap<String, Plan>>>,
+    backend: BillingBackend,
     counter: Arc<RwLock<u64>>,
 }
 
+#[derive(Clone)]
+enum BillingBackend {
+    Memory {
+        plans: Arc<RwLock<HashMap<String, Plan>>>,
+    },
+    LibSql {
+        conn: libsql::Connection,
+    },
+}
+
 impl MockBillingClient {
+    /// Create an in-memory mock billing client (for tests).
     pub fn new() -> Self {
         Self {
-            plans: Arc::new(RwLock::new(HashMap::new())),
+            backend: BillingBackend::Memory {
+                plans: Arc::new(RwLock::new(HashMap::new())),
+            },
+            counter: Arc::new(RwLock::new(0)),
+        }
+    }
+
+    /// Create a persistent mock billing client backed by libSQL.
+    pub fn with_libsql(conn: libsql::Connection) -> Self {
+        Self {
+            backend: BillingBackend::LibSql { conn },
             counter: Arc::new(RwLock::new(0)),
         }
     }
@@ -236,8 +261,28 @@ impl MockBillingClient {
             team_id = team_id,
             "mock: created customer"
         );
-        let mut plans = self.plans.write().unwrap();
-        plans.insert(customer_id.clone(), Plan::Free);
+
+        match &self.backend {
+            BillingBackend::Memory { plans } => {
+                let mut store = plans.write().unwrap();
+                store.insert(customer_id.clone(), Plan::Free);
+            }
+            BillingBackend::LibSql { conn } => {
+                let now = epoch_secs();
+                let _ = conn
+                    .execute(
+                        "INSERT INTO cloud_billing (customer_id, team_id, plan, created_at) VALUES (?, ?, ?, ?)",
+                        libsql::params![
+                            customer_id.clone(),
+                            team_id.to_string(),
+                            "free".to_string(),
+                            now as i64
+                        ],
+                    )
+                    .await;
+            }
+        }
+
         Ok(customer_id)
     }
 
@@ -269,14 +314,64 @@ impl MockBillingClient {
         Ok(())
     }
 
-    pub fn get_plan(&self, customer_id: &str) -> Plan {
-        let plans = self.plans.read().unwrap();
-        plans.get(customer_id).copied().unwrap_or(Plan::Free)
+    pub async fn get_plan(&self, customer_id: &str) -> Plan {
+        match &self.backend {
+            BillingBackend::Memory { plans } => {
+                let store = plans.read().unwrap();
+                store.get(customer_id).copied().unwrap_or(Plan::Free)
+            }
+            BillingBackend::LibSql { conn } => {
+                let mut rows = match conn
+                    .query(
+                        "SELECT plan FROM cloud_billing WHERE customer_id = ?",
+                        libsql::params![customer_id.to_string()],
+                    )
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => return Plan::Free,
+                };
+
+                let row = match rows.next().await {
+                    Ok(Some(r)) => r,
+                    _ => return Plan::Free,
+                };
+
+                let plan_str: String = match row.get(0) {
+                    Ok(s) => s,
+                    Err(_) => return Plan::Free,
+                };
+
+                match plan_str.as_str() {
+                    "pro" => Plan::Pro,
+                    "enterprise" => Plan::Enterprise,
+                    _ => Plan::Free,
+                }
+            }
+        }
     }
 
-    pub fn set_plan(&self, customer_id: &str, plan: Plan) {
-        let mut plans = self.plans.write().unwrap();
-        plans.insert(customer_id.to_string(), plan);
+    pub async fn set_plan(&self, customer_id: &str, plan: Plan) {
+        let plan_str = match plan {
+            Plan::Free => "free",
+            Plan::Pro => "pro",
+            Plan::Enterprise => "enterprise",
+        };
+
+        match &self.backend {
+            BillingBackend::Memory { plans } => {
+                let mut store = plans.write().unwrap();
+                store.insert(customer_id.to_string(), plan);
+            }
+            BillingBackend::LibSql { conn } => {
+                let _ = conn
+                    .execute(
+                        "UPDATE cloud_billing SET plan = ? WHERE customer_id = ?",
+                        libsql::params![plan_str.to_string(), customer_id.to_string()],
+                    )
+                    .await;
+            }
+        }
     }
 }
 
@@ -321,6 +416,21 @@ impl BillingService {
         }
     }
 
+    /// Build from an optional Stripe secret key with a libSQL connection
+    /// for plan persistence. Returns `Mock` with libSQL backend when
+    /// the key is `None` or empty.
+    pub fn from_env_with_libsql(
+        stripe_key: Option<String>,
+        conn: libsql::Connection,
+    ) -> Self {
+        match stripe_key {
+            Some(ref key) if !key.is_empty() => {
+                Self::Active(StripeBillingClient::new(key))
+            }
+            _ => Self::Mock(MockBillingClient::with_libsql(conn)),
+        }
+    }
+
     /// Create a Stripe customer for a team.
     pub async fn create_customer(
         &self,
@@ -361,7 +471,7 @@ impl BillingService {
     }
 
     /// Get the current plan for a customer.
-    pub fn get_plan(&self, customer_id: &str) -> Plan {
+    pub async fn get_plan(&self, customer_id: &str) -> Plan {
         match self {
             Self::Active(_) => {
                 // In production, this would query Stripe subscriptions.
@@ -372,9 +482,16 @@ impl BillingService {
                 );
                 Plan::Free
             }
-            Self::Mock(mock) => mock.get_plan(customer_id),
+            Self::Mock(mock) => mock.get_plan(customer_id).await,
         }
     }
+}
+
+fn epoch_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 // ── Tests ───────────────────────────────────────────────────────
@@ -455,11 +572,11 @@ mod tests {
         assert!(customer_id.starts_with("mock_cus_"));
 
         // Default plan is Free.
-        assert_eq!(mock.get_plan(&customer_id), Plan::Free);
+        assert_eq!(mock.get_plan(&customer_id).await, Plan::Free);
 
         // Upgrade to Pro.
-        mock.set_plan(&customer_id, Plan::Pro);
-        assert_eq!(mock.get_plan(&customer_id), Plan::Pro);
+        mock.set_plan(&customer_id, Plan::Pro).await;
+        assert_eq!(mock.get_plan(&customer_id).await, Plan::Pro);
 
         // Create portal session.
         let url = mock
@@ -548,7 +665,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!customer_id.is_empty());
-        assert_eq!(svc.get_plan(&customer_id), Plan::Free);
+        assert_eq!(svc.get_plan(&customer_id).await, Plan::Free);
     }
 
     #[test]
@@ -559,9 +676,48 @@ mod tests {
         assert_ne!(id1, id2);
     }
 
-    #[test]
-    fn unknown_customer_defaults_to_free() {
+    #[tokio::test]
+    async fn unknown_customer_defaults_to_free() {
         let mock = MockBillingClient::new();
-        assert_eq!(mock.get_plan("nonexistent"), Plan::Free);
+        assert_eq!(mock.get_plan("nonexistent").await, Plan::Free);
+    }
+
+    // ── libSQL backend tests ────────────────────────────────────
+
+    #[tokio::test]
+    async fn libsql_create_customer_and_get_plan() {
+        let db = crate::cloud::db::open_memory().await.unwrap();
+        let conn = db.connect().unwrap();
+        crate::cloud::db::migrate(&conn).await.unwrap();
+
+        let mock = MockBillingClient::with_libsql(conn);
+
+        let customer_id = mock
+            .create_customer("alice@example.com", "team-1")
+            .await
+            .unwrap();
+        assert!(customer_id.starts_with("mock_cus_"));
+
+        // Default plan is Free.
+        assert_eq!(mock.get_plan(&customer_id).await, Plan::Free);
+
+        // Upgrade to Pro.
+        mock.set_plan(&customer_id, Plan::Pro).await;
+        assert_eq!(mock.get_plan(&customer_id).await, Plan::Pro);
+    }
+
+    #[tokio::test]
+    async fn libsql_billing_service_with_libsql() {
+        let db = crate::cloud::db::open_memory().await.unwrap();
+        let conn = db.connect().unwrap();
+        crate::cloud::db::migrate(&conn).await.unwrap();
+
+        let svc = BillingService::from_env_with_libsql(None, conn);
+        let customer_id = svc
+            .create_customer("test@example.com", "team-1")
+            .await
+            .unwrap();
+        assert!(!customer_id.is_empty());
+        assert_eq!(svc.get_plan(&customer_id).await, Plan::Free);
     }
 }

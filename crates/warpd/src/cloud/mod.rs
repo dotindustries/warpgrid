@@ -16,3 +16,4 @@ pub mod routes;
 pub mod teams;
 pub mod tenants;
 pub mod usage;
+pub mod watcher;
