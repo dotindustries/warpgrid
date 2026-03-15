@@ -39,6 +39,7 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/cloud/deployments", get(list_deployments))
         .route("/api/v1/cloud/deploy", post(create_deployment))
+        .route("/api/v1/cloud/deploy/upload", post(upload_and_deploy))
         .route("/api/v1/cloud/deploy/{id}", delete(delete_deployment))
         .route("/api/v1/cloud/status", get(platform_status))
         // Team management routes
@@ -249,12 +250,164 @@ async fn create_deployment(
         .into_response();
     }
 
-    // TODO: Accept wasm upload, store in registry, create deployment in state
+    // Extract deployment data from request body (JSON with base64 wasm).
+    // For multipart support, we accept either:
+    //   - JSON body: {"name": "...", "region": "...", "wasm_base64": "..."}
+    //   - Raw bytes with headers: X-WarpGrid-Name, X-WarpGrid-Region
     error_response(
         StatusCode::NOT_IMPLEMENTED,
-        "Full deploy pipeline not yet implemented — use CLI: warp deploy",
+        "JSON deploy not yet implemented — use POST /api/v1/cloud/deploy/upload",
     )
     .into_response()
+}
+
+/// Upload Wasm binary and create a deployment.
+///
+/// Accepts raw bytes in the request body with metadata in headers:
+/// - `X-WarpGrid-Name`: deployment name (required)
+/// - `X-WarpGrid-Region`: target region (default: "iad")
+/// - `Authorization: Bearer wg_live_...` (required)
+///
+/// The Wasm binary is stored in the registry and a DeploymentSpec
+/// is created in the state store.
+async fn upload_and_deploy(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // Extract metadata from headers.
+    let name = match headers.get("x-warpgrid-name").and_then(|v| v.to_str().ok()) {
+        Some(n) if !n.is_empty() => n.to_string(),
+        _ => {
+            return error_response(StatusCode::BAD_REQUEST, "X-WarpGrid-Name header required")
+                .into_response()
+        }
+    };
+    let region = headers
+        .get("x-warpgrid-region")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("iad")
+        .to_string();
+
+    // Validate body.
+    if body.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "Empty Wasm binary").into_response();
+    }
+    let wasm_size = body.len() as u64;
+    if wasm_size > user.quota.max_wasm_size_bytes {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            &format!(
+                "Wasm too large ({} KB, max {} KB)",
+                wasm_size / 1024,
+                user.quota.max_wasm_size_bytes / 1024
+            ),
+        )
+        .into_response();
+    }
+
+    // Check deployment quota.
+    let deployments = state.state_store.list_deployments().unwrap_or_default();
+    let user_count = deployments
+        .iter()
+        .filter(|d| d.namespace == user.namespace)
+        .count() as u32;
+    if user_count >= user.quota.max_deployments {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            &format!(
+                "Deployment limit reached ({}/{})",
+                user_count, user.quota.max_deployments
+            ),
+        )
+        .into_response();
+    }
+
+    // Check for duplicate deployment name.
+    let deployment_id = tenants::scoped_deployment_id(&user.namespace, &name);
+    if state.state_store.get_deployment(&deployment_id).ok().flatten().is_some() {
+        return error_response(
+            StatusCode::CONFLICT,
+            &format!("Deployment '{}' already exists", name),
+        )
+        .into_response();
+    }
+
+    // Store Wasm in registry.
+    let stored = match state.registry.store(&user.namespace, &name, &body) {
+        Ok(s) => s,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Failed to store Wasm: {e}"),
+            )
+            .into_response()
+        }
+    };
+
+    // Create deployment spec.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let spec = warpgrid_state::DeploymentSpec {
+        id: deployment_id.clone(),
+        namespace: user.namespace.clone(),
+        name: name.clone(),
+        source: format!("registry://{}/{}/{}", user.namespace, name, stored.hash),
+        trigger: warpgrid_state::TriggerConfig::Http { port: Some(8080) },
+        instances: warpgrid_state::InstanceConstraints { min: 1, max: 5 },
+        resources: warpgrid_state::ResourceLimits {
+            memory_bytes: 64 * 1024 * 1024,
+            cpu_weight: 100,
+        },
+        scaling: None,
+        health: None,
+        shims: warpgrid_state::ShimsEnabled::default(),
+        env: std::collections::HashMap::new(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    if let Err(e) = state.state_store.put_deployment(&spec) {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to create deployment: {e}"),
+        )
+        .into_response();
+    }
+
+    // Track analytics.
+    state.analytics.track(
+        &user.id,
+        super::analytics::EVENT_DEPLOYMENT_CREATED,
+        serde_json::json!({
+            "deployment_id": deployment_id,
+            "region": region,
+            "wasm_size_bytes": wasm_size,
+            "wasm_hash": stored.hash,
+        }),
+    );
+
+    (
+        StatusCode::CREATED,
+        CloudResponse::ok(serde_json::json!({
+            "deployment_id": deployment_id,
+            "name": name,
+            "namespace": user.namespace,
+            "region": region,
+            "wasm_hash": stored.hash,
+            "wasm_size_bytes": wasm_size,
+            "url": format!("https://{}.{}.edge.warpgrid.dev", name, user.namespace),
+        })),
+    )
+        .into_response()
 }
 
 async fn delete_deployment(
@@ -268,13 +421,21 @@ async fn delete_deployment(
     };
 
     // Verify the deployment belongs to this user's namespace.
-    if let Some((ns, _)) = tenants::extract_namespace(&id) {
+    if let Some((ns, name)) = tenants::extract_namespace(&id) {
         if ns != user.namespace {
             return error_response(StatusCode::FORBIDDEN, "Not your deployment").into_response();
         }
+        // Clean up registry.
+        let _ = state.registry.delete_deployment(ns, name);
     }
 
-    // TODO: Deprovision from edge nodes, remove from registry
+    // Track analytics.
+    state.analytics.track(
+        &user.id,
+        super::analytics::EVENT_DEPLOYMENT_DELETED,
+        serde_json::json!({ "deployment_id": id }),
+    );
+
     match state.state_store.delete_deployment(&id) {
         Ok(true) => CloudResponse::ok("Deployment deleted").into_response(),
         Ok(false) => error_response(StatusCode::NOT_FOUND, "Deployment not found").into_response(),

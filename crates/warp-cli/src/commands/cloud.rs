@@ -175,28 +175,55 @@ pub fn deploy(path: &str, region: Option<&str>, lang: Option<&str>) -> anyhow::R
         &pack_result.sha256[..12]
     );
 
-    // Step 2: Read the compiled Wasm.
+    // Step 2: Read deployment name from warp.toml.
+    let warp_toml_path = Path::new(path).join("warp.toml");
+    let deploy_name = if warp_toml_path.exists() {
+        let content = std::fs::read_to_string(&warp_toml_path)?;
+        let doc: toml_edit::DocumentMut = content.parse()?;
+        doc.get("package")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("unnamed")
+            .to_string()
+    } else {
+        // Fall back to directory name.
+        Path::new(path)
+            .canonicalize()?
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unnamed")
+            .to_string()
+    };
+
+    // Step 3: Read the compiled Wasm.
     let wasm_bytes = std::fs::read(&pack_result.output_path)
         .context("Failed to read compiled Wasm component")?;
 
     let region = region.unwrap_or("iad");
-    println!("Deploying to {} ({} bytes)...", region, wasm_bytes.len());
+    println!("Deploying '{}' to {} ({} bytes)...", deploy_name, region, wasm_bytes.len());
 
-    // Step 3: Upload to cloud.
+    // Step 4: Upload to cloud.
     let client = reqwest::blocking::Client::new();
     let resp = client
-        .post(format!("{api_url}/api/v1/cloud/deploy"))
+        .post(format!("{api_url}/api/v1/cloud/deploy/upload"))
         .header("Authorization", format!("Bearer {api_key}"))
+        .header("X-WarpGrid-Name", &deploy_name)
         .header("X-WarpGrid-Region", region)
-        .header("X-WarpGrid-Wasm-Size", wasm_bytes.len().to_string())
         .body(wasm_bytes)
         .send()
         .context("Failed to connect to WarpGrid cloud")?;
 
     if resp.status().is_success() {
-        println!("Deployed successfully!");
-        if let Some(ns) = &config.namespace {
-            println!("  URL: https://{ns}.edge.warpgrid.dev");
+        let body: ApiResponse<serde_json::Value> = resp.json()?;
+        if let Some(data) = body.data {
+            let url = data.get("url").and_then(|u| u.as_str()).unwrap_or("(unknown)");
+            let hash = data.get("wasm_hash").and_then(|h| h.as_str()).unwrap_or("");
+            println!("Deployed successfully!");
+            println!("  Name:      {}", deploy_name);
+            println!("  URL:       {}", url);
+            println!("  Wasm hash: {}", &hash[..12.min(hash.len())]);
+        } else {
+            println!("Deployed successfully!");
         }
     } else {
         let body: ApiResponse<()> = resp.json()?;
