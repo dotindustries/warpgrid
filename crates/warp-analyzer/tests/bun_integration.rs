@@ -130,7 +130,7 @@ fn test_bun_json_output() {
     // Verify it's valid JSON by parsing it back
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed["language"], "bun");
-    assert!(parsed["dependencies"].as_array().unwrap().len() > 0);
+    assert!(!parsed["dependencies"].as_array().unwrap().is_empty());
 }
 
 /// Test --lang bun override on a project without bunfig.toml.

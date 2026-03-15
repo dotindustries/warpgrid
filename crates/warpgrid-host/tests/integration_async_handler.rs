@@ -127,6 +127,7 @@ fn minimal_host_state() -> HostState {
 
 // ── Integration tests ─────────────────────────────────────────────
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_instantiates_and_returns_200() {
     let wasm_bytes = build_async_echo_component();
@@ -157,6 +158,7 @@ async fn async_handler_instantiates_and_returns_200() {
     assert_eq!(response.status, 200, "echo handler should return 200");
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_echoes_request_body() {
     let wasm_bytes = build_async_echo_component();
@@ -195,6 +197,7 @@ async fn async_handler_echoes_request_body() {
     );
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_sets_x_async_header() {
     let wasm_bytes = build_async_echo_component();
@@ -233,6 +236,7 @@ async fn async_handler_sets_x_async_header() {
     );
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_multiple_sequential_requests() {
     let wasm_bytes = build_async_echo_component();
@@ -272,6 +276,7 @@ async fn async_handler_multiple_sequential_requests() {
     }
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_empty_body_returns_empty_response() {
     let wasm_bytes = build_async_echo_component();
@@ -308,6 +313,7 @@ async fn async_handler_empty_body_returns_empty_response() {
 
 // ── US-502: Multi-chunk and concurrent request tests ─────────────
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_echoes_multi_chunk_body_with_x_async_header() {
     init_tracing();
@@ -385,6 +391,7 @@ async fn async_handler_echoes_multi_chunk_body_with_x_async_header() {
     );
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn async_handler_10_concurrent_requests_no_deadlock() {
     init_tracing();

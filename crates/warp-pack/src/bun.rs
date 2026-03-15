@@ -521,8 +521,7 @@ entry = "src/index.ts"
         // pack() should fail because src/index.ts doesn't exist,
         // but it should fail with a bun-specific error, not "Unsupported language"
         let result = crate::pack(dir.path());
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
+        let err_msg = result.expect_err("should fail").to_string();
         assert!(
             !err_msg.contains("Unsupported language"),
             "Expected bun dispatch, got: {err_msg}"
@@ -535,8 +534,7 @@ entry = "src/index.ts"
         let config = WarpConfig::scaffold("test", "bun", "nonexistent.ts");
 
         let result = pack_bun(dir.path(), &config);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
+        let err_msg = result.expect_err("should fail").to_string();
         assert!(
             err_msg.contains("Entry point not found"),
             "Expected entry point error, got: {err_msg}"
@@ -561,8 +559,7 @@ entry = "src/index.ts"
 
         let dir = tempfile::tempdir().unwrap();
         let result = pack_bun(dir.path(), &config);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
+        let err_msg = result.expect_err("should fail").to_string();
         assert!(
             err_msg.contains("[build]"),
             "Expected missing build section error, got: {err_msg}"
@@ -580,8 +577,7 @@ entry = "src/index.ts"
         let result = resolve_jco(Path::new("."));
         unsafe { std::env::remove_var("WARPGRID_JCO_PATH") };
 
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
+        let err_msg = result.expect_err("should fail").to_string();
         assert!(
             err_msg.contains("WARPGRID_JCO_PATH"),
             "Expected env var error, got: {err_msg}"
@@ -603,13 +599,8 @@ entry = "src/index.ts"
     fn test_resolve_wit_dir_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let result = resolve_wit_dir(dir.path(), Path::new("/nonexistent"));
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("WIT directory not found")
-        );
+        let err = result.expect_err("should fail").to_string();
+        assert!(err.contains("WIT directory not found"));
     }
 
     // ── Integration tests (require bun + jco) ──────────────────────────────
@@ -661,8 +652,8 @@ entry = "src/index.ts"
         // bun build may still succeed with an import it can't resolve
         // (it bundles what it can). But if it fails, the error should
         // include exit code info.
-        if result.is_err() {
-            let err_msg = result.unwrap_err().to_string();
+        if let Err(e) = result {
+            let err_msg = e.to_string();
             assert!(
                 err_msg.contains("exit code"),
                 "Error should include exit code: {err_msg}"
@@ -816,8 +807,8 @@ entry = "src/index.ts"
         let output = dir.path().join("output.wasm");
         let result = jco_componentize(&jco_bin, &invalid_js, &shared_wit, &output);
 
-        if result.is_err() {
-            let err_msg = result.unwrap_err().to_string();
+        if let Err(e) = result {
+            let err_msg = e.to_string();
             assert!(
                 err_msg.contains("Hint") || err_msg.contains("unsupported APIs"),
                 "jco error should include hint about unsupported APIs: {err_msg}"

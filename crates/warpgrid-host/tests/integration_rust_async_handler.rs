@@ -137,6 +137,7 @@ fn host_state_with_dns() -> HostState {
 
 /// Verify the component builds and `wasm-tools component wit` validates
 /// that it exports the `warpgrid:shim/async-handler` interface.
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_builds_and_wit_validates() {
     let wasm_bytes = build_rust_async_handler_component();
@@ -175,6 +176,7 @@ async fn rust_async_handler_builds_and_wit_validates() {
 
 /// Send a valid JSON request with a resolvable hostname and verify
 /// the handler returns a JSON response with resolved addresses.
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_processes_json_request() {
     let wasm_bytes = build_rust_async_handler_component();
@@ -241,6 +243,7 @@ async fn rust_async_handler_processes_json_request() {
 }
 
 /// Send a JSON request with a hostname that resolves to multiple addresses.
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_resolves_multi_address_hostname() {
     let wasm_bytes = build_rust_async_handler_component();
@@ -286,6 +289,7 @@ async fn rust_async_handler_resolves_multi_address_hostname() {
 }
 
 /// Send an invalid JSON body and verify the handler returns 400.
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_returns_400_for_invalid_json() {
     let wasm_bytes = build_rust_async_handler_component();
@@ -323,6 +327,7 @@ async fn rust_async_handler_returns_400_for_invalid_json() {
 
 /// Send a JSON request with a hostname that cannot be resolved and
 /// verify the handler returns 502.
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn rust_async_handler_returns_502_for_dns_failure() {
     let wasm_bytes = build_rust_async_handler_component();

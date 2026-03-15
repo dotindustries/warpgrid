@@ -68,7 +68,6 @@ async fn handles_concurrent_requests() {
 
     let mut handles = Vec::new();
     for i in 0..10 {
-        let addr = addr;
         handles.push(tokio::spawn(async move {
             let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
                 .build_http::<Empty<Bytes>>();

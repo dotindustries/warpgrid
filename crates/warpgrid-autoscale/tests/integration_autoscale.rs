@@ -18,7 +18,7 @@ fn make_spec(id: &str, metric: &str, target: f64, min: u32, max: u32) -> Deploym
     DeploymentSpec {
         id: id.to_string(),
         namespace: "default".to_string(),
-        name: id.split('/').last().unwrap_or(id).to_string(),
+        name: id.split('/').next_back().unwrap_or(id).to_string(),
         source: "file://test.wasm".to_string(),
         trigger: TriggerConfig::Http { port: Some(8080) },
         instances: InstanceConstraints { min, max },

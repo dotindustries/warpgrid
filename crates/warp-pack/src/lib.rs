@@ -236,8 +236,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let result = detect_language(dir.path());
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = result.expect_err("should fail").to_string();
         assert!(err.contains("Cannot auto-detect"), "Error: {err}");
         assert!(err.contains("--lang"), "Should suggest --lang: {err}");
     }
@@ -251,8 +250,7 @@ mod tests {
         // Auto-detect should route to bun, which will fail because
         // entry point doesn't exist — but it should NOT say "Unsupported language"
         let result = pack(dir.path());
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = result.expect_err("should fail").to_string();
         assert!(
             !err.contains("Unsupported language"),
             "Should auto-detect bun, not fail on language: {err}"
@@ -288,8 +286,7 @@ mod tests {
         write_warp_toml(dir.path(), Some("python"));
 
         let result = pack(dir.path());
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = result.expect_err("should fail").to_string();
         assert!(err.contains("Unsupported language"), "Error: {err}");
         assert!(err.contains("bun"), "Should list bun in error: {err}");
         assert!(err.contains("rust"), "Should list rust in error: {err}");

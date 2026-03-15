@@ -496,6 +496,7 @@ impl AsyncConnectionFactory for AsyncTcpConnectionFactory {
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
@@ -959,16 +960,11 @@ mod tests {
         let addr = listener.local_addr().expect("local addr");
 
         tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => {
-                        tokio::spawn(async move {
-                            let (mut reader, mut writer) = stream.into_split();
-                            let _ = tokio::io::copy(&mut reader, &mut writer).await;
-                        });
-                    }
-                    Err(_) => break,
-                }
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (mut reader, mut writer) = stream.into_split();
+                    let _ = tokio::io::copy(&mut reader, &mut writer).await;
+                });
             }
         });
 

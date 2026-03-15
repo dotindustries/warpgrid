@@ -411,9 +411,9 @@ mod tests {
         let (p50, p99) = compute_percentiles(&latencies);
 
         // P50 should be around 50ms.
-        assert!(p50 >= 49.0 && p50 <= 51.0, "p50 was {p50}");
+        assert!((49.0..=51.0).contains(&p50), "p50 was {p50}");
         // P99 should be around 99ms.
-        assert!(p99 >= 98.0 && p99 <= 100.0, "p99 was {p99}");
+        assert!((98.0..=100.0).contains(&p99), "p99 was {p99}");
     }
 
     #[tokio::test]

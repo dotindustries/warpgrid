@@ -123,6 +123,7 @@ struct GoHttpInstance {
     malloc_fn: TypedFunc<i32, i32>,
     #[allow(dead_code)]
     free_fn: TypedFunc<i32, ()>,
+    #[allow(clippy::type_complexity)]
     handle_request_fn: TypedFunc<(i32, i32, i32, i32, i32, i32, i32, i32, i32), ()>,
 }
 

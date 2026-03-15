@@ -914,6 +914,7 @@ impl std::fmt::Debug for ConnectionPoolManager {
 }
 
 #[cfg(test)]
+#[allow(dead_code, clippy::type_complexity)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

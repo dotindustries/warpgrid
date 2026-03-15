@@ -288,7 +288,7 @@ fn convert_state_types_and_place_successfully() {
         port: 8443,
         capacity_memory_bytes: 4 * 1024 * 1024 * 1024,
         capacity_cpu_weight: 1000,
-        used_memory_bytes: 1 * 1024 * 1024 * 1024,
+        used_memory_bytes: 1024 * 1024 * 1024,
         used_cpu_weight: 200,
         labels: {
             let mut m = HashMap::new();
