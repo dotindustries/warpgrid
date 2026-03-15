@@ -25,6 +25,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-tools
         run: cargo install wasm-tools
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Install TinyGo
+        run: scripts/build-tinygo.sh --download
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
