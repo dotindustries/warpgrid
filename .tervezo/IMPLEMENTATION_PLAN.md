@@ -23,4 +23,4 @@
 - [x] Verify `cargo test -p warp-pack` passes all tests (52 passed, 0 failed, 2 ignored)
 - [x] Add `warp.toml` to `tests/fixtures/bun-json-api/` for warp pack integration testing
 - [x] Add `warp.toml` to `tests/fixtures/bun-postgres-handler/` for warp pack integration testing
-- [ ] Create PR referencing GitHub issue #72 with all acceptance criteria verified
+- [x] Create PR referencing GitHub issue #72 — PR #134
