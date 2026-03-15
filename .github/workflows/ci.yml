@@ -39,7 +39,7 @@ jobs:
 
   docker:
     name: Docker Build
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       - uses: useblacksmith/setup-docker-builder@v1
@@ -50,8 +50,6 @@ jobs:
           file: infra/Dockerfile
           push: false
           tags: warpgrid:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
       - name: Verify binary works
         run: docker run --rm warpgrid:ci --help
 
