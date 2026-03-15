@@ -62,7 +62,7 @@ func (d *Dialer) Dial(network, address string) (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:  "dial",
 			Net: network,
-			Err: &net.DNSError{
+			Err: &DNSError{
 				Err:        err.Error(),
 				Name:       host,
 				IsNotFound: true,
@@ -74,7 +74,7 @@ func (d *Dialer) Dial(network, address string) (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:  "dial",
 			Net: network,
-			Err: &net.DNSError{
+			Err: &DNSError{
 				Err:        "no addresses found",
 				Name:       host,
 				IsNotFound: true,
