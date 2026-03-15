@@ -6,9 +6,6 @@
 app = "warpgrid-cloud"
 primary_region = "iad"
 
-[build]
-  dockerfile = "infra/Dockerfile"
-
 [env]
   RUST_LOG = "info,warpd=debug,warpgrid=debug"
   WARPGRID_REGISTRY_BUCKET = "warpgrid-registry"
@@ -29,6 +26,3 @@ primary_region = "iad"
   size = "shared-cpu-2x"
   memory = "1gb"
   cpus = 2
-
-[processes]
-  app = "warpd cloud --api-port 8443 --data-dir /var/lib/warpgrid"

@@ -40,4 +40,4 @@ EXPOSE 8443
 EXPOSE 50051
 
 ENTRYPOINT ["warpd"]
-CMD ["standalone", "--port", "8443"]
+CMD ["cloud", "--api-port", "8443", "--data-dir", "/var/lib/warpgrid"]
