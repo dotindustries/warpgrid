@@ -118,10 +118,11 @@ pub async fn run_agent(
     let watcher_conn = cloud_db.connect()?;
     let watcher_state = state.clone();
     let watcher_region = region.clone();
+    let watcher_runtime = runtime.clone();
     let watcher_handle = tokio::spawn(async move {
         let mut watcher = DeploymentWatcher::new(
             watcher_conn,
-            watcher_state,
+            watcher_state.clone(),
             watcher_region.clone(),
         );
         info!(region = %watcher_region, "deployment watcher started");
@@ -138,10 +139,48 @@ pub async fn run_agent(
                                     deployment_id = %dep.deployment_id,
                                     wasm_size = dep.wasm_bytes.len(),
                                     region = %dep.region,
-                                    "new deployment detected — Wasm blob loaded from Turso replica"
+                                    "new deployment detected — loading into runtime"
                                 );
-                                // TODO: feed dep.wasm_bytes into warp-runtime
-                                // runtime.load_module(&dep.deployment_id, &dep.wasm_bytes)?;
+
+                                // Compile and cache the Wasm module.
+                                match watcher_runtime.load_module(&dep.deployment_id, &dep.wasm_bytes).await {
+                                    Ok(module) => {
+                                        info!(
+                                            deployment_id = %dep.deployment_id,
+                                            module = module.name(),
+                                            "Wasm module compiled and cached"
+                                        );
+
+                                        // Create an instance record in local redb.
+                                        let instance = warpgrid_state::InstanceState {
+                                            id: format!("{}-0", dep.deployment_id),
+                                            deployment_id: dep.deployment_id.clone(),
+                                            node_id: watcher_region.clone(),
+                                            status: warpgrid_state::InstanceStatus::Running,
+                                            health: warpgrid_state::HealthStatus::Healthy,
+                                            restart_count: 0,
+                                            memory_bytes: dep.wasm_bytes.len() as u64,
+                                            started_at: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_secs(),
+                                            updated_at: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_secs(),
+                                        };
+                                        if let Err(e) = watcher_state.put_instance(&instance) {
+                                            warn!(error = %e, "failed to record instance state");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            deployment_id = %dep.deployment_id,
+                                            error = %e,
+                                            "failed to compile Wasm module"
+                                        );
+                                    }
+                                }
                             }
                         }
                         Err(e) => {
