@@ -116,6 +116,10 @@ enum Command {
         /// Metrics snapshot interval in seconds.
         #[arg(long, default_value = "60")]
         metrics_interval: u64,
+
+        /// PostHog API key for analytics. When not set, analytics are disabled.
+        #[arg(long, env = "POSTHOG_API_KEY")]
+        posthog_api_key: Option<String>,
     },
 
     /// Run as an agent node (worker, joins a control-plane cluster).
@@ -178,6 +182,7 @@ async fn main() -> anyhow::Result<()> {
             registry_bucket,
             edge_regions,
             metrics_interval,
+            posthog_api_key,
         } => {
             cloud_mode::run_cloud(
                 api_port,
@@ -187,6 +192,7 @@ async fn main() -> anyhow::Result<()> {
                 registry_bucket,
                 edge_regions,
                 metrics_interval,
+                posthog_api_key,
             )
             .await
         }

@@ -17,7 +17,10 @@ use std::path::PathBuf;
 use tokio::sync::watch;
 use tracing::{info, warn};
 
+use crate::cloud::analytics::AnalyticsService;
 use crate::cloud::auth::AuthStore;
+use crate::cloud::console::console_router;
+use crate::cloud::domains::DomainStore;
 use crate::cloud::provisioner::FlyProvisioner;
 use crate::cloud::registry::WasmRegistry;
 use crate::cloud::routes::{cloud_router, CloudState};
@@ -31,6 +34,7 @@ pub async fn run_cloud(
     _registry_bucket: String,
     edge_regions: String,
     metrics_interval: u64,
+    posthog_api_key: Option<String>,
 ) -> anyhow::Result<()> {
     info!("WarpGrid daemon starting in cloud mode");
 
@@ -102,6 +106,14 @@ pub async fn run_cloud(
         metrics.run(metrics_shutdown).await;
     });
 
+    // ── Analytics ────────────────────────────────────────────────
+
+    let analytics = AnalyticsService::from_env(posthog_api_key.as_deref());
+    match &analytics {
+        AnalyticsService::Active(_) => info!("PostHog analytics enabled"),
+        AnalyticsService::Noop => info!("PostHog analytics disabled (no POSTHOG_API_KEY)"),
+    }
+
     // ── Build API router ────────────────────────────────────────
 
     // Merge existing warpgrid-api routes (dashboard, deployments, metrics)
@@ -112,10 +124,13 @@ pub async fn run_cloud(
         registry,
         state_store: state,
         teams: TeamStore::new(),
+        analytics,
+        domains: DomainStore::new(),
     };
+    let console_routes = console_router(cloud_state.clone());
     let cloud_routes = cloud_router(cloud_state);
 
-    let router = base_router.merge(cloud_routes);
+    let router = base_router.merge(cloud_routes).merge(console_routes);
 
     // ── Start server ────────────────────────────────────────────
 
@@ -127,6 +142,10 @@ pub async fn run_cloud(
     );
     info!(
         "Cloud API: http://localhost:{}/api/v1/status",
+        api_port
+    );
+    info!(
+        "Console:   http://localhost:{}/console/",
         api_port
     );
 

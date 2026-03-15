@@ -11,7 +11,9 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use super::analytics::{AnalyticsService, EVENT_USER_REGISTERED};
 use super::auth::{AuthStore, User};
+use super::domains::{DomainError, DomainStore};
 use super::registry::WasmRegistry;
 use super::teams::{TeamRole, TeamStore};
 use super::tenants;
@@ -23,6 +25,8 @@ pub struct CloudState {
     pub registry: WasmRegistry,
     pub state_store: warpgrid_state::StateStore,
     pub teams: TeamStore,
+    pub analytics: AnalyticsService,
+    pub domains: DomainStore,
 }
 
 /// Build the cloud API router with all routes.
@@ -39,6 +43,15 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route(
             "/api/v1/cloud/teams/{id}/members/{user_id}",
             delete(remove_team_member),
+        )
+        // Domain management routes
+        .route(
+            "/api/v1/cloud/domains",
+            get(list_domains).post(add_domain),
+        )
+        .route(
+            "/api/v1/cloud/domains/{domain}",
+            delete(remove_domain),
         )
         .with_state(Arc::new(cloud_state))
 }
@@ -133,6 +146,15 @@ async fn register(
     }
 
     let (api_key, user) = state.auth.register(&body.email);
+
+    state.analytics.track(
+        &user.id,
+        EVENT_USER_REGISTERED,
+        serde_json::json!({
+            "email": body.email,
+            "namespace": &user.namespace,
+        }),
+    );
 
     (
         StatusCode::CREATED,
@@ -365,6 +387,84 @@ async fn remove_team_member(
                 super::teams::TeamError::CannotRemoveOwner => StatusCode::FORBIDDEN,
                 super::teams::TeamError::TeamNotFound { .. } => StatusCode::NOT_FOUND,
                 super::teams::TeamError::UserNotMember { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            error_response(status, &e.to_string()).into_response()
+        }
+    }
+}
+
+// ── Domain request/response types ───────────────────────────────
+
+#[derive(Deserialize)]
+struct AddDomainRequest {
+    domain: String,
+    deployment_id: String,
+}
+
+// ── Domain route handlers ───────────────────────────────────────
+
+async fn add_domain(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Json(body): Json<AddDomainRequest>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    match state
+        .domains
+        .add_domain(&body.domain, &body.deployment_id, &user.namespace)
+    {
+        Ok(resp) => (StatusCode::CREATED, CloudResponse::ok(resp)).into_response(),
+        Err(e) => {
+            let status = match &e {
+                DomainError::InvalidDomain { .. } => StatusCode::BAD_REQUEST,
+                DomainError::AlreadyExists { .. } => StatusCode::CONFLICT,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            error_response(status, &e.to_string()).into_response()
+        }
+    }
+}
+
+async fn list_domains(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    let domains = state.domains.list_domains_for_namespace(&user.namespace);
+    CloudResponse::ok(domains).into_response()
+}
+
+async fn remove_domain(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path(domain): Path<String>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    // Verify the domain belongs to this user's namespace.
+    if let Some(mapping) = state.domains.get_domain(&domain) {
+        if mapping.namespace != user.namespace {
+            return error_response(StatusCode::FORBIDDEN, "Not your domain").into_response();
+        }
+    }
+
+    match state.domains.remove_domain(&domain) {
+        Ok(()) => CloudResponse::ok("Domain removed").into_response(),
+        Err(e) => {
+            let status = match &e {
+                DomainError::NotFound { .. } => StatusCode::NOT_FOUND,
                 _ => StatusCode::BAD_REQUEST,
             };
             error_response(status, &e.to_string()).into_response()

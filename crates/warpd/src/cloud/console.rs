@@ -695,8 +695,11 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cloud::analytics::AnalyticsService;
     use crate::cloud::auth::AuthStore;
+    use crate::cloud::domains::DomainStore;
     use crate::cloud::registry::WasmRegistry;
+    use crate::cloud::teams::TeamStore;
 
     fn test_cloud_state() -> CloudState {
         let state_store = warpgrid_state::StateStore::open_in_memory().unwrap();
@@ -706,6 +709,9 @@ mod tests {
             auth,
             registry,
             state_store,
+            teams: TeamStore::new(),
+            analytics: AnalyticsService::Noop,
+            domains: DomainStore::new(),
         }
     }
 

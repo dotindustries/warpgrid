@@ -1,0 +1,53 @@
+name: 'Deploy to WarpGrid'
+description: 'Build and deploy a Wasm component to WarpGrid Cloud'
+inputs:
+  api-key:
+    description: 'WarpGrid API key'
+    required: true
+  api-url:
+    description: 'WarpGrid Cloud API URL'
+    required: false
+    default: 'https://app.warpgrid.dev'
+  region:
+    description: 'Target region (iad, ams, sin, gru, syd, or all)'
+    required: false
+    default: 'iad'
+  lang:
+    description: 'Override build language (rust, go, bun, typescript)'
+    required: false
+  working-directory:
+    description: 'Project directory'
+    required: false
+    default: '.'
+outputs:
+  deployment-url:
+    description: 'URL of the deployed application'
+    value: ${{ steps.deploy.outputs.url }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Install warp CLI
+      shell: bash
+      run: |
+        # For now, build from source. In production, download prebuilt binary.
+        echo "Installing warp CLI..."
+        cargo install --path crates/warp-cli --root $HOME/.local
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+    - name: Configure credentials
+      shell: bash
+      run: |
+        mkdir -p ~/.warpgrid
+        cat > ~/.warpgrid/config.toml << EOF
+        api_key = "${{ inputs.api-key }}"
+        api_url = "${{ inputs.api-url }}"
+        EOF
+    - name: Deploy
+      id: deploy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        ARGS="--region ${{ inputs.region }}"
+        if [ -n "${{ inputs.lang }}" ]; then
+          ARGS="$ARGS --lang ${{ inputs.lang }}"
+        fi
+        warp deploy $ARGS
