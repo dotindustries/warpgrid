@@ -165,6 +165,38 @@ pub async fn run_cloud(
     let usage = UsageTracker::new();
     info!("usage tracker initialized");
 
+    // ── Usage→billing pipeline ──────────────────────────────────
+    // Every hour: snapshot metered usage per namespace and report
+    // to billing for non-Free plans.
+
+    let mut billing_shutdown = shutdown_rx.clone();
+    let billing_usage = usage.clone();
+    let billing_svc = billing.clone();
+    let billing_conn = cloud_db.connect()?;
+    let billing_handle = tokio::spawn(async move {
+        let interval = std::time::Duration::from_secs(3600);
+        info!(interval_secs = 3600, "usage→billing pipeline started");
+
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(interval) => {
+                    if let Err(e) = report_usage_for_active_namespaces(
+                        &billing_conn,
+                        &billing_usage,
+                        &billing_svc,
+                    ).await {
+                        warn!(error = %e, "usage→billing report failed");
+                    }
+                }
+                _ = billing_shutdown.changed() => {
+                    info!("usage→billing pipeline shutting down");
+                    break;
+                }
+            }
+        }
+    });
+    info!("usage→billing pipeline initialized (every 1h)");
+
     // ── Build API router ────────────────────────────────────────
 
     // Merge existing warpgrid-api routes (dashboard, deployments, metrics)
@@ -229,7 +261,69 @@ pub async fn run_cloud(
     // Wait for background tasks.
     let _ = metrics_handle.await;
     let _ = sync_handle.await;
+    let _ = billing_handle.await;
 
     info!("WarpGrid cloud daemon stopped");
+    Ok(())
+}
+
+/// Query distinct active namespaces, snapshot their usage, and report
+/// to billing for non-Free plans.
+async fn report_usage_for_active_namespaces(
+    conn: &libsql::Connection,
+    usage: &UsageTracker,
+    billing: &BillingService,
+) -> anyhow::Result<()> {
+    // Find all namespaces with at least one active deployment.
+    let mut rows = conn
+        .query(
+            "SELECT DISTINCT namespace FROM cloud_deployments WHERE status = 'active'",
+            (),
+        )
+        .await?;
+
+    let mut namespaces = Vec::new();
+    while let Ok(Some(row)) = rows.next().await {
+        if let Ok(ns) = row.get::<String>(0) {
+            namespaces.push(ns);
+        }
+    }
+
+    for namespace in &namespaces {
+        // Check plan — skip Free tier (no metered billing).
+        let plan = billing.get_plan(namespace).await;
+        if plan == crate::cloud::billing::Plan::Free {
+            continue;
+        }
+
+        // Snapshot resets the counters for a new billing period.
+        let record = usage.snapshot(namespace);
+
+        // Skip empty periods (no activity).
+        if record.request_count == 0
+            && record.compute_seconds == 0.0
+            && record.egress_bytes == 0
+        {
+            continue;
+        }
+
+        info!(
+            namespace = %namespace,
+            plan = ?plan,
+            request_count = record.request_count,
+            compute_seconds = record.compute_seconds,
+            egress_bytes = record.egress_bytes,
+            "reporting usage to billing"
+        );
+
+        if let Err(e) = billing.report_usage(namespace, &record).await {
+            warn!(
+                namespace = %namespace,
+                error = %e,
+                "failed to report usage to billing"
+            );
+        }
+    }
+
     Ok(())
 }
