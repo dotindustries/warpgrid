@@ -10,7 +10,7 @@
 #   docker run -p 8443:8443 warpgrid cloud --api-port 8443
 #   docker run -p 8443:8443 warpgrid agent --control-plane <url>
 
-FROM rust:1.85-slim-bookworm AS builder
+FROM rust:1.94-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
     pkg-config libssl-dev cmake protobuf-compiler \
