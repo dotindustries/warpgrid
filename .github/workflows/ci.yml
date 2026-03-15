@@ -21,7 +21,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
