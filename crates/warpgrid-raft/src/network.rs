@@ -39,6 +39,7 @@ impl NetworkConnection {
         ))))
     }
 
+    #[allow(clippy::unnecessary_unwrap)]
     async fn get_client(
         &mut self,
     ) -> Result<&mut RaftServiceClient<tonic::transport::Channel>, String> {
