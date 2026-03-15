@@ -1,0 +1,8 @@
+[package]
+name = "bun-postgres-handler"
+version = "0.1.0"
+description = "E2E fixture: Bun HTTP handler with Postgres via WarpGrid database proxy shim"
+
+[build]
+lang = "bun"
+entry = "src/handler.js"
