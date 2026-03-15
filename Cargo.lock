@@ -3436,6 +3436,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
  "warp-analyzer",
  "warp-core",
  "warp-pack",

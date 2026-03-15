@@ -1,0 +1,7 @@
+[package]
+name = "async-go-template"
+version = "0.1.0"
+
+[build]
+lang = "go"
+entry = "main.go"
