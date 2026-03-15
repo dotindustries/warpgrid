@@ -1,0 +1,5 @@
+# Bun configuration
+# See https://bun.sh/docs/runtime/bunfig for options
+
+[test]
+coverage = false
