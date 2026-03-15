@@ -7,4 +7,4 @@
 - [x] **Add Test: Summary table format** — Test 14 verifies APP, STATUS, DETAILS columns and totals
 - [x] **Add Test: `--only=value` equals-sign syntax** — Test 15 verifies equals-sign variant works
 - [x] **Run full test suite and verify all tests pass** — 14 passed, 0 failed, 1 skipped (quick mode)
-- [ ] **Create PR referencing issue #92** — Push branch and create PR with "Closes #92"
+- [x] **Create PR referencing issue #92** — PR #132 created with "Closes #92"
