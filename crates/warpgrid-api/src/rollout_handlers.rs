@@ -96,7 +96,8 @@ pub async fn start_rollout(
             return rollout_error("deployment not found", StatusCode::NOT_FOUND).into_response();
         }
         Err(e) => {
-            return rollout_error(&e.to_string(), StatusCode::INTERNAL_SERVER_ERROR).into_response();
+            return rollout_error(&e.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+                .into_response();
         }
     };
 
