@@ -120,7 +120,12 @@ mod tests {
                 .to_string_lossy()
                 .to_string();
             // Skip build artifacts that aren't part of the template
-            if rel.starts_with("target/") || rel == "Cargo.lock" {
+            if rel.starts_with("target/")
+                || rel.starts_with("node_modules/")
+                || rel == "Cargo.lock"
+                || rel == "bun.lock"
+                || rel == "bun.lockb"
+            {
                 continue;
             }
             files.insert(rel);
@@ -144,6 +149,11 @@ mod tests {
             .replace(
                 "\nreplace github.com/anthropics/warpgrid/packages/warpgrid-go => ../../../packages/warpgrid-go\n",
                 "",
+            )
+            // Bun fixture uses a local path for @warpgrid/bun-sdk
+            .replace(
+                "\"../../../packages/warpgrid-bun-sdk\"",
+                "\"^0.1.0\"",
             )
     }
 
@@ -213,5 +223,24 @@ mod tests {
     #[test]
     fn test_async_ts_template_matches_fixture() {
         assert_template_matches_fixture("async-ts", "async-ts-template");
+    }
+
+    #[test]
+    fn test_scaffold_bun() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("my-project");
+        crate::templates::scaffold("bun", &target).unwrap();
+        assert!(target.join("package.json").exists());
+        assert!(target.join("bunfig.toml").exists());
+        assert!(target.join("tsconfig.json").exists());
+        assert!(target.join("src/index.ts").exists());
+        assert!(target.join("src/index.test.ts").exists());
+        assert!(target.join("warp.toml").exists());
+        assert!(target.join("README.md").exists());
+    }
+
+    #[test]
+    fn test_bun_template_matches_fixture() {
+        assert_template_matches_fixture("bun", "bun-template");
     }
 }

@@ -1,6 +1,7 @@
 mod async_go;
 mod async_rust;
 mod async_ts;
+mod bun;
 
 use std::fs;
 use std::path::Path;
@@ -23,8 +24,9 @@ pub fn scaffold(template_name: &str, target_dir: &Path) -> Result<()> {
         "async-rust" => async_rust::files(),
         "async-go" => async_go::files(),
         "async-ts" => async_ts::files(),
+        "bun" => bun::files(),
         _ => bail!(
-            "Unknown template '{template_name}'. Available templates: async-rust, async-go, async-ts"
+            "Unknown template '{template_name}'. Available templates: async-rust, async-go, async-ts, bun"
         ),
     };
 
