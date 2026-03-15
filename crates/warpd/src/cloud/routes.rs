@@ -96,6 +96,7 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route("/api/v1/cloud/billing/plan", get(billing_plan))
         .route("/api/v1/cloud/billing/usage", get(billing_usage))
         .route("/api/v1/cloud/billing/portal", post(billing_portal))
+        .route("/api/v1/cloud/billing/checkout", post(billing_checkout))
         // Stripe webhook — no auth middleware (Stripe signs the payload)
         .route("/api/v1/webhooks/stripe", post(stripe_webhook))
         .with_state(Arc::new(cloud_state))
@@ -991,6 +992,57 @@ async fn billing_portal(
         Err(e) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("Failed to create billing portal session: {e}"),
+        )
+        .into_response(),
+    }
+}
+
+// ── Checkout ────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct CheckoutRequest {
+    plan: String,
+}
+
+#[derive(Serialize)]
+struct CheckoutResponse {
+    url: String,
+}
+
+async fn billing_checkout(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Json(body): Json<CheckoutRequest>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    let plan = match body.plan.as_str() {
+        "pro" => super::billing::Plan::Pro,
+        "enterprise" => super::billing::Plan::Enterprise,
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "Invalid plan. Use 'pro' or 'enterprise'",
+            )
+            .into_response();
+        }
+    };
+
+    let success_url = "https://warpgrid.dev/console/settings?checkout=success";
+    let cancel_url = "https://warpgrid.dev/pricing";
+
+    match state
+        .billing
+        .create_checkout_session(&user.namespace, plan, success_url, cancel_url)
+        .await
+    {
+        Ok(url) => CloudResponse::ok(CheckoutResponse { url }).into_response(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to create checkout session: {e}"),
         )
         .into_response(),
     }

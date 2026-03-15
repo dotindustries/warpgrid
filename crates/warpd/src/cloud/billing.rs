@@ -99,6 +99,32 @@ pub struct UsageRecord {
 
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 
+// Stripe price IDs for each plan tier.
+const STRIPE_PRICE_FREE: &str = "price_1TBLKBLgqmX47QaYFlUoOutb";
+const STRIPE_PRICE_PRO: &str = "price_1TBLK9LgqmX47QaYUPEeIjBI";
+const STRIPE_PRICE_ENTERPRISE: &str = "price_1TBLK6LgqmX47QaYE0GqZmqa";
+
+impl Plan {
+    /// Return the Stripe price ID for this plan.
+    pub fn stripe_price_id(self) -> &'static str {
+        match self {
+            Self::Free => STRIPE_PRICE_FREE,
+            Self::Pro => STRIPE_PRICE_PRO,
+            Self::Enterprise => STRIPE_PRICE_ENTERPRISE,
+        }
+    }
+
+    /// Parse a Stripe price ID back to a Plan.
+    pub fn from_stripe_price_id(price_id: &str) -> Option<Self> {
+        match price_id {
+            STRIPE_PRICE_FREE => Some(Self::Free),
+            STRIPE_PRICE_PRO => Some(Self::Pro),
+            STRIPE_PRICE_ENTERPRISE => Some(Self::Enterprise),
+            _ => None,
+        }
+    }
+}
+
 /// Live Stripe API client.
 #[derive(Clone)]
 pub struct StripeBillingClient {
@@ -171,6 +197,46 @@ impl StripeBillingClient {
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| BillingError::Api("missing portal URL in response".to_string()))
+    }
+
+    /// Create a Stripe Checkout session for upgrading to a plan.
+    pub async fn create_checkout_session(
+        &self,
+        customer_id: &str,
+        plan: Plan,
+        success_url: &str,
+        cancel_url: &str,
+    ) -> Result<String, BillingError> {
+        let resp = self
+            .http
+            .post(format!("{STRIPE_API_BASE}/checkout/sessions"))
+            .bearer_auth(&self.secret_key)
+            .form(&[
+                ("customer", customer_id),
+                ("mode", "subscription"),
+                ("line_items[0][price]", plan.stripe_price_id()),
+                ("line_items[0][quantity]", "1"),
+                ("success_url", success_url),
+                ("cancel_url", cancel_url),
+            ])
+            .send()
+            .await
+            .map_err(|e| BillingError::Api(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(BillingError::Api(format!("Stripe checkout error: {body}")));
+        }
+
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| BillingError::Api(e.to_string()))?;
+
+        json["url"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| BillingError::Api("missing checkout URL".to_string()))
     }
 
     pub async fn report_usage(
@@ -441,6 +507,31 @@ impl BillingService {
         match self {
             Self::Active(client) => client.create_billing_portal_session(customer_id).await,
             Self::Mock(mock) => mock.create_billing_portal_session(customer_id).await,
+        }
+    }
+
+    /// Create a Stripe Checkout session for upgrading to a plan.
+    pub async fn create_checkout_session(
+        &self,
+        customer_id: &str,
+        plan: Plan,
+        success_url: &str,
+        cancel_url: &str,
+    ) -> Result<String, BillingError> {
+        match self {
+            Self::Active(client) => {
+                client
+                    .create_checkout_session(customer_id, plan, success_url, cancel_url)
+                    .await
+            }
+            Self::Mock(_) => {
+                debug!(
+                    customer_id = %customer_id,
+                    plan = ?plan,
+                    "mock: create_checkout_session (returning fake URL)"
+                );
+                Ok(format!("https://checkout.stripe.com/mock/{customer_id}"))
+            }
         }
     }
 

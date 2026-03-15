@@ -149,7 +149,7 @@
         <li class="check">Priority support</li>
         <li class="check">5 regions</li>
       </ul>
-      <a href="/console/login" class="btn-plan primary">Start Free Trial</a>
+      <a href="#" class="btn-plan primary" onclick="checkout('pro')">Start Free Trial</a>
     </div>
 
     <div class="plan">
@@ -197,5 +197,29 @@
   </div>
 </footer>
 
+<script>
+async function checkout(plan) {
+  // Check if user is logged in (has API key cookie)
+  const resp = await fetch('/api/v1/cloud/billing/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan }),
+    credentials: 'include'
+  });
+
+  if (resp.status === 401) {
+    // Not logged in — redirect to login first
+    window.location.href = '/console/login?redirect=/pricing';
+    return;
+  }
+
+  const data = await resp.json();
+  if (data.success && data.data && data.data.url) {
+    window.location.href = data.data.url;
+  } else {
+    alert(data.error || 'Failed to start checkout. Please try again.');
+  }
+}
+</script>
 </body>
 </html>
