@@ -162,6 +162,7 @@ pub async fn run_cloud(
         auth,
         registry,
         state_store: state,
+        cloud_db: cloud_conn,
         teams: TeamStore::new(),
         analytics,
         domains: DomainStore::new(),

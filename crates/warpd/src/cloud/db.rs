@@ -107,6 +107,31 @@ CREATE TABLE IF NOT EXISTS cloud_billing (
     plan TEXT NOT NULL DEFAULT 'free',
     created_at INTEGER NOT NULL
 );
+
+-- Cloud Deployments (replicated to edge agents via Turso sync)
+CREATE TABLE IF NOT EXISTS cloud_deployments (
+    id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    name TEXT NOT NULL,
+    wasm_hash TEXT NOT NULL,
+    region TEXT NOT NULL DEFAULT 'iad',
+    status TEXT NOT NULL DEFAULT 'active',
+    spec_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(namespace, name)
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_deployments_ns ON cloud_deployments(namespace);
+CREATE INDEX IF NOT EXISTS idx_cloud_deployments_region ON cloud_deployments(region);
+
+-- Wasm Blobs (content-addressed, replicated to edge via Turso sync)
+-- Edge agents read BLOBs from their local replica — zero network fetch.
+CREATE TABLE IF NOT EXISTS cloud_wasm_blobs (
+    hash TEXT PRIMARY KEY,
+    wasm BLOB NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    uploaded_at INTEGER NOT NULL
+);
 ";
 
 #[cfg(test)]

@@ -26,6 +26,7 @@ pub struct CloudState {
     pub auth: AuthStore,
     pub registry: WasmRegistry,
     pub state_store: warpgrid_state::StateStore,
+    pub cloud_db: libsql::Connection,
     pub teams: TeamStore,
     pub analytics: AnalyticsService,
     pub domains: DomainStore,
@@ -195,8 +196,12 @@ async fn list_deployments(
         Err((status, msg)) => return error_response(status, &msg).into_response(),
     };
 
-    let all_deployments = match state.state_store.list_deployments() {
-        Ok(d) => d,
+    // Read deployments from Turso (the source of truth).
+    let mut rows = match state.cloud_db.query(
+        "SELECT id, namespace, name, region, status, wasm_hash FROM cloud_deployments WHERE namespace = ?",
+        libsql::params![user.namespace.clone()],
+    ).await {
+        Ok(r) => r,
         Err(e) => {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -206,19 +211,17 @@ async fn list_deployments(
         }
     };
 
-    // Filter to only this user's namespace.
-    let user_deployments: Vec<DeploymentInfo> = all_deployments
-        .into_iter()
-        .filter(|d| d.namespace == user.namespace)
-        .map(|d| DeploymentInfo {
-            id: d.id.clone(),
-            namespace: d.namespace.clone(),
-            name: d.name.clone(),
-            status: "running".to_string(),
-            instances: d.instances.min as u32,
-            region: "iad".to_string(),
-        })
-        .collect();
+    let mut user_deployments = Vec::new();
+    while let Ok(Some(row)) = rows.next().await {
+        user_deployments.push(DeploymentInfo {
+            id: row.get::<String>(0).unwrap_or_default(),
+            namespace: row.get::<String>(1).unwrap_or_default(),
+            name: row.get::<String>(2).unwrap_or_default(),
+            region: row.get::<String>(3).unwrap_or_default(),
+            status: row.get::<String>(4).unwrap_or_default(),
+            instances: 1, // TODO: read from spec_json
+        });
+    }
 
     CloudResponse::ok(user_deployments).into_response()
 }
@@ -328,39 +331,83 @@ async fn upload_and_deploy(
         .into_response();
     }
 
+    // Compute content hash.
+    let wasm_hash = super::auth::hash_key(&format!("{:?}", body.as_ref()));
+
     // Check for duplicate deployment name.
     let deployment_id = tenants::scoped_deployment_id(&user.namespace, &name);
-    if state.state_store.get_deployment(&deployment_id).ok().flatten().is_some() {
+    let existing = state.cloud_db.query(
+        "SELECT id FROM cloud_deployments WHERE id = ?",
+        libsql::params![deployment_id.clone()],
+    ).await;
+    if let Ok(mut rows) = existing {
+        if rows.next().await.ok().flatten().is_some() {
+            return error_response(
+                StatusCode::CONFLICT,
+                &format!("Deployment '{}' already exists", name),
+            )
+            .into_response();
+        }
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    // Store Wasm blob in Turso (content-addressed, replicated to edge).
+    let blob_result = state.cloud_db.execute(
+        "INSERT OR IGNORE INTO cloud_wasm_blobs (hash, wasm, size_bytes, uploaded_at) VALUES (?, ?, ?, ?)",
+        libsql::params![wasm_hash.clone(), body.to_vec(), wasm_size as i64, now],
+    ).await;
+    if let Err(e) = blob_result {
         return error_response(
-            StatusCode::CONFLICT,
-            &format!("Deployment '{}' already exists", name),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to store Wasm blob: {e}"),
         )
         .into_response();
     }
 
-    // Store Wasm in registry.
-    let stored = match state.registry.store(&user.namespace, &name, &body) {
-        Ok(s) => s,
-        Err(e) => {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Failed to store Wasm: {e}"),
-            )
-            .into_response()
-        }
-    };
+    // Also store in local registry for backward compat.
+    let _ = state.registry.store(&user.namespace, &name, &body);
 
-    // Create deployment spec.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    // Create deployment spec (JSON for flexibility).
+    let spec = serde_json::json!({
+        "trigger": {"type": "http", "port": 8080},
+        "instances": {"min": 1, "max": 5},
+        "resources": {"memory_bytes": 67108864, "cpu_weight": 100},
+        "shims": {},
+        "env": {},
+    });
 
-    let spec = warpgrid_state::DeploymentSpec {
+    // Store deployment in Turso (replicated to edge agents).
+    let deploy_result = state.cloud_db.execute(
+        "INSERT INTO cloud_deployments (id, namespace, name, wasm_hash, region, status, spec_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)",
+        libsql::params![
+            deployment_id.clone(),
+            user.namespace.clone(),
+            name.clone(),
+            wasm_hash.clone(),
+            region.clone(),
+            spec.to_string(),
+            now,
+            now
+        ],
+    ).await;
+    if let Err(e) = deploy_result {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to create deployment: {e}"),
+        )
+        .into_response();
+    }
+
+    // Also mirror to local redb state store for dashboard/metrics compatibility.
+    let redb_spec = warpgrid_state::DeploymentSpec {
         id: deployment_id.clone(),
         namespace: user.namespace.clone(),
         name: name.clone(),
-        source: format!("registry://{}/{}/{}", user.namespace, name, stored.hash),
+        source: format!("turso://{}", wasm_hash),
         trigger: warpgrid_state::TriggerConfig::Http { port: Some(8080) },
         instances: warpgrid_state::InstanceConstraints { min: 1, max: 5 },
         resources: warpgrid_state::ResourceLimits {
@@ -371,17 +418,10 @@ async fn upload_and_deploy(
         health: None,
         shims: warpgrid_state::ShimsEnabled::default(),
         env: std::collections::HashMap::new(),
-        created_at: now,
-        updated_at: now,
+        created_at: now as u64,
+        updated_at: now as u64,
     };
-
-    if let Err(e) = state.state_store.put_deployment(&spec) {
-        return error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("Failed to create deployment: {e}"),
-        )
-        .into_response();
-    }
+    let _ = state.state_store.put_deployment(&redb_spec);
 
     // Track analytics.
     state.analytics.track(
@@ -391,7 +431,7 @@ async fn upload_and_deploy(
             "deployment_id": deployment_id,
             "region": region,
             "wasm_size_bytes": wasm_size,
-            "wasm_hash": stored.hash,
+            "wasm_hash": wasm_hash,
         }),
     );
 
@@ -402,9 +442,10 @@ async fn upload_and_deploy(
             "name": name,
             "namespace": user.namespace,
             "region": region,
-            "wasm_hash": stored.hash,
+            "wasm_hash": wasm_hash,
             "wasm_size_bytes": wasm_size,
             "url": format!("https://{}.{}.edge.warpgrid.dev", name, user.namespace),
+            "storage": "turso",
         })),
     )
         .into_response()
@@ -425,9 +466,18 @@ async fn delete_deployment(
         if ns != user.namespace {
             return error_response(StatusCode::FORBIDDEN, "Not your deployment").into_response();
         }
-        // Clean up registry.
+        // Clean up local registry.
         let _ = state.registry.delete_deployment(ns, name);
     }
+
+    // Delete from Turso (source of truth).
+    let deleted = state.cloud_db.execute(
+        "DELETE FROM cloud_deployments WHERE id = ? AND namespace = ?",
+        libsql::params![id.clone(), user.namespace.clone()],
+    ).await;
+
+    // Also clean up from local redb.
+    let _ = state.state_store.delete_deployment(&id);
 
     // Track analytics.
     state.analytics.track(
@@ -436,9 +486,9 @@ async fn delete_deployment(
         serde_json::json!({ "deployment_id": id }),
     );
 
-    match state.state_store.delete_deployment(&id) {
-        Ok(true) => CloudResponse::ok("Deployment deleted").into_response(),
-        Ok(false) => error_response(StatusCode::NOT_FOUND, "Deployment not found").into_response(),
+    match deleted {
+        Ok(affected) if affected > 0 => CloudResponse::ok("Deployment deleted").into_response(),
+        Ok(_) => error_response(StatusCode::NOT_FOUND, "Deployment not found").into_response(),
         Err(e) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("Failed to delete: {e}"),

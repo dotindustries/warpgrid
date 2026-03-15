@@ -703,14 +703,18 @@ mod tests {
     use crate::cloud::teams::TeamStore;
     use crate::cloud::usage::UsageTracker;
 
-    fn test_cloud_state() -> CloudState {
+    async fn test_cloud_state() -> CloudState {
         let state_store = warpgrid_state::StateStore::open_in_memory().unwrap();
         let auth = AuthStore::new();
         let registry = WasmRegistry::local(std::path::Path::new("/tmp/wg-test-registry"));
+        let db = crate::cloud::db::open_memory().await.unwrap();
+        let conn = db.connect().unwrap();
+        crate::cloud::db::migrate(&conn).await.unwrap();
         CloudState {
             auth,
             registry,
             state_store,
+            cloud_db: conn,
             teams: TeamStore::new(),
             analytics: AnalyticsService::Noop,
             domains: DomainStore::new(),
@@ -781,7 +785,7 @@ mod tests {
 
     #[tokio::test]
     async fn require_user_redirects_without_cookie() {
-        let state = Arc::new(test_cloud_state());
+        let state = Arc::new(test_cloud_state().await);
         let headers = HeaderMap::new();
         let result = require_user(&headers, &state);
         assert!(result.is_err());
@@ -789,7 +793,7 @@ mod tests {
 
     #[tokio::test]
     async fn require_user_redirects_with_invalid_key() {
-        let state = Arc::new(test_cloud_state());
+        let state = Arc::new(test_cloud_state().await);
         let mut headers = HeaderMap::new();
         headers.insert(
             "cookie",
@@ -803,7 +807,7 @@ mod tests {
 
     #[tokio::test]
     async fn require_user_succeeds_with_valid_key() {
-        let cloud = test_cloud_state();
+        let cloud = test_cloud_state().await;
         let (api_key, _user) = cloud.auth.register_sync("test@example.com");
         let state = Arc::new(cloud);
         let mut headers = HeaderMap::new();
