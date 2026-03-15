@@ -18,6 +18,8 @@
 #  13. Build failure causes dependent test to be SKIP (not errored)
 #  14. Summary table includes APP, STATUS, DETAILS columns and totals
 #  15. --only=value equals-sign syntax works like --only value
+#  16. --only with no argument exits non-zero with error message
+#  17. Test failure causes script to exit 1
 #
 # Usage:
 #   ./test-all.test.sh          Run all tests
@@ -379,6 +381,53 @@ if [ ${EXIT_CODE} -eq 0 ]; then
     fi
 else
     fail "--only=t3 (equals syntax) exited with code ${EXIT_CODE}"
+fi
+
+# ── Test 16: --only with no argument ────────────────────────────────
+
+log "Test 16: --only with no argument exits non-zero with error"
+
+EXIT_CODE=0
+OUTPUT=$("${TEST_ALL}" --only 2>&1) || EXIT_CODE=$?
+
+if [ ${EXIT_CODE} -ne 0 ]; then
+    if echo "${OUTPUT}" | grep -qi "requires"; then
+        pass "--only with no argument exits ${EXIT_CODE} with helpful error"
+    else
+        pass "--only with no argument exits non-zero (code ${EXIT_CODE})"
+    fi
+else
+    fail "--only with no argument should exit non-zero but got 0"
+fi
+
+# ── Test 17: Test failure causes exit 1 ────────────────────────────
+
+log "Test 17: Test failure causes script to exit 1"
+
+FAKE_APP_DIR="${PROJECT_ROOT}/test-apps/t97-fake-test-fail"
+mkdir -p "${FAKE_APP_DIR}"
+cat > "${FAKE_APP_DIR}/test.sh" <<'TESTEOF'
+#!/usr/bin/env bash
+echo "intentional failure"
+exit 1
+TESTEOF
+chmod +x "${FAKE_APP_DIR}/test.sh"
+
+EXIT_CODE=0
+OUTPUT=$("${TEST_ALL}" --only t97 2>&1) || EXIT_CODE=$?
+
+# Clean up
+rm -rf "${FAKE_APP_DIR}"
+rm -rf "${PROJECT_ROOT}/test-results" 2>/dev/null || true
+
+if [ ${EXIT_CODE} -eq 1 ]; then
+    if echo "${OUTPUT}" | grep -q "FAIL"; then
+        pass "Test failure causes exit 1 with FAIL status in output"
+    else
+        pass "Test failure causes exit 1"
+    fi
+else
+    fail "Test failure should exit 1 but got exit code ${EXIT_CODE}"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
