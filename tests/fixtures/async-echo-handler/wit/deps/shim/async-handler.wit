@@ -1,0 +1,6 @@
+package warpgrid:shim@0.1.0;
+
+interface async-handler {
+    use http-types.{http-request, http-response};
+    handle-request: func(request: http-request) -> http-response;
+}

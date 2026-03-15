@@ -1,0 +1,7 @@
+# Pinned commit SHA for Wasmtime source build with component-model-async support.
+# Branch: release-41.0.0 (component-model-async available since v41)
+# Date: 2026-02-24
+# Requires: rustc >= 1.90.0
+# Update this SHA to pull in newer async component model changes.
+# CI caches are keyed on this file — changing the SHA triggers a rebuild.
+d938a9df47c8e62014c1a12571547411ede6ff5e

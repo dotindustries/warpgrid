@@ -48,7 +48,11 @@ export interface WarpGridHandler {
 export function validateHandler(
   handler: unknown,
 ): asserts handler is WarpGridHandler {
-  if (handler === null || handler === undefined) {
+  if (
+    handler === null ||
+    handler === undefined ||
+    typeof handler !== "object"
+  ) {
     throw new WarpGridHandlerValidationError(
       "Handler must be an object with a fetch() method, got " +
         String(handler),

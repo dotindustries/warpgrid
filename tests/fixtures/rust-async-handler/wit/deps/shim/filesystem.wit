@@ -1,0 +1,28 @@
+package warpgrid:shim@0.1.0;
+
+/// Virtual filesystem shim interface.
+///
+/// Intercepts file operations for well-known system paths
+/// (`/etc/resolv.conf`, `/dev/urandom`, timezone data, etc.)
+/// and returns WarpGrid-controlled content.
+interface filesystem {
+    /// Metadata about a virtual file.
+    record file-stat {
+        size: u64,
+        is-file: bool,
+        is-directory: bool,
+    }
+
+    /// Open a virtual path, returning a handle for subsequent reads.
+    /// Returns an error if the path is not a recognized virtual path.
+    open-virtual: func(path: string) -> result<u64, string>;
+
+    /// Read up to `len` bytes from an open virtual file handle.
+    read-virtual: func(handle: u64, len: u32) -> result<list<u8>, string>;
+
+    /// Stat a virtual path without opening it.
+    stat-virtual: func(path: string) -> result<file-stat, string>;
+
+    /// Close a previously opened virtual file handle.
+    close-virtual: func(handle: u64) -> result<_, string>;
+}

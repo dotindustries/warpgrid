@@ -1,0 +1,6 @@
+[package]
+name = "async-rust-template"
+version = "0.1.0"
+
+[build]
+lang = "rust"

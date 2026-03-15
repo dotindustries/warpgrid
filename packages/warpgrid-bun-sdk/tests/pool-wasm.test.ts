@@ -6,6 +6,7 @@ import {
   MSG,
   AUTH_OK,
   AUTH_CLEARTEXT,
+  AUTH_MD5,
 } from "../src/postgres-protocol.ts";
 
 const encoder = new TextEncoder();
@@ -34,6 +35,14 @@ function buildAuthOk(): Uint8Array {
 function buildAuthCleartext(): Uint8Array {
   const buf = new ArrayBuffer(4);
   new DataView(buf).setInt32(0, AUTH_CLEARTEXT);
+  return buildBackendMessage(MSG.AUTH, new Uint8Array(buf));
+}
+
+function buildAuthMD5(salt: Uint8Array): Uint8Array {
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  view.setInt32(0, AUTH_MD5);
+  new Uint8Array(buf).set(salt, 4);
   return buildBackendMessage(MSG.AUTH, new Uint8Array(buf));
 }
 
@@ -597,6 +606,56 @@ describe("WasmPool", () => {
       expect(pwMsg).toBeDefined();
 
       await authPool.end();
+    });
+
+    test("handles MD5 password authentication", async () => {
+      const md5Shim = new MockDatabaseShim();
+      const salt = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+
+      // Override connect to queue MD5 auth challenge
+      const origConnect = md5Shim.connect.bind(md5Shim);
+      md5Shim.connect = (config) => {
+        const handle = origConnect(config);
+        // Replace default startup response with MD5 auth challenge
+        md5Shim.recvQueues.set(handle, [buildAuthMD5(salt)]);
+        return handle;
+      };
+
+      // Override send to detect password message and return auth ok
+      md5Shim.send = (handle: number, data: Uint8Array): number => {
+        md5Shim.sendLog.push({ handle, data: new Uint8Array(data) });
+
+        if (data.length > 0 && data[0] === MSG.PASSWORD) {
+          // MD5 password sent, queue AuthOk + ReadyForQuery
+          md5Shim.queueResponse(handle, buildPostAuthResponse());
+        } else if (data.length > 0 && data[0] === MSG.QUERY) {
+          md5Shim.queueResponse(handle, buildSelectUsersResponse());
+        }
+
+        return data.length;
+      };
+
+      const md5Pool = new WasmPool(
+        { user: "testuser", password: "secret" },
+        md5Shim,
+      );
+
+      const result = await md5Pool.query("SELECT 1");
+      expect(result).toBeDefined();
+
+      // Verify password message was sent (starts with 'p' = 0x70)
+      const pwMsg = md5Shim.sendLog.find(
+        (log) => log.data[0] === MSG.PASSWORD,
+      );
+      expect(pwMsg).toBeDefined();
+
+      // Verify the password starts with "md5" (after message header)
+      // Password message: type(1) + length(4) + password_string + null
+      const pwData = pwMsg!.data;
+      const pwStr = new TextDecoder().decode(pwData.slice(5, pwData.length - 1));
+      expect(pwStr).toMatch(/^md5[0-9a-f]{32}$/);
+
+      await md5Pool.end();
     });
   });
 });
