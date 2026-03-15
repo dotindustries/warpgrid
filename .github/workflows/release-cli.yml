@@ -14,10 +14,12 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: warp-linux-x64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact: warp-linux-arm64
-            use_cross: true
+          # ARM64 Linux disabled: cross-compile needs OpenSSL for aarch64
+          # TODO: switch reqwest to rustls-tls feature to enable this
+          # - target: aarch64-unknown-linux-gnu
+          #   os: ubuntu-latest
+          #   artifact: warp-linux-arm64
+          #   use_cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: warp-darwin-x64
@@ -69,6 +71,5 @@ jobs:
         with:
           files: |
             warp-linux-x64/warp-linux-x64
-            warp-linux-arm64/warp-linux-arm64
             warp-darwin-x64/warp-darwin-x64
             warp-darwin-arm64/warp-darwin-arm64
