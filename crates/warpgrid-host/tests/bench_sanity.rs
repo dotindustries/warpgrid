@@ -1,7 +1,7 @@
 //! Sanity-check tests for the benchmark harness.
 //!
-//! These validate that the async vs sync throughput measurement infrastructure
-//! produces correct results before criterion benchmarks are trusted.
+//! Gated behind the `bench` feature because they depend on `bench_utils` mock
+//! types. Run with: `cargo test --package warpgrid-host --features bench --test bench_sanity`
 //!
 //! ## Why these tests matter
 //!
@@ -11,10 +11,12 @@
 //! concurrent query execution. These tests confirm:
 //!
 //! 1. **Sanity (0ms, concurrency=1):** Both paths produce equivalent throughput
-//!    when there is no I/O delay and no concurrency benefit — within 10%.
+//!    when there is no I/O delay and no concurrency benefit — within acceptable range.
 //!
 //! 2. **Throughput advantage (50ms, concurrency=50):** The async path achieves
 //!    at least 5× the sync path's throughput, validating the concurrency model.
+
+#![cfg(feature = "bench")]
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -117,8 +119,8 @@ async fn measure_async_throughput(
 }
 
 /// At concurrency=1 with 0ms latency, sync and async throughput should be
-/// within 10% of each other — the async overhead is negligible when there
-/// is no I/O blocking and no concurrency benefit.
+/// within a reasonable range of each other — the async overhead is negligible
+/// when there is no I/O blocking and no concurrency benefit.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sanity_zero_latency_single_connection() {
     let duration = Duration::from_millis(500);
@@ -131,9 +133,6 @@ async fn sanity_zero_latency_single_connection() {
         "sanity check — sync: {sync_tps:.0} ops/s, async: {async_tps:.0} ops/s, ratio: {ratio:.2}"
     );
 
-    // Async should be within 10% of sync (ratio between 0.9 and 1.1)
-    // We use a wider tolerance (0.5–2.0) since CI can be noisy, but the
-    // test still validates that neither path is catastrophically broken.
     assert!(
         ratio > 0.5 && ratio < 2.0,
         "async/sync ratio {ratio:.2} outside acceptable range [0.5, 2.0] — \
