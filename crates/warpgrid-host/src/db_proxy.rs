@@ -929,6 +929,7 @@ mod tests {
     struct MockBackend {
         healthy: Arc<AtomicBool>,
         send_response: Vec<u8>,
+        latency: Duration,
     }
 
     impl MockBackend {
@@ -936,6 +937,15 @@ mod tests {
             Self {
                 healthy: Arc::new(AtomicBool::new(true)),
                 send_response: vec![],
+                latency: Duration::ZERO,
+            }
+        }
+
+        fn with_latency(latency: Duration) -> Self {
+            Self {
+                healthy: Arc::new(AtomicBool::new(true)),
+                send_response: vec![],
+                latency,
             }
         }
 
@@ -943,16 +953,23 @@ mod tests {
             Self {
                 healthy,
                 send_response: vec![],
+                latency: Duration::ZERO,
             }
         }
     }
 
     impl ConnectionBackend for MockBackend {
         fn send(&mut self, data: &[u8]) -> Result<usize, String> {
+            if !self.latency.is_zero() {
+                std::thread::sleep(self.latency);
+            }
             Ok(data.len())
         }
 
         fn recv(&mut self, max_bytes: usize) -> Result<Vec<u8>, String> {
+            if !self.latency.is_zero() {
+                std::thread::sleep(self.latency);
+            }
             let response = if self.send_response.len() > max_bytes {
                 self.send_response[..max_bytes].to_vec()
             } else {
@@ -971,6 +988,7 @@ mod tests {
     struct MockFactory {
         connect_count: AtomicU64,
         should_fail: AtomicBool,
+        latency: Duration,
     }
 
     impl MockFactory {
@@ -978,6 +996,15 @@ mod tests {
             Self {
                 connect_count: AtomicU64::new(0),
                 should_fail: AtomicBool::new(false),
+                latency: Duration::ZERO,
+            }
+        }
+
+        fn with_latency(latency: Duration) -> Self {
+            Self {
+                connect_count: AtomicU64::new(0),
+                should_fail: AtomicBool::new(false),
+                latency,
             }
         }
 
@@ -996,7 +1023,7 @@ mod tests {
                 return Err("connection refused".to_string());
             }
             self.connect_count.fetch_add(1, Ordering::Relaxed);
-            Ok(Box::new(MockBackend::new()))
+            Ok(Box::new(MockBackend::with_latency(self.latency)))
         }
     }
 
@@ -1645,6 +1672,7 @@ mod tests {
     struct MockAsyncBackend {
         buf: Vec<u8>,
         healthy: Arc<AtomicBool>,
+        latency: Duration,
     }
 
     impl MockAsyncBackend {
@@ -1652,6 +1680,15 @@ mod tests {
             Self {
                 buf: Vec::new(),
                 healthy: Arc::new(AtomicBool::new(true)),
+                latency: Duration::ZERO,
+            }
+        }
+
+        fn with_latency(latency: Duration) -> Self {
+            Self {
+                buf: Vec::new(),
+                healthy: Arc::new(AtomicBool::new(true)),
+                latency,
             }
         }
     }
@@ -1662,6 +1699,9 @@ mod tests {
             data: &'a [u8],
         ) -> Pin<Box<dyn Future<Output = Result<usize, String>> + Send + 'a>> {
             Box::pin(async move {
+                if !self.latency.is_zero() {
+                    tokio::time::sleep(self.latency).await;
+                }
                 self.buf = data.to_vec();
                 Ok(data.len())
             })
@@ -1672,6 +1712,9 @@ mod tests {
             max_bytes: usize,
         ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, String>> + Send + 'a>> {
             Box::pin(async move {
+                if !self.latency.is_zero() {
+                    tokio::time::sleep(self.latency).await;
+                }
                 let len = max_bytes.min(self.buf.len());
                 Ok(self.buf[..len].to_vec())
             })
@@ -1689,12 +1732,21 @@ mod tests {
 
     struct MockAsyncFactory {
         connect_count: AtomicU64,
+        latency: Duration,
     }
 
     impl MockAsyncFactory {
         fn new() -> Self {
             Self {
                 connect_count: AtomicU64::new(0),
+                latency: Duration::ZERO,
+            }
+        }
+
+        fn with_latency(latency: Duration) -> Self {
+            Self {
+                connect_count: AtomicU64::new(0),
+                latency,
             }
         }
 
@@ -1710,8 +1762,10 @@ mod tests {
             _password: Option<&'a str>,
         ) -> async_io::AsyncConnectFuture<'a> {
             self.connect_count.fetch_add(1, Ordering::Relaxed);
-            Box::pin(async {
-                Ok(Box::new(MockAsyncBackend::new()) as Box<dyn AsyncConnectionBackend>)
+            let latency = self.latency;
+            Box::pin(async move {
+                Ok(Box::new(MockAsyncBackend::with_latency(latency))
+                    as Box<dyn AsyncConnectionBackend>)
             })
         }
     }
