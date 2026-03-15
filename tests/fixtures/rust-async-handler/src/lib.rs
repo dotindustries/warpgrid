@@ -30,7 +30,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 wit_bindgen::generate!({
     path: "wit",
-    world: "rust-async-handler",
+    world: "warpgrid-async-handler",
     generate_all,
 });
 
