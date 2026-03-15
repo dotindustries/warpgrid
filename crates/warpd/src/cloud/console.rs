@@ -1030,6 +1030,7 @@ mod tests {
             billing: BillingService::from_env(None),
             usage: UsageTracker::new(),
             logs: crate::cloud::routes::new_log_buffer(),
+            admin_key: None,
         }
     }
 

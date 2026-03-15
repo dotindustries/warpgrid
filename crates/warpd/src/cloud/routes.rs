@@ -65,6 +65,7 @@ pub struct CloudState {
     pub billing: BillingService,
     pub usage: UsageTracker,
     pub logs: LogBuffer,
+    pub admin_key: Option<String>,
 }
 
 /// Build the cloud API router with all routes.

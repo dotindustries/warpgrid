@@ -3,6 +3,7 @@
 //! Provides multi-tenant auth, provisioning, registry, and billing
 //! for the hosted WarpGrid platform (`warpd cloud` mode).
 
+pub mod admin;
 pub mod analytics;
 pub mod auth;
 pub mod billing;

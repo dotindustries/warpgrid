@@ -140,6 +140,10 @@ enum Command {
         /// Stripe secret key for billing. When not set, billing runs in mock mode.
         #[arg(long, env = "STRIPE_SECRET_KEY")]
         stripe_secret_key: Option<String>,
+
+        /// Admin dashboard key. When not set, the first registered user's API key is accepted.
+        #[arg(long, env = "WARPGRID_ADMIN_KEY")]
+        admin_key: Option<String>,
     },
 
     /// Run as an agent node (worker, joins a control-plane cluster).
@@ -220,6 +224,7 @@ async fn main() -> anyhow::Result<()> {
             metrics_interval,
             posthog_api_key,
             stripe_secret_key,
+            admin_key,
         } => {
             // Load config file (CLI args and env vars take precedence).
             let cfg = config::WarpGridConfig::load(config_path.as_deref(), Some(&data_dir));
@@ -236,6 +241,7 @@ async fn main() -> anyhow::Result<()> {
                 config::merge_with_default(metrics_interval, c.metrics_interval, 60),
                 config::merge_option(posthog_api_key, c.posthog.api_key.clone()),
                 config::merge_option(stripe_secret_key, c.stripe.secret_key.clone()),
+                admin_key,
             )
             .await
         }

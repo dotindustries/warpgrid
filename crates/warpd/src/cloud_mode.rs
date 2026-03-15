@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use tokio::sync::watch;
 use tracing::{info, warn};
 
+use crate::cloud::admin::admin_router;
 use crate::cloud::analytics::AnalyticsService;
 use crate::cloud::auth::AuthStore;
 use crate::cloud::billing::BillingService;
@@ -42,6 +43,7 @@ pub async fn run_cloud(
     metrics_interval: u64,
     posthog_api_key: Option<String>,
     stripe_secret_key: Option<String>,
+    admin_key: Option<String>,
 ) -> anyhow::Result<()> {
     info!("WarpGrid daemon starting in cloud mode");
 
@@ -226,16 +228,19 @@ pub async fn run_cloud(
         billing,
         usage,
         logs: crate::cloud::routes::new_log_buffer(),
+        admin_key,
     };
     let console_routes = console_router(cloud_state.clone());
+    let admin_routes = admin_router(cloud_state.clone());
     let cloud_routes = cloud_router(cloud_state);
     let landing_routes = landing_router();
 
     // Landing pages (/, /benchmarks, /pricing) are the fallback so that
-    // /console/*, /api/*, and /dashboard routes always take priority.
+    // /admin/*, /console/*, /api/*, and /dashboard routes always take priority.
     let router = base_router
         .merge(cloud_routes)
         .merge(console_routes)
+        .merge(admin_routes)
         .fallback_service(landing_routes);
 
     // ── Start server ────────────────────────────────────────────
@@ -245,6 +250,7 @@ pub async fn run_cloud(
     info!("Dashboard: http://localhost:{}/dashboard", api_port);
     info!("Cloud API: http://localhost:{}/api/v1/status", api_port);
     info!("Console:   http://localhost:{}/console/", api_port);
+    info!("Admin:     http://localhost:{}/admin/", api_port);
     info!("Landing:   http://localhost:{}/", api_port);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
