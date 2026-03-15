@@ -132,6 +132,56 @@ CREATE TABLE IF NOT EXISTS cloud_wasm_blobs (
     size_bytes INTEGER NOT NULL,
     uploaded_at INTEGER NOT NULL
 );
+
+-- Runtime state (synced from edge agents every 30s)
+-- These tables give the global dashboard a cross-region view.
+-- Edge agents write to local redb on every request (hot path),
+-- then batch-sync snapshots to Turso on an interval (warm path).
+
+-- Instances: per-deployment instance state across all regions
+CREATE TABLE IF NOT EXISTS cloud_instances (
+    id TEXT PRIMARY KEY,
+    deployment_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    region TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'starting',
+    health TEXT NOT NULL DEFAULT 'unknown',
+    restart_count INTEGER NOT NULL DEFAULT 0,
+    memory_bytes INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_instances_deploy ON cloud_instances(deployment_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_instances_node ON cloud_instances(node_id);
+
+-- Nodes: cluster node registry across all regions
+CREATE TABLE IF NOT EXISTS cloud_nodes (
+    id TEXT PRIMARY KEY,
+    region TEXT NOT NULL,
+    address TEXT NOT NULL,
+    port INTEGER NOT NULL,
+    capacity_memory_bytes INTEGER NOT NULL,
+    capacity_cpu_weight INTEGER NOT NULL,
+    used_memory_bytes INTEGER NOT NULL DEFAULT 0,
+    used_cpu_weight INTEGER NOT NULL DEFAULT 0,
+    labels_json TEXT NOT NULL DEFAULT '{}',
+    last_heartbeat INTEGER NOT NULL
+);
+
+-- Metrics: periodic snapshots per deployment per region
+CREATE TABLE IF NOT EXISTS cloud_metrics (
+    deployment_id TEXT NOT NULL,
+    region TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    rps REAL NOT NULL DEFAULT 0,
+    latency_p50_ms REAL NOT NULL DEFAULT 0,
+    latency_p99_ms REAL NOT NULL DEFAULT 0,
+    error_rate REAL NOT NULL DEFAULT 0,
+    total_memory_bytes INTEGER NOT NULL DEFAULT 0,
+    active_instances INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (deployment_id, region, epoch)
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_metrics_deploy ON cloud_metrics(deployment_id, epoch);
 ";
 
 #[cfg(test)]
