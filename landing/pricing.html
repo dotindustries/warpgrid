@@ -199,16 +199,24 @@
 
 <script>
 async function checkout(plan) {
-  // Check if user is logged in (has API key cookie)
+  // Read API key from wg_session cookie
+  const cookie = document.cookie.split('; ').find(c => c.startsWith('wg_session='));
+  if (!cookie) {
+    window.location.href = '/console/login?redirect=/pricing';
+    return;
+  }
+  const apiKey = cookie.split('=')[1];
+
   const resp = await fetch('/api/v1/cloud/billing/checkout', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plan }),
-    credentials: 'include'
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + apiKey
+    },
+    body: JSON.stringify({ plan })
   });
 
   if (resp.status === 401) {
-    // Not logged in — redirect to login first
     window.location.href = '/console/login?redirect=/pricing';
     return;
   }

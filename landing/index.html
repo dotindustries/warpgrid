@@ -273,6 +273,81 @@
       background: var(--grid-850);
     }
 
+    /* ── Download Button ────────────────────────── */
+    .download-group {
+      position: relative;
+      display: inline-flex;
+    }
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 1.5rem;
+      background: var(--grid-800);
+      color: var(--text-1);
+      font-weight: 600;
+      font-size: 1rem;
+      border-radius: 10px 0 0 10px;
+      text-decoration: none;
+      border: 1px solid var(--grid-600);
+      border-right: none;
+      transition: all 0.25s;
+      cursor: pointer;
+      font-family: var(--font-display);
+    }
+    .btn-download:hover { background: var(--grid-700); }
+    .btn-download svg { flex-shrink: 0; }
+    .btn-dropdown-toggle {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.875rem 0.75rem;
+      background: var(--grid-800);
+      color: var(--text-3);
+      border: 1px solid var(--grid-600);
+      border-left: 1px solid var(--grid-700);
+      border-radius: 0 10px 10px 0;
+      cursor: pointer;
+      transition: all 0.25s;
+      font-family: var(--font-display);
+    }
+    .btn-dropdown-toggle:hover { background: var(--grid-700); }
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--grid-850);
+      border: 1px solid var(--grid-600);
+      border-radius: 10px;
+      overflow: hidden;
+      z-index: 50;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .dropdown-menu.open { display: block; }
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      color: var(--text-2);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    .dropdown-item:hover { background: var(--grid-700); }
+    .dropdown-item .dl-platform { color: var(--text-1); font-weight: 500; }
+    .dropdown-item .dl-arch { color: var(--text-4); font-size: 0.8rem; font-family: var(--font-mono); }
+    .dropdown-item .dl-icon { width: 18px; color: var(--text-4); flex-shrink: 0; }
+    .dropdown-divider { border-top: 1px solid var(--grid-700); margin: 0; }
+    .dropdown-item.shell-cmd {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+      padding: 0.6rem 1rem;
+      background: var(--grid-900);
+    }
+
     /* ── Stat Bar ───────────────────────────────── */
     .stat-bar {
       padding: 3rem 0;
@@ -872,13 +947,41 @@
         sandbox themselves by default, and run 5,000 per node.
       </p>
       <div class="hero-actions fade-up delay-3">
+        <div class="download-group">
+          <a id="dl-primary" href="#" class="btn-download" onclick="downloadCli(event)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span id="dl-label">Download CLI</span>
+          </a>
+          <button class="btn-dropdown-toggle" onclick="toggleDropdown()" aria-label="More download options">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div id="dl-dropdown" class="dropdown-menu">
+            <a class="dropdown-item" href="https://github.com/dotindustries/warpgrid/releases/latest/download/warp-darwin-arm64">
+              <span class="dl-icon">🍎</span>
+              <span><span class="dl-platform">macOS</span> <span class="dl-arch">Apple Silicon (arm64)</span></span>
+            </a>
+            <a class="dropdown-item" href="https://github.com/dotindustries/warpgrid/releases/latest/download/warp-darwin-x64">
+              <span class="dl-icon">🍎</span>
+              <span><span class="dl-platform">macOS</span> <span class="dl-arch">Intel (x64)</span></span>
+            </a>
+            <div class="dropdown-divider"></div>
+            <a class="dropdown-item" href="https://github.com/dotindustries/warpgrid/releases/latest/download/warp-linux-x64">
+              <span class="dl-icon">🐧</span>
+              <span><span class="dl-platform">Linux</span> <span class="dl-arch">x86_64</span></span>
+            </a>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item shell-cmd" onclick="copyInstall()">
+              curl -fsSL warpgrid.dev/install.sh | sh
+            </div>
+          </div>
+        </div>
         <a href="/console/login" class="btn-primary">
-          Get Started Free
+          Cloud Console
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M7 7h10v10"/></svg>
         </a>
         <a href="/benchmarks" class="btn-secondary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          View Benchmarks
+          Benchmarks
         </a>
       </div>
     </div>
@@ -1417,5 +1520,61 @@
   </div>
 </footer>
 
+<script>
+// Detect OS and set the primary download button
+(function() {
+  const ua = navigator.userAgent || navigator.platform || '';
+  const btn = document.getElementById('dl-primary');
+  const label = document.getElementById('dl-label');
+  const base = 'https://github.com/dotindustries/warpgrid/releases/latest/download/';
+
+  if (/Mac/i.test(ua)) {
+    // Detect Apple Silicon vs Intel
+    if (/arm64|aarch64/i.test(ua) || (navigator.userAgentData && navigator.userAgentData.architecture === 'arm')) {
+      label.textContent = 'Download for macOS';
+      btn.href = base + 'warp-darwin-arm64';
+    } else {
+      label.textContent = 'Download for macOS';
+      btn.href = base + 'warp-darwin-arm64'; // Default to arm64 (most Macs now)
+    }
+  } else if (/Linux/i.test(ua)) {
+    label.textContent = 'Download for Linux';
+    btn.href = base + 'warp-linux-x64';
+  } else {
+    label.textContent = 'Download CLI';
+    btn.href = 'https://github.com/dotindustries/warpgrid/releases/latest';
+  }
+})();
+
+function downloadCli(e) {
+  const btn = document.getElementById('dl-primary');
+  if (btn.href && btn.href !== '#' && !btn.href.endsWith('#')) {
+    // Let the link work naturally
+    return;
+  }
+  e.preventDefault();
+  window.location.href = 'https://github.com/dotindustries/warpgrid/releases/latest';
+}
+
+function toggleDropdown() {
+  const menu = document.getElementById('dl-dropdown');
+  menu.classList.toggle('open');
+}
+
+// Close dropdown on click outside
+document.addEventListener('click', function(e) {
+  const group = document.querySelector('.download-group');
+  const menu = document.getElementById('dl-dropdown');
+  if (group && !group.contains(e.target)) {
+    menu.classList.remove('open');
+  }
+});
+
+function copyInstall() {
+  navigator.clipboard.writeText('curl -fsSL https://warpgrid.dev/install.sh | sh').then(function() {
+    alert('Install command copied to clipboard!');
+  });
+}
+</script>
 </body>
 </html>
