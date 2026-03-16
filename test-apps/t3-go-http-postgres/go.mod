@@ -1,4 +1,4 @@
-module github.com/dotinc/warpgrid-sdk/test-apps/t3-go-http-postgres
+module github.com/dotindustries/warpgrid/test-apps/t3-go-http-postgres
 
 go 1.22
 

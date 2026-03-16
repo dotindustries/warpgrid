@@ -24,6 +24,9 @@ members = [
     "crates/warpgrid-rollout",
     "crates/warpgrid-bun",
     "crates/warpgrid-async",
+    "test-apps/t1-rust-http-postgres",
+    "test-apps/t2-rust-http-redis-postgres",
+    "test-apps/t6-multi-service/gateway-svc",
 ]
 
 [workspace.package]
