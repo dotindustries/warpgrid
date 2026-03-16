@@ -60,12 +60,15 @@ jobs:
         run: cd test-apps/t1-rust-http-postgres && cargo build 2>&1 || echo "BUILD_FAILED"
         continue-on-error: true
         id: build
+        env:
+          RUSTFLAGS: ""
 
       - name: Test T1
         if: steps.build.outcome == 'success'
         run: cd test-apps/t1-rust-http-postgres && cargo test
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
+          RUSTFLAGS: ""
 
       - name: Upload test results
         if: always()
@@ -126,6 +129,8 @@ jobs:
         run: cd test-apps/t2-rust-http-redis-postgres && cargo build 2>&1 || echo "BUILD_FAILED"
         continue-on-error: true
         id: build
+        env:
+          RUSTFLAGS: ""
 
       - name: Test T2
         if: steps.build.outcome == 'success'
@@ -133,6 +138,7 @@ jobs:
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
           REDIS_URL: "redis://localhost:6379"
+          RUSTFLAGS: ""
 
       - name: Upload test results
         if: always()
@@ -171,6 +177,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache-dependency-path: test-apps/t3-go-http-postgres/go.sum
 
       - name: Build & Test T3
         run: test-apps/t3-go-http-postgres/test.sh
@@ -369,6 +376,8 @@ jobs:
         run: scripts/build-componentize-js.sh --npm
 
       - name: Build all T6 services
+        env:
+          RUSTFLAGS: ""
         run: |
           echo "Building gateway-svc (Rust WASM component)..."
           cd test-apps/t6-multi-service/gateway-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"

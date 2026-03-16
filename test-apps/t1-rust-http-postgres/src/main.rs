@@ -23,7 +23,7 @@ use std::sync::Arc;
 use axum::extract::{Json, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::Router;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;

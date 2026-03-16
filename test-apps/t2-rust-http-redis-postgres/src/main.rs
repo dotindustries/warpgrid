@@ -26,6 +26,7 @@ struct User {
 
 struct AppState {
     pool: PgPool,
+    #[allow(dead_code)] // Used in Wasm mode via database proxy shim
     redis_addr: String,
 }
 
