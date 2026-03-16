@@ -111,8 +111,10 @@ if ! (cd "${SCRIPT_DIR}" && go build -o "${GO_BINARY}" .) 2>&1; then
     exit 1
 fi
 
-# Start the server
-PORT="${PORT}" "${GO_BINARY}" >"${_tmpdir}/serve.stdout" 2>"${_tmpdir}/serve.stderr" &
+# Start the server in standalone mode (in-memory data, all routes including /health).
+# Clear DATABASE_URL so the handler uses its built-in seed data rather than requiring
+# a seeded Postgres instance.
+DATABASE_URL="" PORT="${PORT}" "${GO_BINARY}" >"${_tmpdir}/serve.stdout" 2>"${_tmpdir}/serve.stderr" &
 _server_pid=$!
 
 # Wait for server to be ready
