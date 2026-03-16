@@ -1031,12 +1031,71 @@ async fn billing_checkout(
         }
     };
 
+    // Step 1: Find or create a Stripe customer for this user.
+    // Check cloud_billing table for existing customer_id.
+    let customer_id = {
+        let mut rows = state
+            .cloud_db
+            .query(
+                "SELECT customer_id FROM cloud_billing WHERE team_id = ?",
+                libsql::params![user.namespace.clone()],
+            )
+            .await
+            .ok();
+
+        let existing = if let Some(ref mut r) = rows {
+            r.next()
+                .await
+                .ok()
+                .flatten()
+                .and_then(|row| row.get::<String>(0).ok())
+        } else {
+            None
+        };
+
+        match existing {
+            Some(cid) if !cid.is_empty() => cid,
+            _ => {
+                // Create a new Stripe customer.
+                match state
+                    .billing
+                    .create_customer(&user.email, &user.namespace)
+                    .await
+                {
+                    Ok(cid) => {
+                        // Store in cloud_billing table.
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64;
+                        let _ = state
+                            .cloud_db
+                            .execute(
+                                "INSERT OR REPLACE INTO cloud_billing (customer_id, team_id, plan, created_at) VALUES (?, ?, 'free', ?)",
+                                libsql::params![cid.clone(), user.namespace.clone(), now],
+                            )
+                            .await;
+                        cid
+                    }
+                    Err(e) => {
+                        return error_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &format!("Failed to create Stripe customer: {e}"),
+                        )
+                        .into_response();
+                    }
+                }
+            }
+        }
+    };
+
+    // Step 2: Create a Checkout session with the real Stripe customer ID.
     let success_url = "https://warpgrid.dev/console/settings?checkout=success";
     let cancel_url = "https://warpgrid.dev/pricing";
 
     match state
         .billing
-        .create_checkout_session(&user.namespace, plan, success_url, cancel_url)
+        .create_checkout_session(&customer_id, plan, success_url, cancel_url)
         .await
     {
         Ok(url) => CloudResponse::ok(CheckoutResponse { url }).into_response(),
