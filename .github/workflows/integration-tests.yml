@@ -57,13 +57,13 @@ jobs:
           version: "v41.0.0"
 
       - name: Build T1
-        run: cargo build -p t1-rust-http-postgres 2>&1 || echo "BUILD_FAILED"
+        run: cd test-apps/t1-rust-http-postgres && cargo build 2>&1 || echo "BUILD_FAILED"
         continue-on-error: true
         id: build
 
       - name: Test T1
         if: steps.build.outcome == 'success'
-        run: cargo test -p t1-rust-http-postgres
+        run: cd test-apps/t1-rust-http-postgres && cargo test
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
 
@@ -123,13 +123,13 @@ jobs:
           version: "v41.0.0"
 
       - name: Build T2
-        run: cargo build -p t2-rust-http-redis-postgres 2>&1 || echo "BUILD_FAILED"
+        run: cd test-apps/t2-rust-http-redis-postgres && cargo build 2>&1 || echo "BUILD_FAILED"
         continue-on-error: true
         id: build
 
       - name: Test T2
         if: steps.build.outcome == 'success'
-        run: cargo test -p t2-rust-http-redis-postgres
+        run: cd test-apps/t2-rust-http-redis-postgres && cargo test
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
           REDIS_URL: "redis://localhost:6379"
@@ -327,7 +327,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip2
+          targets: wasm32-wasip2,wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
 
@@ -370,17 +370,17 @@ jobs:
 
       - name: Build all T6 services
         run: |
-          echo "Building gateway (Rust)..."
-          cargo build -p t6-gateway-svc
+          echo "Building gateway-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/gateway-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
-          echo "Building user-svc (Go)..."
-          test-apps/t6-multi-service/user-svc/build.sh --standalone
+          echo "Building user-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/user-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
-          echo "Building notification-svc (TypeScript)..."
-          test-apps/t6-multi-service/notification-svc/build.sh --standalone
+          echo "Building notification-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/notification-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
-          echo "Building analytics-svc (Bun)..."
-          test-apps/t6-multi-service/analytics-svc/build.sh --standalone
+          echo "Building analytics-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/analytics-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
       - name: Test T6 multi-service integration
         run: scripts/test-all.sh --only t6

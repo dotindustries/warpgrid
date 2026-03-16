@@ -61,10 +61,12 @@ fi
 if [ "${MODE}" = "standalone" ]; then
     HANDLER="${SCRIPT_DIR}/src/handler-standalone.js"
     WORLD_NAME="handler-standalone"
+    WIT_DIR="${SCRIPT_DIR}/wit-standalone/"
     log "Building standalone Bun handler (in-memory data)..."
 else
     HANDLER="${SCRIPT_DIR}/src/handler.js"
     WORLD_NAME="handler"
+    WIT_DIR="${SCRIPT_DIR}/wit/"
     log "Building full Bun handler (warpgrid:shim database proxy)..."
 fi
 
@@ -80,7 +82,7 @@ log "Componentizing ${HANDLER} → dist/handler.wasm ..."
 
 if ! "${JCO_BIN}" componentize \
     "${HANDLER}" \
-    --wit "${SCRIPT_DIR}/wit/" \
+    --wit "${WIT_DIR}" \
     --world-name "${WORLD_NAME}" \
     --enable http \
     --enable fetch-event \

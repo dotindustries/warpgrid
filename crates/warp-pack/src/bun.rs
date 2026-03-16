@@ -474,6 +474,10 @@ pub fn pack_bun(project_path: &Path, config: &WarpConfig) -> Result<PackResult> 
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::Mutex;
+
+    /// Serialize tests that mutate process-wide environment variables.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     // ── Helper: Create a minimal Bun project in a temp dir ──────────────────
 
@@ -569,10 +573,10 @@ entry = "src/index.ts"
     #[test]
     fn test_resolve_jco_env_var_missing_file() {
         // WARPGRID_JCO_PATH pointing to nonexistent file should error.
-        // In Rust 2024 edition, set_var/remove_var are unsafe due to
-        // potential data races in multi-threaded test execution.
-        // SAFETY: This test is not using threads and the env var is
-        // restored before the test returns.
+        // Hold ENV_MUTEX to prevent races with other env-var-mutating tests.
+        let _lock = ENV_MUTEX.lock().unwrap();
+
+        // SAFETY: serialized by ENV_MUTEX; env var is restored before the lock drops.
         unsafe { std::env::set_var("WARPGRID_JCO_PATH", "/nonexistent/jco") };
         let result = resolve_jco(Path::new("."));
         unsafe { std::env::remove_var("WARPGRID_JCO_PATH") };
@@ -820,11 +824,14 @@ entry = "src/index.ts"
     #[test]
     fn test_resolve_jco_env_var_valid_file() {
         // WARPGRID_JCO_PATH pointing to a real file should succeed.
+        // Hold ENV_MUTEX to prevent races with other env-var-mutating tests.
+        let _lock = ENV_MUTEX.lock().unwrap();
+
         let dir = tempfile::tempdir().unwrap();
         let fake_jco = dir.path().join("jco");
         fs::write(&fake_jco, "#!/bin/sh\n").unwrap();
 
-        // SAFETY: test is single-threaded for this env var; restored before return.
+        // SAFETY: serialized by ENV_MUTEX; env var is restored before the lock drops.
         unsafe { std::env::set_var("WARPGRID_JCO_PATH", fake_jco.to_str().unwrap()) };
         let result = resolve_jco(Path::new("."));
         unsafe { std::env::remove_var("WARPGRID_JCO_PATH") };

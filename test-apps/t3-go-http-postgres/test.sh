@@ -78,7 +78,7 @@ if ! command -v go &>/dev/null; then
     exit 1
 fi
 
-if go test -count=1 "${SCRIPT_DIR}/..." 2>&1; then
+if (cd "${SCRIPT_DIR}" && go test -count=1 ./...) 2>&1; then
     pass "Go unit tests pass"
 else
     fail "Go unit tests failed"
@@ -104,7 +104,7 @@ log "Building and starting Go server on port ${PORT}..."
 
 # Build the standalone Go binary
 GO_BINARY="${_tmpdir}/t3-server"
-if ! go build -o "${GO_BINARY}" "${SCRIPT_DIR}" 2>&1; then
+if ! (cd "${SCRIPT_DIR}" && go build -o "${GO_BINARY}" .) 2>&1; then
     fail "Go build failed"
     echo ""
     echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"
