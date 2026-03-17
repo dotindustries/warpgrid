@@ -231,6 +231,17 @@ jobs:
       - name: Install T4 dependencies
         run: npm ci --prefix test-apps/t4-ts-http-postgres
 
+      - name: Cache T4 standalone WASM
+        id: t4-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: test-apps/t4-ts-http-postgres/dist/handler.wasm
+          key: t4-wasm-${{ hashFiles('test-apps/t4-ts-http-postgres/src/handler-standalone.js', 'test-apps/t4-ts-http-postgres/wit-standalone/**') }}
+
+      - name: Build T4 standalone WASM
+        if: steps.t4-wasm-cache.outputs.cache-hit != 'true'
+        run: test-apps/t4-ts-http-postgres/build.sh --standalone
+
       - name: Build & Test T4
         run: test-apps/t4-ts-http-postgres/test.sh
 
@@ -284,6 +295,17 @@ jobs:
 
       - name: Install T5 dependencies
         run: bun install --frozen-lockfile --cwd test-apps/t5-bun-http-postgres
+
+      - name: Cache T5 standalone WASM
+        id: t5-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: test-apps/t5-bun-http-postgres/dist/handler.wasm
+          key: t5-wasm-${{ hashFiles('test-apps/t5-bun-http-postgres/src/handler-standalone.js', 'test-apps/t5-bun-http-postgres/wit-standalone/**') }}
+
+      - name: Build T5 standalone WASM
+        if: steps.t5-wasm-cache.outputs.cache-hit != 'true'
+        run: test-apps/t5-bun-http-postgres/build.sh --standalone
 
       - name: Build & Test T5
         run: test-apps/t5-bun-http-postgres/test.sh
