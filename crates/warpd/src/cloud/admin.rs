@@ -832,6 +832,8 @@ mod tests {
             usage: UsageTracker::new(),
             logs: crate::cloud::routes::new_log_buffer(),
             admin_key: None,
+            playground_rate_limit: crate::cloud::routes::new_playground_rate_limit(),
+            analyze_rate_limit: crate::cloud::routes::new_playground_rate_limit(),
         }
     }
 

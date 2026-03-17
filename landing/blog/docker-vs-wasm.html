@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Docker Actually Runs vs What You Actually Need - WarpGrid Blog</title>
+  <meta name="description" content="Every container carries 7 invisible layers of kernel machinery. Here's what they are, what they cost, and why WebAssembly doesn't need them.">
+  <meta property="og:title" content="What Docker Actually Runs vs What You Actually Need">
+  <meta property="og:description" content="Every container carries 7 invisible layers. Here's what they are and why WebAssembly doesn't need them.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://warpgrid.dev/blog/docker-vs-wasm">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="What Docker Actually Runs vs What You Actually Need">
+  <meta name="twitter:description" content="Every container carries 7 invisible layers. Here's what they are and why WebAssembly doesn't need them.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset & Base ───────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --grid-950: #040608;
+      --grid-900: #0a0f14;
+      --grid-850: #0f161d;
+      --grid-800: #141e28;
+      --grid-700: #1e2d3d;
+      --grid-600: #2a3f52;
+      --grid-500: #3a5570;
+      --accent: #00e5a0;
+      --accent-dim: rgba(0, 229, 160, 0.1);
+      --accent-glow: rgba(0, 229, 160, 0.25);
+      --danger: #ff5c6c;
+      --warning: #ffbe0b;
+      --info: #38bdf8;
+      --text-1: #f1f5f9;
+      --text-2: #e2e8f0;
+      --text-3: #cbd5e1;
+      --text-4: #94a3b8;
+      --text-5: #64748b;
+      --font-display: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      font-family: var(--font-display);
+      background: var(--grid-950);
+      color: var(--text-2);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── Utility ────────────────────────────────── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+    .accent { color: var(--accent); }
+    .mono { font-family: var(--font-mono); }
+    .dim { color: var(--text-4); }
+    .text-center { text-align: center; }
+
+    /* ── Noise overlay ──────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.025;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ── Grid background ────────────────────────── */
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(30, 45, 61, 0.3) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 45, 61, 0.3) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+
+    /* ── Navigation ─────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 15, 20, 0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(30, 45, 61, 0.4);
+      padding: 1rem 0;
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--text-1);
+      text-decoration: none;
+    }
+    .logo-icon {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      width: 18px;
+      height: 18px;
+    }
+    .logo-icon span {
+      width: 4px;
+      height: 4px;
+      border-radius: 1px;
+      background: var(--accent);
+    }
+    .logo-icon span:nth-child(5) { background: var(--text-4); }
+    .logo-icon span:nth-child(9) { background: var(--text-4); }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-4);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text-1); }
+    .nav-links a.active { color: var(--accent); }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.25rem;
+      background: var(--accent);
+      color: var(--grid-950);
+      font-weight: 600;
+      font-size: 0.875rem;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nav-cta:hover {
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    /* ── Blog Layout ───────────────────────────── */
+    .blog-header {
+      padding: 5rem 0 3rem;
+      text-align: center;
+      position: relative;
+    }
+    .blog-header::before {
+      content: '';
+      position: absolute;
+      top: -30%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(circle, rgba(0, 229, 160, 0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .blog-header .blog-date {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+      display: block;
+    }
+    .blog-header h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--text-1);
+      margin-bottom: 1.25rem;
+      letter-spacing: -0.025em;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .blog-header .blog-subtitle {
+      font-size: 1.15rem;
+      color: var(--text-3);
+      max-width: 640px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    .blog-content {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 1.5rem 5rem;
+    }
+    .blog-content p {
+      font-size: 1rem;
+      line-height: 1.85;
+      color: var(--text-2);
+      margin-bottom: 1.5rem;
+    }
+    .blog-content h2 {
+      font-size: 1.75rem;
+      color: var(--text-1);
+      margin: 3.5rem 0 1rem;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+    .blog-content h3 {
+      font-size: 1.25rem;
+      color: var(--text-1);
+      margin: 2rem 0 0.75rem;
+      font-weight: 600;
+    }
+    .blog-content strong { color: var(--text-1); }
+    .blog-content em { color: var(--text-3); font-style: italic; }
+    .blog-content code {
+      font-family: var(--font-mono);
+      background: var(--grid-800);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      color: var(--text-2);
+    }
+    .blog-content ul, .blog-content ol {
+      margin-bottom: 1.5rem;
+      padding-left: 1.5rem;
+    }
+    .blog-content li {
+      font-size: 1rem;
+      line-height: 1.85;
+      color: var(--text-2);
+      margin-bottom: 0.5rem;
+    }
+    .blog-content li strong { color: var(--text-1); }
+    .blog-content a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: rgba(0, 229, 160, 0.3);
+      text-underline-offset: 3px;
+      transition: text-decoration-color 0.2s;
+    }
+    .blog-content a:hover {
+      text-decoration-color: var(--accent);
+    }
+    .blog-content hr {
+      border: none;
+      border-top: 1px solid rgba(30, 45, 61, 0.4);
+      margin: 3rem 0;
+    }
+
+    /* ── Layer breakdown list ───────────────────── */
+    .layer-list {
+      list-style: none;
+      padding: 0;
+      margin-bottom: 2rem;
+    }
+    .layer-list li {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(30, 45, 61, 0.25);
+      align-items: baseline;
+    }
+    .layer-list li:last-child { border-bottom: none; }
+    .layer-list .layer-tag {
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: rgba(255, 92, 108, 0.1);
+      color: var(--danger);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 92, 108, 0.2);
+      min-width: 44px;
+      text-align: center;
+    }
+    .layer-list .layer-desc {
+      font-size: 0.95rem;
+      line-height: 1.7;
+      color: var(--text-2);
+    }
+    .layer-list .layer-desc .size {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-4);
+    }
+
+    /* ── Architecture Diagram (from landing) ───── */
+    .arch-columns {
+      display: grid;
+      grid-template-columns: 1fr 80px 1fr;
+      gap: 0;
+      margin: 2.5rem 0;
+      align-items: start;
+    }
+    .arch-stack {
+      background: var(--grid-850);
+      border: 1px solid rgba(30, 45, 61, 0.4);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .arch-stack.docker { border-color: rgba(255, 92, 108, 0.2); }
+    .arch-stack.wasm { border-color: rgba(0, 229, 160, 0.2); }
+    .arch-stack-header {
+      padding: 1rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(30, 45, 61, 0.4);
+    }
+    .arch-stack.docker .arch-stack-header {
+      background: rgba(255, 92, 108, 0.06);
+      color: var(--danger);
+    }
+    .arch-stack.wasm .arch-stack-header {
+      background: rgba(0, 229, 160, 0.06);
+      color: var(--accent);
+    }
+    .arch-layer {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid rgba(30, 45, 61, 0.2);
+      font-size: 0.85rem;
+      transition: background 0.2s;
+    }
+    .arch-layer:last-child { border-bottom: none; }
+    .arch-layer:hover { background: rgba(30, 45, 61, 0.2); }
+    .arch-layer .layer-bar {
+      flex-shrink: 0;
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      min-width: 56px;
+      padding: 0 0.5rem;
+    }
+    .arch-stack.docker .layer-bar {
+      background: rgba(255, 92, 108, 0.1);
+      color: var(--danger);
+      border: 1px solid rgba(255, 92, 108, 0.2);
+    }
+    .arch-stack.wasm .layer-bar {
+      background: rgba(0, 229, 160, 0.1);
+      color: var(--accent);
+      border: 1px solid rgba(0, 229, 160, 0.2);
+    }
+    .arch-layer .layer-name {
+      font-weight: 500;
+      color: var(--text-2);
+    }
+    .arch-layer .layer-detail {
+      font-size: 0.75rem;
+      color: var(--text-5);
+      margin-left: auto;
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+    .arch-layer.eliminated {
+      opacity: 0.35;
+      text-decoration: line-through;
+      text-decoration-color: var(--danger);
+    }
+    .arch-layer.eliminated .layer-bar {
+      background: rgba(255, 92, 108, 0.05);
+      border-color: rgba(255, 92, 108, 0.1);
+    }
+    .arch-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-top: 4rem;
+      color: var(--text-5);
+      font-size: 1.5rem;
+    }
+    .arch-callouts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+    }
+    .arch-callout {
+      background: var(--grid-850);
+      border: 1px solid rgba(30, 45, 61, 0.3);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .arch-callout-value {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.25rem;
+    }
+    .arch-callout-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 0.5rem;
+    }
+    .arch-callout-desc {
+      font-size: 0.8rem;
+      color: var(--text-4);
+      line-height: 1.6;
+    }
+    .strikethrough {
+      text-decoration: line-through;
+      text-decoration-color: var(--danger);
+      color: var(--text-5);
+    }
+
+    /* ── Benchmark table ───────────────────────── */
+    .bench-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 2rem 0;
+      font-size: 0.9rem;
+    }
+    .bench-table th {
+      text-align: left;
+      padding: 0.875rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-4);
+      border-bottom: 1px solid var(--grid-700);
+    }
+    .bench-table th:nth-child(2) { color: var(--danger); }
+    .bench-table th:nth-child(3) { color: var(--accent); }
+    .bench-table td {
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid rgba(30, 45, 61, 0.3);
+      color: var(--text-3);
+    }
+    .bench-table tr:last-child td { border-bottom: none; }
+    .bench-table td:first-child {
+      font-weight: 500;
+      color: var(--text-2);
+    }
+    .bench-table td:nth-child(2) { color: var(--text-4); }
+    .bench-table td:nth-child(3) { color: var(--accent); font-weight: 500; }
+    .bench-table tbody tr {
+      transition: background 0.2s;
+    }
+    .bench-table tbody tr:hover {
+      background: rgba(0, 229, 160, 0.03);
+    }
+
+    /* ── Terminal Block ─────────────────────────── */
+    .terminal {
+      background: var(--grid-900);
+      border: 1px solid var(--grid-700);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 2rem 0;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0.75rem 1rem;
+      background: rgba(20, 30, 40, 0.6);
+      border-bottom: 1px solid var(--grid-700);
+    }
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--grid-600);
+    }
+    .terminal-body {
+      padding: 1.25rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.8;
+      color: var(--text-3);
+    }
+    .terminal-body .prompt { color: var(--accent); }
+    .terminal-body .comment { color: var(--text-5); }
+    .terminal-body .output { color: var(--text-4); }
+
+    /* ── CTA Section ───────────────────────────── */
+    .blog-cta {
+      background: var(--grid-900);
+      border: 1px solid rgba(30, 45, 61, 0.4);
+      border-radius: 16px;
+      padding: 3rem 2rem;
+      text-align: center;
+      margin: 3rem 0 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .blog-cta::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, rgba(0, 229, 160, 0.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .blog-cta h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .blog-cta p {
+      color: var(--text-3);
+      margin-bottom: 2rem;
+      font-size: 1rem;
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 2rem;
+      background: var(--accent);
+      color: var(--grid-950);
+      font-weight: 600;
+      font-size: 1rem;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: all 0.25s;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-display);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 30px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 2rem;
+      background: transparent;
+      color: var(--text-2);
+      font-weight: 500;
+      font-size: 1rem;
+      border-radius: 10px;
+      text-decoration: none;
+      border: 1px solid var(--grid-700);
+      transition: all 0.25s;
+      font-family: var(--font-display);
+    }
+    .btn-secondary:hover {
+      border-color: var(--text-4);
+      background: var(--grid-850);
+    }
+
+    /* ── Footer ─────────────────────────────────── */
+    footer {
+      padding: 2rem 0;
+      border-top: 1px solid rgba(30, 45, 61, 0.4);
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-5);
+    }
+    footer a {
+      color: var(--text-4);
+      text-decoration: none;
+    }
+    footer a:hover { color: var(--accent); }
+
+    /* ── Responsive ─────────────────────────────── */
+    @media (max-width: 768px) {
+      .arch-columns { grid-template-columns: 1fr; gap: 1rem; }
+      .arch-arrow { display: none; }
+      .arch-callouts { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .blog-header { padding: 3rem 0 2rem; }
+      .blog-cta { padding: 2rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────── -->
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <span class="logo-icon">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </span>
+      WarpGrid
+    </a>
+    <ul class="nav-links">
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#features">Features</a></li>
+      <li><a href="/benchmarks">Benchmarks</a></li>
+      <li><a href="/blog/docker-vs-wasm" class="active">Blog</a></li>
+      <li><a href="/#quickstart">Get Started</a></li>
+    </ul>
+    <a href="https://github.com/dotindustries/warpgrid" style="color:var(--text-4);text-decoration:none;font-size:0.8rem;margin-right:0.75rem;" title="Star on GitHub">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:0.2rem;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub
+    </a>
+    <a href="/#quickstart" class="nav-cta">Try in 60 Seconds</a>
+  </div>
+</nav>
+
+<!-- ── Blog Header ─────────────────────────────── -->
+<header class="blog-header grid-bg">
+  <div class="container">
+    <span class="blog-date">March 2026</span>
+    <h1>What Docker Actually Runs<br>vs What You Actually Need</h1>
+    <p class="blog-subtitle">Every container carries 7 invisible layers of kernel machinery between your code and the hardware. Here's what they are, what they cost, and why WebAssembly doesn't need them.</p>
+  </div>
+</header>
+
+<!-- ── Blog Content ────────────────────────────── -->
+<article class="blog-content">
+
+  <h2>The Docker Tax</h2>
+
+  <p>When you type <code>docker run</code>, something deceptively simple happens: your application starts. What isn't visible is the machinery that makes it possible. Between your code and the CPU sit eleven distinct layers, each solving a real problem that Linux doesn't solve natively. Let's walk through every one of them.</p>
+
+  <p>Docker was built to answer a specific question: <em>how do you ship software that works the same on every Linux machine?</em> The answer was to package the entire userspace -- the OS libraries, the language runtime, the application code -- into a portable image, and then use kernel features to isolate each image from the host and from each other. That was a breakthrough in 2013. The problem is that each of those isolation layers has a cost, and the costs compound.</p>
+
+  <p>Here's what actually runs when you start a container:</p>
+
+  <ul class="layer-list">
+    <li>
+      <span class="layer-tag">APP</span>
+      <span class="layer-desc"><strong>Your application code</strong> -- the thing you actually wrote. Typically 2-50 MB of compiled binaries or interpreted scripts. This is the only layer that does useful work. <span class="size">2-50 MB</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">LANG</span>
+      <span class="layer-desc"><strong>Language runtime.</strong> Node.js, the Go toolchain, Python with pip, the JVM -- whatever your code needs to execute. A minimal Node.js base is 50 MB. A JVM is 200-800 MB. These get baked into every image. <span class="size">50-800 MB</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">OS</span>
+      <span class="layer-desc"><strong>Container OS.</strong> Ubuntu, Debian, Alpine -- a full (or slim) Linux userspace. This provides libc, coreutils, package managers, and the filesystem hierarchy your runtime expects. Alpine shaves this down to ~5 MB, but most production images use larger bases. <span class="size">5-200 MB</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">OCI</span>
+      <span class="layer-desc"><strong>Image layers + OverlayFS.</strong> Docker images are stacked filesystem diffs. OverlayFS merges these layers into a single view at runtime, using copy-on-write semantics. Every write creates a new layer entry. This is elegant but adds I/O latency and storage overhead. <span class="size">copy-on-write</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">RT</span>
+      <span class="layer-desc"><strong>containerd + runc.</strong> The container runtime. containerd manages the lifecycle (create, start, stop, delete). runc actually creates the container by calling into the kernel. Both are long-running daemons that consume memory on every node. <span class="size">~80 MB</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">NS</span>
+      <span class="layer-desc"><strong>Linux namespaces.</strong> Six separate namespace types -- pid, net, mnt, uts, ipc, user -- each giving the container its own isolated view of process IDs, network interfaces, mount points, hostname, IPC, and user tables. Namespace creation is a kernel operation with measurable latency. <span class="size">per container</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">CG</span>
+      <span class="layer-desc"><strong>cgroups v2.</strong> Resource limits for CPU, memory, and I/O bandwidth. The kernel tracks accounting data for every container in the cgroup hierarchy. At high container counts, the bookkeeping itself becomes a bottleneck. <span class="size">per container</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">SEC</span>
+      <span class="layer-desc"><strong>seccomp + AppArmor/SELinux.</strong> Security filters that restrict which system calls the container can make. The default Docker seccomp profile blocks ~60 of the 300+ available syscalls. This is enforcement <em>after</em> access is already granted -- the container runs as a Linux process with access to everything, then filters are applied to take things away. <span class="size">300+ syscalls</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">NET</span>
+      <span class="layer-desc"><strong>veth pairs + bridge + iptables/CNI.</strong> Each container gets a virtual ethernet device, paired to the host's network bridge. Traffic routing is handled by iptables rules (or nftables, or eBPF in newer setups). In Kubernetes, the CNI plugin adds another abstraction layer on top. <span class="size">per container</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">K8S</span>
+      <span class="layer-desc"><strong>kubelet + kube-proxy + CSI + CRI.</strong> On every Kubernetes node: kubelet (the agent), kube-proxy (service routing), the Container Storage Interface, and the Container Runtime Interface. This is ~200 MB of overhead before a single workload runs. <span class="size">~200 MB</span></span>
+    </li>
+    <li>
+      <span class="layer-tag">HOST</span>
+      <span class="layer-desc"><strong>Linux kernel.</strong> Required. Everything above depends on Linux-specific kernel features. Containers are not portable across operating systems -- they are a Linux abstraction. <span class="size">required</span></span>
+    </li>
+  </ul>
+
+  <p>To be clear: every one of these layers exists for a reason. Docker solved real, painful problems in software distribution and deployment. The language runtime exists because your code needs it. The container OS exists because your runtime expects POSIX. The namespaces exist because Linux processes can see each other by default. Seccomp exists because system calls are powerful and dangerous.</p>
+
+  <p>The question isn't whether these layers are well-engineered. They are. The question is whether you can skip them entirely by starting from a different set of assumptions.</p>
+
+  <hr>
+
+  <h2>The Stack Comparison</h2>
+
+  <p>This is the same diagram from our <a href="/#architecture">architecture page</a>, shown here for reference. The left column is what Docker/Kubernetes actually deploys. The right column is what WarpGrid deploys. The struck-through layers on the right don't exist in the Wasm execution model -- they aren't optimized or hidden, they're structurally absent.</p>
+
+  <!-- ── Architecture Diagram (copied from landing page) ── -->
+  <div class="arch-columns" style="max-width:900px;margin-left:auto;margin-right:auto;">
+    <!-- Docker stack -->
+    <div class="arch-stack docker">
+      <div class="arch-stack-header">Docker / Kubernetes Stack</div>
+      <div class="arch-layer">
+        <span class="layer-bar">APP</span>
+        <span class="layer-name">Your Application Code</span>
+        <span class="layer-detail">2-50 MB</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">LANG</span>
+        <span class="layer-name">Language Runtime</span>
+        <span class="layer-detail">50-800 MB</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">OS</span>
+        <span class="layer-name">Container OS (Ubuntu/Alpine)</span>
+        <span class="layer-detail">5-200 MB</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">OCI</span>
+        <span class="layer-name">Image Layers + OverlayFS</span>
+        <span class="layer-detail">copy-on-write</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">RT</span>
+        <span class="layer-name">containerd + runc</span>
+        <span class="layer-detail">~80 MB</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">NS</span>
+        <span class="layer-name">Linux Namespaces (pid, net, mnt, uts, ipc, user)</span>
+        <span class="layer-detail">per container</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">CG</span>
+        <span class="layer-name">cgroups v2 (cpu, memory, io limits)</span>
+        <span class="layer-detail">per container</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">SEC</span>
+        <span class="layer-name">seccomp + AppArmor / SELinux</span>
+        <span class="layer-detail">300+ syscalls</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">NET</span>
+        <span class="layer-name">veth pairs + bridge + iptables / CNI</span>
+        <span class="layer-detail">per container</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">K8S</span>
+        <span class="layer-name">kubelet + kube-proxy + CSI + CRI</span>
+        <span class="layer-detail">~200 MB</span>
+      </div>
+      <div class="arch-layer" style="border-bottom:none;">
+        <span class="layer-bar">HOST</span>
+        <span class="layer-name">Linux Kernel</span>
+        <span class="layer-detail">required</span>
+      </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="arch-arrow">&rarr;</div>
+
+    <!-- Wasm stack -->
+    <div class="arch-stack wasm">
+      <div class="arch-stack-header">WarpGrid Stack</div>
+      <div class="arch-layer">
+        <span class="layer-bar">APP</span>
+        <span class="layer-name">Your Application Code</span>
+        <span class="layer-detail">1-10 MB</span>
+      </div>
+      <div class="arch-layer eliminated">
+        <span class="layer-bar">&mdash;</span>
+        <span class="layer-name">Language Runtime</span>
+        <span class="layer-detail">compiled out</span>
+      </div>
+      <div class="arch-layer eliminated">
+        <span class="layer-bar">&mdash;</span>
+        <span class="layer-name">Container OS</span>
+        <span class="layer-detail">not needed</span>
+      </div>
+      <div class="arch-layer eliminated">
+        <span class="layer-bar">&mdash;</span>
+        <span class="layer-name">Image Layers + OverlayFS</span>
+        <span class="layer-detail">not needed</span>
+      </div>
+      <div class="arch-layer eliminated">
+        <span class="layer-bar">&mdash;</span>
+        <span class="layer-name">containerd + runc</span>
+        <span class="layer-detail">not needed</span>
+      </div>
+      <div class="arch-layer eliminated">
+        <span class="layer-bar">&mdash;</span>
+        <span class="layer-name">Linux Namespaces</span>
+        <span class="layer-detail">not needed</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">MEM</span>
+        <span class="layer-name">Linear Memory Sandbox</span>
+        <span class="layer-detail">1-10 MB</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">CAP</span>
+        <span class="layer-name">Capability-based Permissions</span>
+        <span class="layer-detail">deny-all default</span>
+      </div>
+      <div class="arch-layer eliminated">
+        <span class="layer-bar">&mdash;</span>
+        <span class="layer-name">veth + bridge + iptables</span>
+        <span class="layer-detail">not needed</span>
+      </div>
+      <div class="arch-layer">
+        <span class="layer-bar">WG</span>
+        <span class="layer-name">warpd (runtime + scheduler + API)</span>
+        <span class="layer-detail">~25 MB</span>
+      </div>
+      <div class="arch-layer" style="border-bottom:none;">
+        <span class="layer-bar">HOST</span>
+        <span class="layer-name">Linux Kernel</span>
+        <span class="layer-detail">required</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arch-callouts" style="max-width:900px;margin-left:auto;margin-right:auto;">
+    <div class="arch-callout">
+      <div class="arch-callout-value">6 layers</div>
+      <div class="arch-callout-label">Removed, not optimized</div>
+      <div class="arch-callout-desc">No container OS. No OverlayFS. No containerd. No namespaces. No veth pairs. No seccomp. They don't exist in the Wasm execution model.</div>
+    </div>
+    <div class="arch-callout">
+      <div class="arch-callout-value">0 syscalls</div>
+      <div class="arch-callout-label">Available by default</div>
+      <div class="arch-callout-desc">Docker's seccomp filters 300+ syscalls after allowing access. Wasm starts at zero -- your module can only call functions the host explicitly provides.</div>
+    </div>
+    <div class="arch-callout">
+      <div class="arch-callout-value">~1ms</div>
+      <div class="arch-callout-label">Instance startup</div>
+      <div class="arch-callout-desc">No image pull. No layer unpacking. No filesystem mount. No namespace creation. No network bridge. AOT-compiled Wasm instantiates in under a millisecond.</div>
+    </div>
+  </div>
+
+  <hr>
+
+  <h2>Why WebAssembly Doesn't Need Containers</h2>
+
+  <p>Docker's isolation model starts with a Linux process that has full access to the kernel, then subtracts capabilities. Namespaces hide the host's process table and network. Seccomp blocks dangerous syscalls. AppArmor restricts filesystem paths. Each layer is a filter that tries to prevent the process from doing something it could otherwise do. This is <strong>subtractive isolation</strong> -- you start with everything and take things away.</p>
+
+  <p>WebAssembly works in the opposite direction. A Wasm module executes inside a <strong>linear memory sandbox</strong> -- a contiguous byte array that the module can read and write, but that is the entire extent of its world. There are no file descriptors. There is no network socket API. There are no system calls. There is no process table, no environment variables, no filesystem, and no way to execute arbitrary code. The module literally cannot express these operations in its instruction set.</p>
+
+  <p>If a Wasm module needs to talk to the network or read a file, the host must explicitly provide that capability as a typed function import. This is the <strong>capability-based security model</strong>: the default is deny-all, and every permission is an opt-in decision by the host, declared in the deployment manifest. You don't filter out what's dangerous -- you grant only what's needed.</p>
+
+  <p>This distinction matters because it changes where the security boundary lives. In Docker, the boundary is the kernel -- if you escape the namespace, you own the host. In Wasm, the boundary is the bytecode format itself. There is nothing to escape <em>from</em> because there is nothing to escape <em>to</em>. The module has no concept of "the host" beyond the functions it was given. Isolation isn't enforced after the fact by a security policy. It's a structural property of the execution model.</p>
+
+  <hr>
+
+  <h2>The Numbers</h2>
+
+  <p>Here's what this looks like in practice. These are real measurements from WarpGrid running on Hetzner bare metal, compared to the same workloads in Docker containers:</p>
+
+  <table class="bench-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Docker</th>
+        <th>WarpGrid</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Cold start</td>
+        <td>200-500ms</td>
+        <td>0.3ms (Rust)</td>
+      </tr>
+      <tr>
+        <td>Memory per instance</td>
+        <td>50+ MB</td>
+        <td>2 MB</td>
+      </tr>
+      <tr>
+        <td>Instances per GB</td>
+        <td>~20</td>
+        <td>~500</td>
+      </tr>
+      <tr>
+        <td>Deployment artifact</td>
+        <td>50-800 MB</td>
+        <td>42 KB - 10 MB</td>
+      </tr>
+      <tr>
+        <td>Node overhead</td>
+        <td>300+ MB (kubelet, containerd, kube-proxy)</td>
+        <td>25 MB (warpd)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>The density difference -- 500 instances per GB vs 20 -- isn't a benchmark trick. It's the natural consequence of removing six layers of per-instance overhead. When you don't need a container OS, a layered filesystem, namespace bookkeeping, veth pairs, and cgroup accounting for each workload, the memory that those layers consumed becomes available for actual work.</p>
+
+  <p>For full methodology and reproducible benchmarks, see <a href="/benchmarks">/benchmarks</a>.</p>
+
+  <hr>
+
+  <h2>When Containers Still Win</h2>
+
+  <p>We would be doing you a disservice if we pretended this is a universal solution. There are workloads and situations where Docker and Kubernetes are genuinely the better choice:</p>
+
+  <ul>
+    <li><strong>JVM languages (Java, Kotlin, Scala).</strong> The JVM doesn't compile to Wasm today in any production-ready way. If your backend is Spring Boot, you're staying with containers for the foreseeable future.</li>
+    <li><strong>Existing Docker images you can't recompile.</strong> If you have a third-party binary or a vendor-provided image, you need a container runtime to run it. WarpGrid runs Wasm components, not OCI images.</li>
+    <li><strong>GPU workloads.</strong> Machine learning inference, video transcoding, anything that needs direct GPU access. Wasm has no GPU abstraction yet. Use containers (or bare metal).</li>
+    <li><strong>The Kubernetes ecosystem.</strong> Service meshes (Istio, Linkerd), operators, Prometheus, the entire CNCF landscape. If your organization has invested deeply in this tooling and it's working, the switching cost may not be worth the density gains.</li>
+    <li><strong>Windows containers.</strong> WarpGrid requires Linux. If you're running Windows Server workloads, containers are your path.</li>
+    <li><strong>Team familiarity.</strong> Kubernetes has a massive talent pool, extensive documentation, and a decade of battle-tested patterns. If your team already knows K8s and doesn't want to learn a new orchestrator, that's a legitimate reason to stay.</li>
+  </ul>
+
+  <p>The honest assessment is: if you're writing Rust, Go, TypeScript, or Python services and deploying to Linux bare metal or VPS instances, WarpGrid can give you 10-100x better density and sub-millisecond cold starts. If you're running Java monoliths on managed Kubernetes, you're probably fine where you are.</p>
+
+  <hr>
+
+  <h2>Try It Yourself</h2>
+
+  <p>The fastest way to see the difference is to run it. This takes about 60 seconds on any Linux or macOS machine:</p>
+
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span class="terminal-dot"></span>
+      <span class="terminal-dot"></span>
+      <span class="terminal-dot"></span>
+    </div>
+    <div class="terminal-body">
+      <span class="comment"># Install WarpGrid</span><br>
+      <span class="prompt">$</span> curl -fsSL https://warpgrid.dev/install.sh | sh<br>
+      <br>
+      <span class="comment"># Start a local cluster</span><br>
+      <span class="prompt">$</span> warpd standalone --port 8443<br>
+      <span class="output">  Cluster ready on :8443</span><br>
+      <br>
+      <span class="comment"># Deploy the hello-world example</span><br>
+      <span class="prompt">$</span> warp deploy examples/hello.wasm --min 1<br>
+      <span class="output">  Deployed: hello (1 instance, 0.8ms cold start)</span><br>
+      <br>
+      <span class="comment"># Test it</span><br>
+      <span class="prompt">$</span> curl http://localhost:8443/r/hello/health<br>
+      <span class="output">  {"status":"ok"}</span>
+    </div>
+  </div>
+
+  <div class="blog-cta">
+    <h2>One binary. No containers. No Kubernetes.</h2>
+    <p>WarpGrid is open source under Apache 2.0 and free during beta.</p>
+    <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;position:relative;z-index:1;">
+      <a href="/#quickstart" class="btn-primary">
+        Get Started
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href="https://github.com/dotindustries/warpgrid" class="btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        Star on GitHub
+      </a>
+    </div>
+  </div>
+
+</article>
+
+<!-- ── Footer ──────────────────────────────────── -->
+<footer>
+  <div class="container">
+    <p>WarpGrid is open source under Apache 2.0 &middot; <a href="https://github.com/dotindustries/warpgrid">GitHub</a> &middot; Built by <a href="https://dot.industries">dot industries</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

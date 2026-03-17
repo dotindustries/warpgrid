@@ -229,6 +229,8 @@ pub async fn run_cloud(
         usage,
         logs: crate::cloud::routes::new_log_buffer(),
         admin_key,
+        playground_rate_limit: crate::cloud::routes::new_playground_rate_limit(),
+        analyze_rate_limit: crate::cloud::routes::new_playground_rate_limit(),
     };
     let console_routes = console_router(cloud_state.clone());
     let admin_routes = admin_router(cloud_state.clone());

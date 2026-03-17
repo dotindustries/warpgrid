@@ -3,8 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WarpGrid — One Binary. Thousands of Workloads. Zero Kubernetes.</title>
-  <meta name="description" content="WarpGrid is a Wasm-native cluster orchestrator for bare metal. Deploy WebAssembly components with 1ms cold starts, 5000x density, and zero external dependencies.">
+  <title>WarpGrid — Run Your Entire Backend on a $20 Server</title>
+  <meta name="description" content="WarpGrid deploys 5,000 services per node with 1ms cold starts. One binary, no Kubernetes, no Docker. Open source, free during beta.">
+  <meta property="og:title" content="What Docker Actually Runs vs What You Actually Need">
+  <meta property="og:description" content="Every container carries 7 invisible layers. WarpGrid removes 6 of them. See the full stack comparison.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://warpgrid.dev/#architecture">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="What Docker Actually Runs vs What You Actually Need">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -85,12 +91,44 @@
       0% { transform: translateY(-100%); }
       100% { transform: translateY(100vh); }
     }
+    @keyframes pg-pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+    .pg-spinner { animation: pg-pulse 1.2s ease-in-out infinite; }
     .fade-up { animation: fade-up 0.6s ease-out both; }
     .delay-1 { animation-delay: 0.1s; }
     .delay-2 { animation-delay: 0.2s; }
     .delay-3 { animation-delay: 0.3s; }
     .delay-4 { animation-delay: 0.4s; }
     .delay-5 { animation-delay: 0.5s; }
+
+    /* ── Calculator slider ──────────────────────── */
+    #calc-services::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--grid-900);
+      box-shadow: 0 0 8px rgba(0, 229, 160, 0.4);
+    }
+    #calc-services::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--grid-900);
+      box-shadow: 0 0 8px rgba(0, 229, 160, 0.4);
+    }
+    @media (max-width: 600px) {
+      #calc-cards {
+        grid-template-columns: 1fr !important;
+      }
+    }
 
     /* ── Navigation ─────────────────────────────── */
     nav {
@@ -928,16 +966,14 @@
       <li><a href="#how-it-works">How It Works</a></li>
       <li><a href="#features">Features</a></li>
       <li><a href="/benchmarks">Benchmarks</a></li>
-      <li><a href="/pricing">Pricing</a></li>
+      <li><a href="#quickstart">Get Started</a></li>
       <li><a href="#faq">FAQ</a></li>
     </ul>
-    <a href="/console/login" class="nav-cta" style="margin-right:0.5rem; background:var(--accent); color:var(--grid-950); border-color:var(--accent);">
-      Cloud Console
+    <a href="https://github.com/dotindustries/warpgrid" style="color:var(--text-4);text-decoration:none;font-size:0.8rem;margin-right:0.75rem;" title="Star on GitHub">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:0.2rem;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub
     </a>
-    <a href="https://github.com/dotindustries/warpgrid" class="nav-cta">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-      Star on GitHub
-    </a>
+    <a href="#quickstart" class="nav-cta">Try in 60 Seconds</a>
   </div>
 </nav>
 
@@ -945,55 +981,25 @@
 <section class="hero grid-bg">
   <div class="container">
     <div class="hero-content">
-      <span class="hero-badge fade-up">Apache 2.0 &middot; Open Source</span>
+      <span class="hero-badge fade-up">Open Beta &middot; Free &middot; Apache 2.0</span>
       <h1 class="fade-up delay-1">
-        One Binary.<br>
-        <span class="accent-word">Thousands of Workloads.</span><br>
-        Zero Kubernetes.
+        Run Your Entire Backend<br>
+        <span class="accent-word">on a $20 Server.</span>
       </h1>
       <p class="hero-sub fade-up delay-2">
-        WarpGrid is a Wasm-native cluster orchestrator for bare metal.
-        Deploy WebAssembly components that cold-start in milliseconds,
-        sandbox themselves by default, and run 5,000 per node.
+        You have 40 microservices and a few bare-metal boxes from Hetzner.
+        WarpGrid runs them all&mdash;5,000 per node&mdash;with one binary and
+        no Kubernetes. Powered by WebAssembly for millisecond cold starts
+        and sandboxing by default.
       </p>
       <div class="hero-actions fade-up delay-3">
-        <div class="download-group">
-          <a id="dl-primary" href="#" class="btn-download" onclick="downloadCli(event)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span id="dl-label">Download CLI</span>
-          </a>
-          <button class="btn-dropdown-toggle" onclick="toggleDropdown()" aria-label="More download options">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div id="dl-dropdown" class="dropdown-menu">
-            <a class="dropdown-item" href="https://github.com/dotindustries/warpgrid/releases/latest/download/warp-darwin-arm64">
-              <span class="dl-icon"><svg viewBox="0 0 24 24" fill="#ffffff"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg></span>
-              <span><span class="dl-platform">macOS</span> <span class="dl-arch">Apple Silicon</span></span>
-            </a>
-            <a class="dropdown-item" href="https://github.com/dotindustries/warpgrid/releases/latest/download/warp-darwin-x64">
-              <span class="dl-icon"><svg viewBox="0 0 24 24" fill="#ffffff"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg></span>
-              <span><span class="dl-platform">macOS</span> <span class="dl-arch">Intel</span></span>
-            </a>
-            <div class="dropdown-divider"></div>
-            <a class="dropdown-item" href="https://github.com/dotindustries/warpgrid/releases/latest/download/warp-linux-x64">
-              <span class="dl-icon"><svg viewBox="0 0 24 24" fill="#ffffff"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.2-.868-.134-2.14-.134-2.14s-.003-.003-.003-.005-.003 0-.003-.003a7.59 7.59 0 01-.058-.2c-.257-.713-.455-1.396-.733-2.058-.249-.589-.541-1.129-.907-1.553-.204-.239-.452-.429-.727-.546-.275-.112-.587-.149-.89-.089-.463.096-.659.47-.831.752-.086.139-.174.265-.289.341-.238.199-.67.235-.997.335-.338.104-.654.265-.937.535-.563.533-.856 1.334-.89 2.267a15.238 15.238 0 00.057 1.856c.032.232.08.497.08.664 0 .099-.009.196-.03.2v.002l-.003.003c-.28.52-.615.96-.9 1.347-.57.769-1.053 1.453-1.154 2.385-.024.144-.04.298-.04.465a3.385 3.385 0 00.034.479c.035.137.06.215.06.371 0 .2-.067.3-.113.44-.046.139-.1.27-.066.465v.003l-.003.003c-.027.3.024.6.147.867a2.1 2.1 0 00.535.731c.175.175.401.334.669.467.268.128.582.194.914.194h.003c.498 0 .965-.136 1.32-.41.274-.214.466-.497.624-.779.3.097.632.158.967.198.335.04.7.058 1.068.058.7-.001 1.399-.113 1.936-.47.27-.181.476-.42.615-.686.065-.133.105-.256.135-.386.025-.14.035-.268.035-.394 0-.12-.008-.25-.018-.348.012-.003.022-.006.022-.011v-.001c.212-.2.347-.399.42-.632a2.123 2.123 0 00.088-.62c0-.3-.065-.599-.134-.898l-.003-.011h.003a2.74 2.74 0 001.018-1.113c.2-.466.29-.987.264-1.495a5.23 5.23 0 00-.262-1.432c-.17-.489-.422-.953-.666-1.406l-.003-.003c-.184-.399-.199-.858-.175-1.3.023-.339.072-.668.072-.997 0-.165-.003-.33-.024-.494a4.263 4.263 0 00-.266-1.113c-.199-.46-.498-.87-.844-1.256l-.534-.534v-.003l-.003-.003c-.456-.467-.765-1.065-1.053-1.724-.29-.659-.547-1.387-.866-2.038-.634-1.299-1.453-2.312-2.777-2.67A4.85 4.85 0 0012.504 0z"/></svg></span>
-              <span><span class="dl-platform">Linux</span></span>
-            </a>
-            <div class="dropdown-divider"></div>
-            <div class="dropdown-item shell-cmd" onclick="copyInstall(this)">
-              <span class="shell-text">curl -fsSL warpgrid.dev/install.sh | sh</span>
-              <svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-              <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e5a0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-          </div>
-        </div>
-        <a href="/console/login" class="btn-primary">
-          Get Started Free
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M7 7h10v10"/></svg>
+        <a href="#quickstart" class="btn-primary">
+          Try in 60 Seconds
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
         </a>
-        <a href="/benchmarks" class="btn-secondary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          Benchmarks
+        <a href="https://github.com/dotindustries/warpgrid" class="btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Star on GitHub
         </a>
       </div>
     </div>
@@ -1028,42 +1034,6 @@
   </div>
 </div>
 
-<!-- ── Pain: Before/After ──────────────────────── -->
-<section class="pain-section">
-  <div class="container">
-    <div class="text-center">
-      <div class="section-label">The Problem</div>
-      <h2>Containers solved 2013's problem.<br>Your workloads have moved on.</h2>
-    </div>
-    <div class="pain-grid">
-      <div class="pain-col before">
-        <h3>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          Today with Kubernetes
-        </h3>
-        <div class="pain-item"><span class="icon">&times;</span> kubelet + containerd + runc + CNI + CSI + etcd running before your code does</div>
-        <div class="pain-item"><span class="icon">&times;</span> 500MB container images for a 2MB application binary</div>
-        <div class="pain-item"><span class="icon">&times;</span> Seconds-long cold starts that kill scale-to-zero</div>
-        <div class="pain-item"><span class="icon">&times;</span> YAML sprawl across Deployments, Services, Ingresses, ConfigMaps, and Secrets</div>
-        <div class="pain-item"><span class="icon">&times;</span> seccomp, AppArmor, and SELinux bolted on for security</div>
-        <div class="pain-item"><span class="icon">&times;</span> 50 containers max per node before memory pressure hits</div>
-      </div>
-      <div class="pain-col after">
-        <h3>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-          With WarpGrid
-        </h3>
-        <div class="pain-item"><span class="icon">&check;</span> One 25MB binary. That's the entire orchestrator, runtime, and API.</div>
-        <div class="pain-item"><span class="icon">&check;</span> 1-10MB Wasm components compiled from your existing code</div>
-        <div class="pain-item"><span class="icon">&check;</span> 1ms cold starts — scale to zero is finally real</div>
-        <div class="pain-item"><span class="icon">&check;</span> One <span class="mono accent">warp.toml</span> per service. Scaling, health, shims — all in one file.</div>
-        <div class="pain-item"><span class="icon">&check;</span> Capability-based sandbox is the default. No bolt-ons.</div>
-        <div class="pain-item"><span class="icon">&check;</span> 5,000+ instances per node. Each uses 1-10MB of memory.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- ── Architecture Deep Dive ───────────────────── -->
 <section id="architecture" class="arch-section">
   <div class="container">
@@ -1071,6 +1041,11 @@
       <div class="section-label">Under the Hood</div>
       <h2>What Docker actually runs<br>vs. what you actually need</h2>
       <p class="section-desc centered">Every container you deploy carries an invisible tax — seven layers of kernel machinery between your code and the hardware. WarpGrid removes six of them.</p>
+      <a href="#architecture" class="share-link" onclick="copyArchLink(this); return false;" style="display:inline-flex;align-items:center;gap:0.4rem;font-family:var(--font-mono);font-size:0.75rem;color:var(--text-4);text-decoration:none;margin-top:0.75rem;transition:color 0.2s;">
+        Share this breakdown
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        <span class="share-check" style="display:none;color:var(--accent);">Copied!</span>
+      </a>
     </div>
 
     <div class="arch-columns">
@@ -1235,23 +1210,178 @@
   </div>
 </section>
 
+<!-- ── Cost Calculator ─────────────────────────── -->
+<section id="cost-calculator" style="padding:5rem 0;background:var(--grid-900);border-top:1px solid rgba(30,45,61,0.4);border-bottom:1px solid rgba(30,45,61,0.4);">
+  <div class="container">
+    <div class="text-center">
+      <div class="section-label">Cost</div>
+      <h2>How much could you save?</h2>
+      <p class="section-desc centered">Real Hetzner Cloud pricing. Same workload, different approach.</p>
+    </div>
+
+    <div style="max-width:720px;margin:3rem auto 0;">
+      <!-- Slider -->
+      <div style="margin-bottom:2.5rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+          <label for="calc-services" style="font-family:var(--font-display);font-size:1rem;color:var(--text-2);font-weight:500;">Services</label>
+          <span id="calc-services-display" style="font-family:var(--font-mono);font-size:1.25rem;font-weight:600;color:var(--text-1);min-width:3ch;text-align:right;">10</span>
+        </div>
+        <input type="range" id="calc-services" min="1" max="100" value="10" oninput="updateCalculator()"
+          style="width:100%;height:6px;-webkit-appearance:none;appearance:none;background:var(--grid-700);border-radius:3px;outline:none;cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;margin-top:0.375rem;">
+          <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-5);">1</span>
+          <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-5);">100</span>
+        </div>
+      </div>
+
+      <!-- Cost cards -->
+      <div id="calc-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:2rem;">
+        <!-- Docker card -->
+        <div style="background:var(--grid-850);border:1px solid var(--grid-700);border-radius:12px;padding:1.5rem;">
+          <div style="font-family:var(--font-mono);font-size:0.7rem;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;color:var(--danger);margin-bottom:1rem;">Docker / K8s</div>
+          <div id="calc-docker-cost" style="font-family:var(--font-mono);font-size:2rem;font-weight:600;color:var(--text-1);line-height:1;"></div>
+          <div id="calc-docker-detail" style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-4);margin-top:0.5rem;"></div>
+        </div>
+
+        <!-- WarpGrid card -->
+        <div style="background:var(--grid-850);border:1px solid rgba(0,229,160,0.2);border-radius:12px;padding:1.5rem;position:relative;overflow:hidden;">
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at top right,rgba(0,229,160,0.04),transparent 70%);pointer-events:none;"></div>
+          <div style="position:relative;">
+            <div style="font-family:var(--font-mono);font-size:0.7rem;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);margin-bottom:1rem;">WarpGrid</div>
+            <div id="calc-warp-cost" style="font-family:var(--font-mono);font-size:2rem;font-weight:600;color:var(--accent);line-height:1;"></div>
+            <div id="calc-warp-detail" style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-4);margin-top:0.5rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Savings -->
+      <div style="text-align:center;padding:1.25rem;background:var(--grid-850);border:1px solid var(--grid-700);border-radius:12px;margin-bottom:1.5rem;">
+        <span style="font-family:var(--font-display);font-size:1rem;color:var(--text-3);">You save: </span>
+        <span id="calc-savings" style="font-family:var(--font-mono);font-size:1.25rem;font-weight:600;color:var(--accent);"></span>
+        <span id="calc-savings-pct" style="font-family:var(--font-mono);font-size:1rem;font-weight:500;color:var(--accent);margin-left:0.25rem;"></span>
+      </div>
+
+      <!-- Disclaimer -->
+      <p style="text-align:center;font-size:0.75rem;color:var(--text-5);line-height:1.5;">
+        Estimates based on Hetzner Cloud pricing. Average 256 MB per Docker container, 4 MB per Wasm instance.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ── 60-Second Quickstart ────────────────────── -->
+<section id="quickstart">
+  <div class="container">
+    <div class="text-center">
+      <div class="section-label">Try It</div>
+      <h2>See it work in 60 seconds</h2>
+      <p class="section-desc centered">No Docker. No containers. No signup. Just your terminal.</p>
+    </div>
+    <div class="terminal fade-up" style="margin-top:2rem;">
+      <div class="terminal-bar">
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+      </div>
+      <div class="terminal-body">
+        <span class="comment"># Install WarpGrid (10 seconds)</span><br>
+        <span class="prompt">$</span> curl -fsSL https://warpgrid.dev/install.sh | sh<br>
+        <br>
+        <span class="comment"># Start a local cluster (5 seconds)</span><br>
+        <span class="prompt">$</span> warpd standalone --port 8443<br>
+        <span class="output">  Cluster ready on :8443</span><br>
+        <span class="output">  Dashboard at http://localhost:8443/dashboard</span><br>
+        <br>
+        <span class="comment"># Deploy the hello-world example</span><br>
+        <span class="prompt">$</span> warp deploy examples/hello.wasm --min 1<br>
+        <span class="output">  Deployed: hello (1 instance, 0.8ms cold start)</span><br>
+        <br>
+        <span class="comment"># Test it</span><br>
+        <span class="prompt">$</span> curl http://localhost:8443/r/hello/health<br>
+        <span class="output">  {"status":"ok"}</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem;">
+      <a id="dl-primary" href="#" class="btn-secondary" onclick="downloadCli(event)" style="font-size:0.9rem;padding:0.7rem 1.5rem;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="dl-label">Download CLI</span>
+      </a>
+      <a href="#playground" class="btn-primary" style="font-size:0.9rem;padding:0.7rem 1.5rem;">
+        Or try it live in your browser
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Live Playground ──────────────────────────── -->
+<section id="playground" style="padding:3rem 0;">
+  <div class="container">
+    <div style="max-width:640px;margin:0 auto;">
+      <div style="text-align:center;margin-bottom:1.5rem;">
+        <div class="section-label">Live Demo</div>
+        <h2 style="font-size:1.5rem;">Try WarpGrid Live</h2>
+      </div>
+      <div id="pg-widget" style="background:var(--grid-900);border:1px solid var(--grid-700);border-radius:12px;padding:2rem;overflow:hidden;transition:box-shadow 0.4s;">
+        <!-- pre-click state -->
+        <div id="pg-intro">
+          <p style="color:var(--text-3);font-size:0.95rem;margin-bottom:1.5rem;text-align:center;">
+            We'll deploy a hello-world service to our cloud in ~3 seconds. No signup required.
+          </p>
+          <div style="text-align:center;">
+            <button onclick="startPlayground()" class="btn-primary" style="border:none;cursor:pointer;font-family:var(--font-display);">
+              Try It Live
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <!-- progress state (hidden initially) -->
+        <div id="pg-progress" style="display:none;"></div>
+        <!-- result state (hidden initially) -->
+        <div id="pg-result" style="display:none;"></div>
+        <!-- error state (hidden initially) -->
+        <div id="pg-error" style="display:none;text-align:center;">
+          <p style="color:var(--text-4);font-size:0.9rem;margin-bottom:1rem;">Cloud playground temporarily unavailable. Try the local quickstart above instead.</p>
+          <button onclick="retryPlayground()" class="btn-secondary" style="border:1px solid var(--grid-700);cursor:pointer;font-family:var(--font-display);font-size:0.85rem;padding:0.5rem 1.25rem;">
+            Try Again
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ── How It Works ─────────────────────────────── -->
 <section id="how-it-works">
   <div class="container">
     <div class="text-center">
-      <div class="section-label">How It Works</div>
+      <div class="section-label">Migrate Your Project</div>
       <h2>From existing code to running cluster<br>in three commands</h2>
     </div>
-    <div class="steps-grid">
-      <div class="step-card fade-up">
+    <!-- ── Repo Analyzer Widget ────────────────── -->
+    <div id="analyzer-widget" style="max-width:680px;margin:2rem auto 3rem;background:var(--grid-850);border:1px solid var(--grid-700);border-radius:16px;padding:2rem;transition:border-color 0.3s;">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
         <div class="step-number">01</div>
-        <h3>Analyze your project</h3>
-        <p>Point WarpGrid at your Rust, Go, or TypeScript project. It scans your dependencies, identifies compatibility, and generates a deployment manifest.</p>
-        <div class="step-code">
-          <span class="prompt">$</span> warp convert analyze ./my-api<br>
-          <span class="output">  Compatibility: 94%</span><br>
-          <span class="output">  Generated: warp.toml</span>
-        </div>
+        <h3 style="margin:0;">Check your project's compatibility</h3>
+      </div>
+      <p style="font-size:0.9rem;color:var(--text-4);margin-bottom:1.25rem;">Paste a public GitHub repo. We'll scan your dependencies and show your WarpGrid compatibility score in seconds.</p>
+      <div id="az-input-row" style="display:flex;gap:0.5rem;">
+        <input id="az-url" type="url" placeholder="https://github.com/user/repo" style="flex:1;padding:0.7rem 1rem;background:var(--grid-900);border:1px solid var(--grid-700);border-radius:8px;color:var(--text-1);font-family:var(--font-mono);font-size:0.85rem;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--grid-700)'">
+        <button id="az-btn" onclick="analyzeRepo()" style="padding:0.7rem 1.5rem;background:var(--accent);color:var(--grid-950);font-weight:600;font-size:0.85rem;border:none;border-radius:8px;cursor:pointer;font-family:var(--font-display);white-space:nowrap;transition:all 0.2s;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,229,160,0.25)'" onmouseout="this.style.boxShadow='none'">Analyze</button>
+      </div>
+      <div id="az-progress" style="display:none;margin-top:1rem;text-align:center;">
+        <span class="pg-spinner" style="display:inline-block;margin-right:0.5rem;">&#9679;</span>
+        <span style="color:var(--text-4);font-size:0.85rem;">Cloning and analyzing...</span>
+      </div>
+      <div id="az-error" style="display:none;margin-top:1rem;padding:0.75rem 1rem;background:rgba(255,92,108,0.08);border:1px solid rgba(255,92,108,0.2);border-radius:8px;color:var(--danger);font-size:0.85rem;"></div>
+      <div id="az-result" style="display:none;margin-top:1.25rem;"></div>
+    </div>
+
+    <div class="steps-grid">
+      <div class="step-card fade-up" style="opacity:0.7;">
+        <div class="step-number" style="background:var(--grid-800);">01</div>
+        <h3 style="color:var(--text-3);">Analyze your project</h3>
+        <p>Or run it locally: <span class="mono accent">warp convert analyze ./my-api</span> scans your dependencies, identifies compatibility, and generates a deployment manifest.</p>
       </div>
       <div class="step-card fade-up delay-1">
         <div class="step-number">02</div>
@@ -1364,10 +1494,13 @@
       <div class="section-label">Honest Comparison</div>
       <h2>How WarpGrid stacks up</h2>
     </div>
+    <div style="overflow-x:auto;margin-top:3rem;">
     <table class="comparison-table">
       <thead>
         <tr>
-          <th style="width:25%"></th>
+          <th style="width:16%"></th>
+          <th>Docker Compose</th>
+          <th>Kamal</th>
           <th>Kubernetes</th>
           <th>Nomad</th>
           <th>Fermyon Spin</th>
@@ -1378,12 +1511,16 @@
         <tr>
           <td>Compute primitive</td>
           <td>Containers</td>
+          <td>Containers</td>
+          <td>Containers</td>
           <td>Containers + drivers</td>
           <td>Spin components</td>
           <td>Wasm components</td>
         </tr>
         <tr>
           <td>Node overhead</td>
+          <td>~100MB (Docker)</td>
+          <td>~100MB (Docker)</td>
           <td>300MB+ (8 daemons)</td>
           <td>~100MB</td>
           <td>N/A (SaaS)</td>
@@ -1393,25 +1530,33 @@
           <td>Cold start</td>
           <td>1-10 seconds</td>
           <td>1-10 seconds</td>
+          <td>1-10 seconds</td>
+          <td>1-10 seconds</td>
           <td>~1ms</td>
           <td>~1ms</td>
         </tr>
         <tr>
           <td>Security model</td>
-          <td>Kernel namespaces + bolt-ons</td>
+          <td>Kernel namespaces</td>
+          <td>Kernel namespaces</td>
+          <td>Namespaces + bolt-ons</td>
           <td>Kernel namespaces</td>
           <td>Wasm sandbox</td>
           <td>Wasm capability sandbox</td>
         </tr>
         <tr>
           <td>Bare metal native</td>
+          <td>Yes (Docker req.)</td>
+          <td>Yes (designed for it)</td>
           <td>With kubeadm (complex)</td>
           <td>Yes</td>
           <td>No (cloud only)</td>
           <td>Yes (single binary)</td>
         </tr>
         <tr>
-          <td>Consensus</td>
+          <td>Multi-node clustering</td>
+          <td>No (single host)</td>
+          <td>No (deployer pushes)</td>
           <td>etcd (external)</td>
           <td>Raft (built-in)</td>
           <td>N/A</td>
@@ -1421,6 +1566,8 @@
           <td>DB driver support</td>
           <td>Native (Linux)</td>
           <td>Native (Linux)</td>
+          <td>Native (Linux)</td>
+          <td>Native (Linux)</td>
           <td>SDK-specific</td>
           <td>Wire-protocol proxy</td>
         </tr>
@@ -1428,11 +1575,24 @@
           <td>Languages</td>
           <td>Any (container)</td>
           <td>Any (container)</td>
+          <td>Any (container)</td>
+          <td>Any (container)</td>
           <td>Rust, JS, Python, Go</td>
           <td>Rust, Go, TypeScript</td>
         </tr>
+        <tr>
+          <td>Migration effort</td>
+          <td style="color:var(--accent)">—</td>
+          <td>~2 hours</td>
+          <td>~4 hours</td>
+          <td>~2 hours</td>
+          <td>~1 hour</td>
+          <td style="color:var(--accent)">—</td>
+        </tr>
       </tbody>
     </table>
+    </div>
+    <p style="text-align:center;font-size:0.75rem;color:var(--text-5);margin-top:1rem;font-style:italic;">Migration estimates for a typical 3-service backend. Your mileage may vary.</p>
   </div>
 </section>
 
@@ -1473,6 +1633,94 @@
   </div>
 </section>
 
+<!-- ── Runs Anywhere ─────────────────────────────── -->
+<section id="runs-anywhere" style="padding: 3rem 0;">
+  <div class="container">
+    <div class="text-center">
+      <div class="section-label">Infrastructure</div>
+      <h2>Runs on your servers. Any Linux box.</h2>
+      <p class="section-desc centered">WarpGrid is a single static binary. If it runs Linux, it runs WarpGrid. No Docker required.</p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin-top:2.5rem;align-items:center;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/hetzner/ffffff" alt="Hetzner" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">Hetzner</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/ovh/ffffff" alt="OVH" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">OVHcloud</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/digitalocean/ffffff" alt="DigitalOcean" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">DigitalOcean</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/vultr/ffffff" alt="Vultr" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">Vultr</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/akamai/ffffff" alt="Akamai/Linode" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">Akamai</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/scaleway/ffffff" alt="Scaleway" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">Scaleway</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+        <img src="https://cdn.simpleicons.org/googlecloud/ffffff" alt="GCP" width="32" height="32">
+        <span style="font-size:0.7rem;color:var(--text-5);">GCE</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:1.5rem;margin-top:1.5rem;">
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-4);background:var(--grid-850);padding:0.3rem 0.75rem;border-radius:6px;border:1px solid var(--grid-700);">Ubuntu</span>
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-4);background:var(--grid-850);padding:0.3rem 0.75rem;border-radius:6px;border:1px solid var(--grid-700);">Debian</span>
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-4);background:var(--grid-850);padding:0.3rem 0.75rem;border-radius:6px;border:1px solid var(--grid-700);">Fedora</span>
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-4);background:var(--grid-850);padding:0.3rem 0.75rem;border-radius:6px;border:1px solid var(--grid-700);">Alpine</span>
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent);background:var(--accent-dim);padding:0.3rem 0.75rem;border-radius:6px;border:1px solid rgba(0,229,160,0.2);">x86_64 ✓</span>
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent);background:var(--accent-dim);padding:0.3rem 0.75rem;border-radius:6px;border:1px solid rgba(0,229,160,0.2);">ARM64 ✓</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Not For You If ────────────────────────────── -->
+<section id="honesty" style="padding: 4rem 0;">
+  <div class="container">
+    <div class="text-center">
+      <div class="section-label">Honest Take</div>
+      <h2>WarpGrid is not for everyone</h2>
+      <p class="section-desc centered">We'd rather save you time than overpromise. Here's when WarpGrid isn't the right fit.</p>
+    </div>
+    <div class="pain-grid" style="margin-top:2.5rem;">
+      <div class="pain-col before">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Won't work
+        </h3>
+        <div class="pain-item"><span class="icon">&times;</span> You need JVM languages (Java, Kotlin, Scala) — JVM doesn't compile to Wasm</div>
+        <div class="pain-item"><span class="icon">&times;</span> You must run existing Docker images as-is — WarpGrid runs Wasm, not containers</div>
+        <div class="pain-item"><span class="icon">&times;</span> You depend on native C extensions that can't target Wasm (e.g., ImageMagick, CUDA)</div>
+        <div class="pain-item"><span class="icon">&times;</span> You need Windows Server as your deployment target</div>
+      </div>
+      <div class="pain-col" style="color:var(--text-3);">
+        <h3 style="color:var(--warning);border-bottom-color:rgba(255,190,11,0.3);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Not yet (in beta)
+        </h3>
+        <div class="pain-item" style="color:var(--text-4);"><span class="icon" style="color:var(--warning);">!</span> Python or C# support — planned but not yet available</div>
+        <div class="pain-item" style="color:var(--text-4);"><span class="icon" style="color:var(--warning);">!</span> GPU workloads — not supported in the Wasm runtime</div>
+        <div class="pain-item" style="color:var(--text-4);"><span class="icon" style="color:var(--warning);">!</span> Instances needing &gt;256MB memory — limit being raised</div>
+        <div class="pain-item" style="color:var(--text-4);"><span class="icon" style="color:var(--warning);">!</span> Multi-cloud auto-failover — single-region clusters today</div>
+      </div>
+    </div>
+    <div style="margin-top:2rem;text-align:center;font-size:0.9rem;color:var(--text-4);line-height:1.8;">
+      <strong style="color:var(--text-2);">You might prefer:</strong>
+      <a href="https://kamal-deploy.org" style="color:var(--accent);text-decoration:none;"> Kamal</a> for deploying Rails/Django apps ·
+      <a href="https://coolify.io" style="color:var(--accent);text-decoration:none;"> Coolify</a> for a self-hosted Heroku ·
+      <a href="https://www.nomadproject.io" style="color:var(--accent);text-decoration:none;"> Nomad</a> for running arbitrary Docker images
+    </div>
+  </div>
+</section>
+
 <!-- ── FAQ ──────────────────────────────────────── -->
 <section id="faq">
   <div class="container">
@@ -1494,16 +1742,67 @@
         <div class="faq-a">WebAssembly's capability-based sandbox denies all access by default. Your workload cannot touch the filesystem, network, or any system resource unless you explicitly grant it in <span class="mono accent">warp.toml</span>. This is stronger than container isolation — there's no kernel to escape from.</div>
       </div>
       <div class="faq-item">
-        <div class="faq-q">What about existing Kubernetes workloads?</div>
-        <div class="faq-a">WarpGrid is a clean break, not a drop-in replacement. The <span class="mono accent">warp convert analyze</span> command assesses your project's compatibility and generates a migration path. We're building Helm chart and Dockerfile transpilers for automated migration.</div>
+        <div class="faq-q">Can I use this alongside Docker Compose?</div>
+        <div class="faq-a">Yes. WarpGrid runs independently — it doesn't touch Docker or your existing containers. A common migration path: keep your current Docker Compose setup, deploy one new service with WarpGrid, and compare. Run <span class="mono accent">warp convert analyze</span> to check your existing projects' compatibility before changing a line of code.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">How much does it cost?</div>
+        <div class="faq-a">Self-hosted WarpGrid is free forever with no limits — it's Apache 2.0 open source. We're also building WarpGrid Cloud, a hosted platform that's completely free during beta with all features unlocked. We'll figure out fair pricing with our early users before charging anything.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">Is WarpGrid production-ready?</div>
-        <div class="faq-a">WarpGrid is in active development with 480+ tests across the workspace. The core orchestrator (scheduling, autoscaling, health checks, deployment strategies, multi-node Raft clustering) is complete. The SDK compatibility layer — which makes real-world backends work transparently — is in beta. We recommend it for non-critical workloads and internal services today.</div>
+        <div class="faq-a">WarpGrid is in open beta with 480+ tests and 300+ commits in 2025. The core orchestrator (scheduling, autoscaling, health checks, deployment strategies, multi-node Raft clustering) is complete. The SDK compatibility layer is in beta. We recommend starting with a side project or internal service — when you're confident, migrate production workloads one service at a time.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Why should I trust a beta project for my infrastructure?</div>
+        <div class="faq-a">Fair question. WarpGrid is actively maintained by the team at <a href="https://dot.industries" style="color:var(--accent)">dot industries</a>, with 480+ tests, 300+ commits in 3 months, and zero external runtime dependencies. The binary is statically compiled — it has no dependency chain that can break. Start small. Run it on one box. See for yourself.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">What's the license?</div>
-        <div class="faq-a">Apache 2.0. Fully open source. No enterprise tier, no feature gates, no phone-home telemetry.</div>
+        <div class="faq-a">Apache 2.0. Fully open source. Self-host with zero limits, no feature gates, no phone-home telemetry. During beta, the hosted cloud platform is also completely free.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Project Vitals (social proof) ──────────── -->
+<section style="padding:2.5rem 0;border-top:1px solid rgba(30,45,61,0.4);background:var(--grid-900);">
+  <div class="container">
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:2.5rem;align-items:center;">
+      <a href="https://github.com/dotindustries/warpgrid" style="text-decoration:none;display:flex;align-items:center;gap:0.5rem;">
+        <img src="https://img.shields.io/github/stars/dotindustries/warpgrid?style=flat&color=00e5a0&labelColor=0a0f14&logo=github&logoColor=white" alt="GitHub Stars" height="20">
+      </a>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span style="font-family:var(--font-mono);font-size:1.1rem;font-weight:700;color:var(--accent);">480+</span>
+        <span style="font-size:0.8rem;color:var(--text-4);">tests</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span style="font-family:var(--font-mono);font-size:1.1rem;font-weight:700;color:var(--accent);">300+</span>
+        <span style="font-size:0.8rem;color:var(--text-4);">commits in 2025</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span style="font-family:var(--font-mono);font-size:1.1rem;font-weight:700;color:var(--accent);">0</span>
+        <span style="font-size:0.8rem;color:var(--text-4);">runtime dependencies</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span style="font-size:0.8rem;color:var(--text-4);">Apache 2.0</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Recent Activity ─────────────────────────── -->
+<section id="activity" style="padding:2rem 0;">
+  <div class="container">
+    <div style="max-width:600px;margin:0 auto;">
+      <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1rem;text-align:center;">Recent Activity</div>
+      <div id="gh-activity">
+        <!-- Fallback shown when API unavailable -->
+        <div id="gh-fallback" style="text-align:center;font-size:0.85rem;color:var(--text-4);">
+          300+ commits in 2025 · Actively maintained ·
+          <a href="https://github.com/dotindustries/warpgrid" style="color:var(--accent);text-decoration:none;">View on GitHub →</a>
+        </div>
+        <div id="gh-commits" style="display:none;"></div>
       </div>
     </div>
   </div>
@@ -1516,11 +1815,14 @@
     <h2>Deploy your first workload<br>in under a minute.</h2>
     <p class="section-desc centered">One binary to install. One file to configure. One command to deploy.<br>No YAML. No containers. No regrets.</p>
     <div class="hero-actions" style="margin-top:2rem">
-      <a href="/console/login" class="btn-primary">
-        Get Started Free
+      <a href="#quickstart" class="btn-primary">
+        Try in 60 Seconds
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
       </a>
-      <a href="/pricing" class="btn-secondary">View Pricing</a>
+      <a href="https://github.com/dotindustries/warpgrid" class="btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        Star on GitHub
+      </a>
     </div>
   </div>
 </section>
@@ -1528,7 +1830,7 @@
 <!-- ── Footer ──────────────────────────────────── -->
 <footer>
   <div class="container">
-    <p>WarpGrid is open source under Apache 2.0 &middot; <a href="https://github.com/dotindustries/warpgrid">GitHub</a> &middot; Built by <a href="#">dot inc</a></p>
+    <p>WarpGrid is open source under Apache 2.0 &middot; <a href="https://github.com/dotindustries/warpgrid">GitHub</a> &middot; Built by <a href="https://dot.industries">dot industries</a></p>
   </div>
 </footer>
 
@@ -1593,6 +1895,394 @@ function copyInstall(el) {
       copyIcon.style.display = 'inline';
     }, 2000);
   });
+}
+
+function copyArchLink(el) {
+  navigator.clipboard.writeText(window.location.origin + '/#architecture').then(function() {
+    var check = el.querySelector('.share-check');
+    check.style.display = 'inline';
+    setTimeout(function() { check.style.display = 'none'; }, 2000);
+  });
+}
+
+// Repo analyzer
+function analyzeRepo() {
+  var url = document.getElementById('az-url').value.trim();
+  if (!url || !url.startsWith('https://')) {
+    azShowError('Please enter a valid GitHub repository URL (https://github.com/user/repo)');
+    return;
+  }
+  var btn = document.getElementById('az-btn');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  document.getElementById('az-progress').style.display = 'block';
+  document.getElementById('az-error').style.display = 'none';
+  document.getElementById('az-result').style.display = 'none';
+  document.getElementById('analyzer-widget').style.borderColor = 'rgba(0,229,160,0.3)';
+
+  fetch('/api/v1/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo_url: url })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+    document.getElementById('az-progress').style.display = 'none';
+    if (data.success && data.data) {
+      azShowResult(data.data);
+    } else {
+      azShowError(data.error || 'Analysis failed. Check the URL and try again.');
+    }
+  })
+  .catch(function(e) {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+    document.getElementById('az-progress').style.display = 'none';
+    azShowError('Could not reach the analysis server. Try the local CLI instead.');
+  });
+}
+
+function azShowError(msg) {
+  var el = document.getElementById('az-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+  document.getElementById('analyzer-widget').style.borderColor = 'rgba(255,92,108,0.3)';
+}
+
+function azShowResult(d) {
+  var pct = d.compatibility_pct || 0;
+  var verdictLabel = {
+    'Convertible': 'Fully Compatible',
+    'ConvertibleWithShims': 'Compatible with Shims',
+    'PartiallyConvertible': 'Partially Compatible',
+    'NotConvertible': 'Not Compatible'
+  }[d.overall_verdict] || d.overall_verdict;
+  var verdictColor = pct >= 90 ? 'var(--accent)' : pct >= 60 ? 'var(--warning)' : 'var(--danger)';
+
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">'
+    + '<div><span style="font-size:1.1rem;font-weight:600;color:var(--text-1);">' + escHtml(d.project_name) + '</span>'
+    + '<span style="margin-left:0.75rem;font-family:var(--font-mono);font-size:0.75rem;color:var(--text-4);background:var(--grid-800);padding:0.2rem 0.5rem;border-radius:4px;">' + escHtml(d.language) + '</span></div>'
+    + '<div style="font-family:var(--font-mono);font-size:1.5rem;font-weight:700;color:' + verdictColor + ';">' + pct + '%</div></div>'
+    + '<div style="font-size:0.85rem;color:' + verdictColor + ';margin-bottom:1rem;">' + verdictLabel + '</div>';
+
+  // Dep breakdown
+  html += '<div style="display:flex;gap:1.5rem;margin-bottom:1rem;font-size:0.85rem;">';
+  if (d.compatible_deps > 0) html += '<span style="color:var(--accent);">&#10003; ' + d.compatible_deps + ' compatible</span>';
+  if (d.shim_deps > 0) html += '<span style="color:var(--warning);">&#9888; ' + d.shim_deps + ' via shim</span>';
+  if (d.blocked_deps > 0) html += '<span style="color:var(--danger);">&#10007; ' + d.blocked_deps + ' blocked</span>';
+  html += '</div>';
+
+  // Blockers
+  if (d.blockers && d.blockers.length > 0) {
+    html += '<div style="margin-bottom:1rem;"><div style="font-size:0.8rem;color:var(--danger);font-weight:600;margin-bottom:0.5rem;">Blockers:</div>';
+    d.blockers.forEach(function(b) {
+      html += '<div style="font-size:0.8rem;color:var(--text-4);padding:0.25rem 0;">&#10007; <strong style="color:var(--text-3);">' + escHtml(b.dependency) + '</strong> — ' + escHtml(b.reason) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Suggested warp.toml
+  if (d.suggested_config) {
+    html += '<div style="margin-top:1rem;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">'
+      + '<span style="font-size:0.8rem;color:var(--text-4);font-weight:600;">Suggested warp.toml</span>'
+      + '<button onclick="azCopyConfig()" style="font-size:0.7rem;padding:0.25rem 0.6rem;background:var(--grid-800);color:var(--text-3);border:1px solid var(--grid-700);border-radius:4px;cursor:pointer;font-family:var(--font-mono);">Copy</button>'
+      + '</div>'
+      + '<pre id="az-config" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-3);background:var(--grid-900);border:1px solid var(--grid-700);border-radius:8px;padding:1rem;overflow-x:auto;max-height:200px;overflow-y:auto;margin:0;white-space:pre;">' + escHtml(d.suggested_config) + '</pre>'
+      + '</div>';
+  }
+
+  document.getElementById('az-result').innerHTML = html;
+  document.getElementById('az-result').style.display = 'block';
+  document.getElementById('analyzer-widget').style.borderColor = verdictColor;
+}
+
+function azCopyConfig() {
+  var config = document.getElementById('az-config').textContent;
+  navigator.clipboard.writeText(config);
+}
+
+function escHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// GitHub activity feed with localStorage cache
+(function() {
+  var CACHE_KEY = 'wg_github_commits';
+  var CACHE_TTL = 3600000; // 1 hour
+
+  function renderCommits(commits) {
+    var container = document.getElementById('gh-commits');
+    var html = '';
+    commits.slice(0, 5).forEach(function(c) {
+      var msg = (c.commit.message.split('\n')[0] || '').substring(0, 55);
+      if (c.commit.message.split('\n')[0].length > 55) msg += '...';
+      var date = new Date(c.commit.committer.date);
+      var ago = timeAgo(date);
+      html += '<a href="' + c.html_url + '" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0.75rem;margin-bottom:0.25rem;border-radius:6px;text-decoration:none;font-size:0.8rem;transition:background 0.15s;" onmouseover="this.style.background=\'rgba(30,45,61,0.4)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<span style="font-family:var(--font-mono);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(msg) + '</span>'
+        + '<span style="font-family:var(--font-mono);color:var(--text-5);font-size:0.7rem;flex-shrink:0;margin-left:1rem;">' + ago + '</span>'
+        + '</a>';
+    });
+    html += '<div style="text-align:center;margin-top:0.75rem;"><a href="https://github.com/dotindustries/warpgrid/commits/main" style="color:var(--accent);text-decoration:none;font-size:0.8rem;">View all on GitHub →</a></div>';
+    container.innerHTML = html;
+    container.style.display = 'block';
+    document.getElementById('gh-fallback').style.display = 'none';
+  }
+
+  function timeAgo(date) {
+    var seconds = Math.floor((new Date() - date) / 1000);
+    if (seconds < 60) return 'just now';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + 'm ago';
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    return days + 'd ago';
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Check cache first
+  try {
+    var cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+      renderCommits(cached.data);
+      return;
+    }
+  } catch(e) {}
+
+  // Fetch from GitHub API
+  fetch('https://api.github.com/repos/dotindustries/warpgrid/commits?per_page=5')
+    .then(function(r) {
+      if (!r.ok) throw new Error('API error');
+      return r.json();
+    })
+    .then(function(data) {
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ts: Date.now(), data: data})); } catch(e) {}
+      renderCommits(data);
+    })
+    .catch(function() {
+      // Fallback already visible, do nothing
+    });
+})();
+
+// ── Cost Calculator ──────────────────────────────
+var hetznerPlans = [
+  { name: 'CX22', ram: 4096, price: 4.5 },
+  { name: 'CX32', ram: 8192, price: 8.5 },
+  { name: 'CX42', ram: 16384, price: 18.5 },
+  { name: 'CX52', ram: 32768, price: 36.5 }
+];
+
+function calcDockerConfig(services) {
+  var containerMb = 256;
+  var reservedMb = 512;
+  var best = null;
+  for (var i = 0; i < hetznerPlans.length; i++) {
+    var plan = hetznerPlans[i];
+    var capacity = Math.floor((plan.ram - reservedMb) / containerMb);
+    if (capacity < 1) continue;
+    var nodes = Math.ceil(services / capacity);
+    var cost = nodes * plan.price;
+    if (!best || cost < best.cost) {
+      best = { cost: cost, nodes: nodes, plan: plan };
+    }
+  }
+  return best;
+}
+
+function calcWarpConfig(services) {
+  var instanceMb = 4;
+  var overheadMb = 100;
+  var best = null;
+  for (var i = 0; i < hetznerPlans.length; i++) {
+    var plan = hetznerPlans[i];
+    var capacity = Math.floor((plan.ram - overheadMb) / instanceMb);
+    if (capacity < 1) continue;
+    var nodes = Math.ceil(services / capacity);
+    var cost = nodes * plan.price;
+    if (!best || cost < best.cost) {
+      best = { cost: cost, nodes: nodes, plan: plan };
+    }
+  }
+  return best;
+}
+
+function formatDetail(cfg) {
+  var ramGb = cfg.plan.ram / 1024;
+  return cfg.nodes + '\u00d7 ' + cfg.plan.name + ' (' + ramGb + ' GB)';
+}
+
+function updateSliderTrack() {
+  var slider = document.getElementById('calc-services');
+  var pct = ((slider.value - slider.min) / (slider.max - slider.min)) * 100;
+  slider.style.background = 'linear-gradient(to right, #00e5a0 0%, #00e5a0 ' + pct + '%, #1e2d3d ' + pct + '%, #1e2d3d 100%)';
+}
+
+function updateCalculator() {
+  var slider = document.getElementById('calc-services');
+  var services = parseInt(slider.value);
+  document.getElementById('calc-services-display').textContent = services;
+  updateSliderTrack();
+
+  var docker = calcDockerConfig(services);
+  var warp = calcWarpConfig(services);
+
+  document.getElementById('calc-docker-cost').innerHTML =
+    '\u20ac' + docker.cost.toFixed(2) + '<span style="font-size:0.875rem;color:var(--text-4);font-weight:400;">/mo</span>';
+  document.getElementById('calc-docker-detail').textContent = formatDetail(docker);
+
+  document.getElementById('calc-warp-cost').innerHTML =
+    '\u20ac' + warp.cost.toFixed(2) + '<span style="font-size:0.875rem;color:var(--text-4);font-weight:400;">/mo</span>';
+  document.getElementById('calc-warp-detail').textContent = formatDetail(warp);
+
+  var saved = docker.cost - warp.cost;
+  var pct = docker.cost > 0 ? Math.round((saved / docker.cost) * 100) : 0;
+
+  if (saved > 0) {
+    document.getElementById('calc-savings').innerHTML = '\u20ac' + saved.toFixed(2) + '/mo';
+    document.getElementById('calc-savings-pct').textContent = '(' + pct + '%)';
+  } else {
+    document.getElementById('calc-savings').innerHTML = '\u20ac0.00/mo';
+    document.getElementById('calc-savings-pct').textContent = '(0%)';
+  }
+}
+
+// Initialize calculator on load
+updateCalculator();
+
+// ── Playground Widget ────────────────────────────
+function pgAddStep(text, done) {
+  var step = document.createElement('div');
+  step.style.cssText = 'display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;font-size:0.9rem;opacity:0;transition:opacity 0.3s;';
+  step.innerHTML = done
+    ? '<span style="color:var(--accent);font-size:1rem;flex-shrink:0;">&#10003;</span><span style="color:var(--text-2);">' + text + '</span>'
+    : '<span style="color:var(--text-5);flex-shrink:0;" class="pg-spinner">&#9679;</span><span style="color:var(--text-4);">' + text + '</span>';
+  document.getElementById('pg-progress').appendChild(step);
+  // Trigger fade-in
+  requestAnimationFrame(function() { step.style.opacity = '1'; });
+  return step;
+}
+
+function pgMarkDone(step, text) {
+  step.innerHTML = '<span style="color:var(--accent);font-size:1rem;flex-shrink:0;">&#10003;</span><span style="color:var(--text-2);">' + text + '</span>';
+}
+
+function startPlayground() {
+  var intro = document.getElementById('pg-intro');
+  var progress = document.getElementById('pg-progress');
+  var result = document.getElementById('pg-result');
+  var error = document.getElementById('pg-error');
+  var widget = document.getElementById('pg-widget');
+
+  // Reset state
+  intro.style.display = 'none';
+  error.style.display = 'none';
+  result.style.display = 'none';
+  progress.innerHTML = '';
+  progress.style.display = 'block';
+  widget.style.boxShadow = '0 0 30px rgba(0,229,160,0.05)';
+
+  // Step 1: show spinner
+  var step1 = pgAddStep('Creating sandbox account...', false);
+
+  // Fire the real API call
+  fetch('/api/v1/playground/start', { method: 'POST' })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      if (!data.success) throw new Error('API returned failure');
+
+      // Animate step 1 done
+      setTimeout(function() {
+        pgMarkDone(step1, 'Creating sandbox account...');
+
+        // Step 2: deploying
+        var step2 = pgAddStep('Deploying hello-world.wasm (42 KB)...', false);
+
+        setTimeout(function() {
+          pgMarkDone(step2, 'Deploying hello-world.wasm (42 KB)...');
+
+          // Step 3: running
+          var step3 = pgAddStep('Instance running', false);
+
+          setTimeout(function() {
+            pgMarkDone(step3, 'Instance running');
+
+            // Show result
+            setTimeout(function() {
+              pgShowResult(data);
+            }, 200);
+          }, 300);
+        }, 800);
+      }, 300);
+    })
+    .catch(function() {
+      progress.style.display = 'none';
+      error.style.display = 'block';
+      widget.style.boxShadow = 'none';
+    });
+}
+
+function pgShowResult(data) {
+  var result = document.getElementById('pg-result');
+  var url = data.endpoint_url || '';
+  var curlCmd = 'curl ' + url;
+
+  result.innerHTML =
+    '<div style="margin-top:1rem;">'
+    + '<p style="color:var(--text-4);font-size:0.8rem;margin-bottom:0.35rem;">Your endpoint:</p>'
+    + '<a href="' + url + '" target="_blank" rel="noopener" style="color:var(--accent);font-family:var(--font-mono);font-size:0.85rem;word-break:break-all;text-decoration:none;">'
+    + url
+    + '</a>'
+    + '</div>'
+    + '<div style="margin-top:1.25rem;">'
+    + '<p style="color:var(--text-4);font-size:0.8rem;margin-bottom:0.35rem;">Try it:</p>'
+    + '<div style="display:flex;align-items:center;gap:0.5rem;background:var(--grid-850);border:1px solid var(--grid-700);border-radius:8px;padding:0.6rem 0.75rem;">'
+    + '<code style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-2);flex:1;overflow-x:auto;white-space:nowrap;">$ ' + curlCmd + '</code>'
+    + '<button onclick="pgCopyCmd(this)" data-cmd="' + curlCmd.replace(/"/g, '&quot;') + '" style="background:var(--grid-700);border:1px solid var(--grid-600);border-radius:6px;padding:0.35rem 0.65rem;color:var(--text-3);font-size:0.75rem;font-family:var(--font-display);cursor:pointer;flex-shrink:0;transition:background 0.15s;" onmouseover="this.style.background=\'var(--grid-600)\'" onmouseout="this.style.background=\'var(--grid-700)\'">Copy</button>'
+    + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:0.75rem;margin-top:1.5rem;flex-wrap:wrap;">'
+    + '<a href="/console/login" class="btn-secondary" style="font-size:0.8rem;padding:0.5rem 1rem;">View Logs</a>'
+    + '<a href="/console/login" class="btn-primary" style="font-size:0.8rem;padding:0.5rem 1rem;">Deploy Your Own Code <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></a>'
+    + '</div>'
+    + (data.expires_in ? '<p style="color:var(--text-5);font-size:0.7rem;margin-top:1rem;">Sandbox expires in ' + Math.round(data.expires_in / 60) + ' minutes.</p>' : '');
+
+  result.style.display = 'block';
+  result.style.opacity = '0';
+  requestAnimationFrame(function() {
+    result.style.transition = 'opacity 0.4s';
+    result.style.opacity = '1';
+  });
+}
+
+function pgCopyCmd(btn) {
+  var cmd = btn.getAttribute('data-cmd');
+  navigator.clipboard.writeText(cmd).then(function() {
+    var original = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.color = 'var(--accent)';
+    setTimeout(function() {
+      btn.textContent = original;
+      btn.style.color = 'var(--text-3)';
+    }, 2000);
+  });
+}
+
+function retryPlayground() {
+  startPlayground();
 }
 </script>
 </body>
