@@ -54,8 +54,9 @@ pub async fn push_log(buffer: &LogBuffer, entry: LogEntry) {
 }
 
 /// Pre-built hello-world Wasm component for the playground.
-const PLAYGROUND_WASM: &[u8] =
-    include_bytes!("../../../../tests/fixtures/async-rust-template/target/async-rust-template.component.wasm");
+const PLAYGROUND_WASM: &[u8] = include_bytes!(
+    "../../../../tests/fixtures/async-rust-template/target/async-rust-template.component.wasm"
+);
 
 /// Rate limiter for playground: tracks IP → last request timestamp.
 pub type PlaygroundRateLimit = Arc<std::sync::Mutex<HashMap<std::net::IpAddr, std::time::Instant>>>;
@@ -1337,7 +1338,10 @@ async fn playground_start(
 
     // Rate limit: 1 playground per IP per hour.
     {
-        let mut rate_map = state.playground_rate_limit.lock().unwrap_or_else(|e| e.into_inner());
+        let mut rate_map = state
+            .playground_rate_limit
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // Clean up entries older than 1 hour.
         let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(3600);
         rate_map.retain(|_, ts| *ts > cutoff);
@@ -1355,7 +1359,10 @@ async fn playground_start(
     }
 
     // Create a temporary playground account.
-    let playground_email = format!("playground-{}@warpgrid.dev", &super::auth::generate_user_id()[..8]);
+    let playground_email = format!(
+        "playground-{}@warpgrid.dev",
+        &super::auth::generate_user_id()[..8]
+    );
     let (api_key, user) = match state.auth.register(&playground_email).await {
         Ok(result) => result,
         Err(e) => {
@@ -1453,10 +1460,7 @@ async fn playground_start(
     };
     let _ = state.state_store.put_deployment(&redb_spec);
 
-    let endpoint_url = format!(
-        "https://{}-{}.warpgrid.dev",
-        user.namespace, name
-    );
+    let endpoint_url = format!("https://{}-{}.warpgrid.dev", user.namespace, name);
 
     push_log(
         &state.logs,
@@ -1501,11 +1505,17 @@ async fn analyze_repo(
 
     // Rate limit: 3 analyses per IP per hour.
     {
-        let mut rate_map = state.analyze_rate_limit.lock().unwrap_or_else(|e| e.into_inner());
+        let mut rate_map = state
+            .analyze_rate_limit
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(3600);
         rate_map.retain(|_, ts| *ts > cutoff);
 
-        let count = rate_map.values().filter(|ts| ts.elapsed() < std::time::Duration::from_secs(3600)).count();
+        let count = rate_map
+            .values()
+            .filter(|ts| ts.elapsed() < std::time::Duration::from_secs(3600))
+            .count();
         if rate_map.contains_key(&ip) && count >= 3 {
             return error_response(
                 StatusCode::TOO_MANY_REQUESTS,
@@ -1567,11 +1577,8 @@ async fn analyze_repo(
     let output = match tokio::time::timeout(std::time::Duration::from_secs(30), clone_fut).await {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
-            return error_response(
-                StatusCode::BAD_GATEWAY,
-                &format!("Git clone failed: {e}"),
-            )
-            .into_response();
+            return error_response(StatusCode::BAD_GATEWAY, &format!("Git clone failed: {e}"))
+                .into_response();
         }
         Err(_) => {
             return error_response(

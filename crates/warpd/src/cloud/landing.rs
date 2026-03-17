@@ -9,8 +9,7 @@ use axum::routing::get;
 
 const LANDING_HTML: &str = include_str!("../../../../landing/index.html");
 const BENCHMARKS_HTML: &str = include_str!("../../../../landing/benchmarks.html");
-const BLOG_DOCKER_VS_WASM_HTML: &str =
-    include_str!("../../../../landing/blog/docker-vs-wasm.html");
+const BLOG_DOCKER_VS_WASM_HTML: &str = include_str!("../../../../landing/blog/docker-vs-wasm.html");
 
 /// Build the landing page router.
 pub fn landing_router() -> Router {

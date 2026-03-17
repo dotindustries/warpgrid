@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY compat-db/ compat-db/
 COPY landing/ landing/
 
 # Build only the warpd binary in release mode.
@@ -29,7 +30,7 @@ RUN cargo build --release --package warpd \
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
+    ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/warpd /usr/local/bin/warpd
