@@ -3844,6 +3844,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
+name = "sprite-init"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4998,6 +5011,34 @@ dependencies = [
  "warpgrid-host",
  "warpgrid-placement",
  "warpgrid-state",
+]
+
+[[package]]
+name = "warpgrid-sprite"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "warpgrid-state",
+]
+
+[[package]]
+name = "warpgrid-sprite-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

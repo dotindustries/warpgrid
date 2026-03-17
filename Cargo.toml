@@ -24,6 +24,9 @@ members = [
     "crates/warpgrid-rollout",
     "crates/warpgrid-bun",
     "crates/warpgrid-async",
+    "crates/warpgrid-sprite",
+    "crates/warpgrid-sprite-storage",
+    "crates/sprite-init",
 ]
 
 [workspace.package]

@@ -1,0 +1,62 @@
+# WarpGrid Agent — BYOC Helm values.
+
+image:
+  repository: ghcr.io/dotindustries/warpgrid-agent
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Agent auth token — REQUIRED. Get from console or API:
+#   POST /api/v1/cloud/agent-tokens
+agentToken: ""
+
+# Alternatively reference an existing secret:
+#   kubectl create secret generic warpgrid-agent --from-literal=token=wg_agent_...
+existingSecret: ""
+existingSecretKey: "token"
+
+# Cloud control plane endpoint.
+controlPlane: "cloud.warpgrid.dev:50051"
+
+# Region identifier for placement (must match your deployment regions).
+region: "iad"
+
+# Resource limits per agent pod. Each pod manages sprite VMs on its node.
+resources:
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+  limits:
+    cpu: "2"
+    memory: "2Gi"
+
+# Capacity advertised to the control plane (per node).
+# Defaults to auto-detect if not set.
+capacity:
+  memoryBytes: ""
+  cpuWeight: ""
+
+# Data directory for local state (PVC or hostPath).
+dataDir: /var/lib/warpgrid
+
+# Use a hostPath for local state (simpler, no PVC needed).
+# Set to "" to use emptyDir instead.
+hostPathData: /var/lib/warpgrid
+
+# Node selector — target KVM-capable nodes.
+nodeSelector:
+  warpgrid.dev/kvm: "true"
+
+# Tolerations for dedicated sprite node pools.
+tolerations: []
+#  - key: "warpgrid.dev/sprites"
+#    operator: "Exists"
+#    effect: "NoSchedule"
+
+# Pod annotations.
+podAnnotations: {}
+
+# Service account.
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

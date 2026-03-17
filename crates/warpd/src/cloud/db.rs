@@ -182,6 +182,21 @@ CREATE TABLE IF NOT EXISTS cloud_metrics (
     PRIMARY KEY (deployment_id, region, epoch)
 );
 CREATE INDEX IF NOT EXISTS idx_cloud_metrics_deploy ON cloud_metrics(deployment_id, epoch);
+
+-- Agent tokens: issued per-namespace for BYOC (bring-your-own-compute) agents.
+-- Agents present a token on cluster Join; control plane validates it and
+-- binds the node to the owning namespace for tenant-scoped placement.
+CREATE TABLE IF NOT EXISTS cloud_agent_tokens (
+    id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    revoked INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tokens_ns ON cloud_agent_tokens(namespace);
+CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON cloud_agent_tokens(token_hash);
 ";
 
 #[cfg(test)]

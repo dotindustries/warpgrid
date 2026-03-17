@@ -1031,6 +1031,7 @@ mod tests {
             usage: UsageTracker::new(),
             logs: crate::cloud::routes::new_log_buffer(),
             admin_key: None,
+            agent_tokens: crate::cloud::agent_tokens::AgentTokenStore::new(),
         }
     }
 

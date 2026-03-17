@@ -24,6 +24,7 @@
 
 pub mod handlers;
 pub mod rollout_handlers;
+pub mod sprite_handlers;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -95,9 +96,37 @@ pub fn build_router_with_rollouts(store: StateStore, rollouts: RolloutStore) -> 
         )
         .with_state(rollout_state);
 
+    let sprite_routes = Router::new()
+        .route(
+            "/sprites",
+            get(sprite_handlers::list_sprites).post(sprite_handlers::create_sprite),
+        )
+        .route(
+            "/sprites/{id}",
+            get(sprite_handlers::get_sprite).delete(sprite_handlers::delete_sprite),
+        )
+        .route(
+            "/sprites/{id}/wake",
+            post(sprite_handlers::wake_sprite),
+        )
+        .route(
+            "/sprites/{id}/sleep",
+            post(sprite_handlers::sleep_sprite),
+        )
+        .route(
+            "/sprites/{id}/checkpoint",
+            post(sprite_handlers::checkpoint_sprite),
+        )
+        .route(
+            "/sprites/{id}/exec",
+            post(sprite_handlers::exec_in_sprite),
+        )
+        .with_state(api_state.clone());
+
     Router::new()
         .nest("/api/v1", api_routes)
         .nest("/api/v1", rollout_routes)
+        .nest("/api/v1", sprite_routes)
         .nest(
             "/dashboard",
             warpgrid_dashboard::dashboard_router(dashboard_state),

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: warpgrid-agent
+description: WarpGrid BYOC agent — runs sprite VMs on your KVM-capable Kubernetes nodes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - warpgrid
+  - microvm
+  - sprites
+  - cloud-hypervisor
+  - byoc
+home: https://warpgrid.dev
+sources:
+  - https://github.com/dotindustries/warpgrid

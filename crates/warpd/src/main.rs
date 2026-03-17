@@ -191,6 +191,13 @@ enum Command {
         /// Runtime sync interval in seconds (how often to push state to Turso).
         #[arg(long, default_value = "30")]
         sync_interval: u64,
+
+        /// Agent auth token for BYOC (bring-your-own-compute) mode.
+        /// Issued via the cloud console or API. Binds this agent node
+        /// to a customer namespace for tenant-scoped sprite placement.
+        /// Format: wg_agent_<32 hex chars>
+        #[arg(long, env = "WARPGRID_AGENT_TOKEN")]
+        auth_token: Option<String>,
     },
 }
 
@@ -275,6 +282,7 @@ async fn main() -> anyhow::Result<()> {
             turso_url,
             turso_auth_token,
             sync_interval,
+            auth_token,
         } => {
             agent_mode::run_agent(
                 control_plane,
@@ -288,6 +296,7 @@ async fn main() -> anyhow::Result<()> {
                 turso_url,
                 turso_auth_token,
                 sync_interval,
+                auth_token,
             )
             .await
         }

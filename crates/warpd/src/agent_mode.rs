@@ -47,6 +47,7 @@ pub async fn run_agent(
     turso_url: Option<String>,
     turso_auth_token: Option<String>,
     sync_interval: u64,
+    auth_token: Option<String>,
 ) -> anyhow::Result<()> {
     info!(region = %region, "WarpGrid daemon starting in agent mode");
     std::fs::create_dir_all(&data_dir)?;
@@ -213,6 +214,9 @@ pub async fn run_agent(
     );
 
     // ── Join cluster ──────────────────────────────────────────────
+    if auth_token.is_some() {
+        info!("BYOC mode: agent will authenticate with cloud control plane");
+    }
     let agent_config = AgentConfig {
         control_plane_addr,
         address: address.clone(),
@@ -220,6 +224,7 @@ pub async fn run_agent(
         labels: HashMap::from([("region".to_string(), region.clone())]),
         capacity_memory_bytes,
         capacity_cpu_weight,
+        auth_token,
     };
 
     let mut agent = NodeAgent::new(agent_config);

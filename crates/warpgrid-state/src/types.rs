@@ -230,3 +230,83 @@ impl MetricsSnapshot {
         format!("{}:{}", self.deployment_id, self.epoch)
     }
 }
+
+// ── Sprites ──────────────────────────────────────────────────────
+
+/// Unique identifier for a sprite VM.
+pub type SpriteId = String;
+
+/// Content-addressed checkpoint identifier.
+pub type CheckpointId = String;
+
+/// Specification for a sprite (lightweight Linux VM).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SpriteSpec {
+    pub id: SpriteId,
+    /// Owner (user or team identifier).
+    pub owner: String,
+    /// Human-friendly name.
+    pub name: String,
+    /// Golden image version used by this sprite.
+    pub image_version: String,
+    /// Resource allocation.
+    pub resources: SpriteResources,
+    /// Object store path for this sprite's persistent data.
+    pub storage_url: String,
+    /// Latest checkpoint ID (None if never checkpointed).
+    pub checkpoint_id: Option<CheckpointId>,
+    /// Current lifecycle status.
+    pub status: SpriteStatus,
+    /// Which agent node this sprite is running on (None if sleeping).
+    pub node_id: Option<NodeId>,
+    /// Unix timestamp when this sprite was created.
+    pub created_at: u64,
+    /// Unix timestamp of last activity.
+    pub last_active_at: u64,
+}
+
+/// Lifecycle status of a sprite VM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpriteStatus {
+    /// VM is being created.
+    Creating,
+    /// VM is running and active.
+    Running,
+    /// Light sleep — VM memory preserved, CPU paused.
+    Paused,
+    /// Deep sleep — checkpointed to object store, VM destroyed.
+    Sleeping,
+    /// VM is being restored from checkpoint.
+    Restoring,
+    /// VM encountered an error.
+    Failed,
+}
+
+/// Resource allocation for a sprite VM.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SpriteResources {
+    /// Number of virtual CPUs.
+    pub vcpus: u32,
+    /// Memory in megabytes.
+    pub memory_mb: u32,
+    /// Virtual disk size in gigabytes (backed by object storage).
+    pub disk_gb: u32,
+}
+
+impl Default for SpriteResources {
+    fn default() -> Self {
+        Self {
+            vcpus: 2,
+            memory_mb: 4096,
+            disk_gb: 100,
+        }
+    }
+}
+
+impl SpriteSpec {
+    /// Build the composite key for the sprites table.
+    pub fn table_key(&self) -> String {
+        self.id.clone()
+    }
+}

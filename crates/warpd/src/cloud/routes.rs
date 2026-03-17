@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
 
+use super::agent_tokens::AgentTokenStore;
 use super::analytics::{AnalyticsService, EVENT_USER_REGISTERED};
 use super::auth::{AuthStore, User};
 use super::billing::{BillingService, Plan, PlanLimits};
@@ -66,6 +67,7 @@ pub struct CloudState {
     pub usage: UsageTracker,
     pub logs: LogBuffer,
     pub admin_key: Option<String>,
+    pub agent_tokens: AgentTokenStore,
 }
 
 /// Build the cloud API router with all routes.
@@ -97,6 +99,15 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route("/api/v1/cloud/billing/usage", get(billing_usage))
         .route("/api/v1/cloud/billing/portal", post(billing_portal))
         .route("/api/v1/cloud/billing/checkout", post(billing_checkout))
+        // Agent token management (BYOC)
+        .route(
+            "/api/v1/cloud/agent-tokens",
+            get(list_agent_tokens).post(create_agent_token),
+        )
+        .route(
+            "/api/v1/cloud/agent-tokens/{id}/revoke",
+            post(revoke_agent_token),
+        )
         // Stripe webhook — no auth middleware (Stripe signs the payload)
         .route("/api/v1/webhooks/stripe", post(stripe_webhook))
         .with_state(Arc::new(cloud_state))
@@ -1292,6 +1303,116 @@ async fn verify_domain(
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             error_response(status, &e.to_string()).into_response()
+        }
+    }
+}
+
+// ── Agent Token Management (BYOC) ────────────────────────────────
+
+#[derive(Deserialize)]
+struct CreateAgentTokenRequest {
+    name: String,
+}
+
+#[derive(Serialize)]
+struct AgentTokenResponse {
+    id: String,
+    name: String,
+    namespace: String,
+    /// Raw token — only returned on creation (shown once).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
+    revoked: bool,
+    created_at: u64,
+    last_used_at: Option<u64>,
+}
+
+/// POST /api/v1/cloud/agent-tokens — Issue a new agent token for BYOC deployment.
+async fn create_agent_token(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateAgentTokenRequest>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    match state.agent_tokens.issue(&user.namespace, &body.name).await {
+        Ok((raw_token, token)) => CloudResponse::ok(AgentTokenResponse {
+            id: token.id,
+            name: token.name,
+            namespace: token.namespace,
+            token: Some(raw_token),
+            revoked: false,
+            created_at: token.created_at,
+            last_used_at: None,
+        })
+        .into_response(),
+        Err(e) => {
+            warn!(error = %e, "failed to issue agent token");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to issue token")
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/v1/cloud/agent-tokens — List agent tokens for the authenticated user's namespace.
+async fn list_agent_tokens(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    match state.agent_tokens.list(&user.namespace).await {
+        Ok(tokens) => {
+            let items: Vec<AgentTokenResponse> = tokens
+                .into_iter()
+                .map(|t| AgentTokenResponse {
+                    id: t.id,
+                    name: t.name,
+                    namespace: t.namespace,
+                    token: None, // Never show raw token in list.
+                    revoked: t.revoked,
+                    created_at: t.created_at,
+                    last_used_at: t.last_used_at,
+                })
+                .collect();
+            CloudResponse::ok(items).into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "failed to list agent tokens");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to list tokens")
+                .into_response()
+        }
+    }
+}
+
+/// POST /api/v1/cloud/agent-tokens/{id}/revoke — Revoke an agent token.
+async fn revoke_agent_token(
+    State(state): State<Arc<CloudState>>,
+    headers: HeaderMap,
+    Path(token_id): Path<String>,
+) -> impl IntoResponse {
+    let user = match extract_user(&headers, &state.auth) {
+        Ok(u) => u,
+        Err((status, msg)) => return error_response(status, &msg).into_response(),
+    };
+
+    match state
+        .agent_tokens
+        .revoke(&user.namespace, &token_id)
+        .await
+    {
+        Ok(true) => CloudResponse::ok("token revoked").into_response(),
+        Ok(false) => error_response(StatusCode::NOT_FOUND, "token not found").into_response(),
+        Err(e) => {
+            warn!(error = %e, "failed to revoke agent token");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to revoke token")
+                .into_response()
         }
     }
 }

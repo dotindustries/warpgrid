@@ -29,6 +29,8 @@ pub struct AgentConfig {
     pub capacity_memory_bytes: u64,
     /// Total CPU weight capacity.
     pub capacity_cpu_weight: u32,
+    /// Agent auth token for BYOC agents (optional — not required for managed agents).
+    pub auth_token: Option<String>,
 }
 
 /// The node agent that maintains cluster membership.
@@ -36,6 +38,8 @@ pub struct NodeAgent {
     config: AgentConfig,
     /// Assigned node ID (set after join).
     node_id: Option<String>,
+    /// Namespace this agent is bound to (set after join, if auth_token was provided).
+    namespace: Option<String>,
     /// Heartbeat interval (set by control plane).
     heartbeat_interval: Duration,
 }
@@ -46,6 +50,7 @@ impl NodeAgent {
         Self {
             config,
             node_id: None,
+            namespace: None,
             heartbeat_interval: Duration::from_secs(5),
         }
     }
@@ -63,15 +68,20 @@ impl NodeAgent {
                 labels: self.config.labels.clone(),
                 capacity_memory_bytes: self.config.capacity_memory_bytes,
                 capacity_cpu_weight: self.config.capacity_cpu_weight,
+                auth_token: self.config.auth_token.clone().unwrap_or_default(),
             })
             .await?;
 
         let resp = response.into_inner();
         self.node_id = Some(resp.node_id.clone());
         self.heartbeat_interval = Duration::from_secs(resp.heartbeat_interval_secs as u64);
+        if !resp.namespace.is_empty() {
+            self.namespace = Some(resp.namespace.clone());
+        }
 
         info!(
             node_id = %resp.node_id,
+            namespace = resp.namespace,
             members = resp.members.len(),
             heartbeat_interval = ?self.heartbeat_interval,
             "joined cluster"
@@ -159,6 +169,11 @@ impl NodeAgent {
         self.node_id.as_deref()
     }
 
+    /// Get the namespace this agent is bound to (None if unauthenticated or not yet joined).
+    pub fn namespace(&self) -> Option<&str> {
+        self.namespace.as_deref()
+    }
+
     /// Connect to the control plane.
     async fn connect(&self) -> anyhow::Result<ClusterServiceClient<Channel>> {
         let addr = format!("http://{}", self.config.control_plane_addr);
@@ -179,6 +194,7 @@ mod tests {
             labels: HashMap::new(),
             capacity_memory_bytes: 8_000_000_000,
             capacity_cpu_weight: 1000,
+            auth_token: None,
         }
     }
 

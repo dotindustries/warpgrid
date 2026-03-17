@@ -59,6 +59,7 @@ impl StateStore {
         txn.open_table(NODES).map_err(map_err!(Table))?;
         txn.open_table(SERVICES).map_err(map_err!(Table))?;
         txn.open_table(METRICS).map_err(map_err!(Table))?;
+        txn.open_table(SPRITES).map_err(map_err!(Table))?;
         txn.commit().map_err(map_err!(Transaction))?;
         Ok(())
     }
@@ -318,6 +319,99 @@ impl StateStore {
         txn.commit().map_err(map_err!(Transaction))?;
         Ok(())
     }
+
+    // ── Sprites ─────────────────────────────────────────────────
+
+    /// Insert or update a sprite spec.
+    pub fn put_sprite(&self, spec: &SpriteSpec) -> StateResult<()> {
+        let key = spec.table_key();
+        let value = serde_json::to_vec(spec).map_err(map_err!(Serialize))?;
+        let txn = self.db.begin_write().map_err(map_err!(Transaction))?;
+        {
+            let mut table = txn.open_table(SPRITES).map_err(map_err!(Table))?;
+            table
+                .insert(key.as_str(), value.as_slice())
+                .map_err(map_err!(Write))?;
+        }
+        txn.commit().map_err(map_err!(Transaction))?;
+        debug!(%key, "sprite stored");
+        Ok(())
+    }
+
+    /// Get a sprite by ID.
+    pub fn get_sprite(&self, sprite_id: &str) -> StateResult<Option<SpriteSpec>> {
+        let txn = self.db.begin_read().map_err(map_err!(Transaction))?;
+        let table = txn.open_table(SPRITES).map_err(map_err!(Table))?;
+        match table.get(sprite_id).map_err(map_err!(Read))? {
+            Some(guard) => {
+                let spec: SpriteSpec =
+                    serde_json::from_slice(guard.value()).map_err(map_err!(Deserialize))?;
+                Ok(Some(spec))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// List all sprites.
+    pub fn list_sprites(&self) -> StateResult<Vec<SpriteSpec>> {
+        let txn = self.db.begin_read().map_err(map_err!(Transaction))?;
+        let table = txn.open_table(SPRITES).map_err(map_err!(Table))?;
+        let mut results = Vec::new();
+        for entry in table.iter().map_err(map_err!(Read))? {
+            let (_, value) = entry.map_err(map_err!(Read))?;
+            let spec: SpriteSpec =
+                serde_json::from_slice(value.value()).map_err(map_err!(Deserialize))?;
+            results.push(spec);
+        }
+        Ok(results)
+    }
+
+    /// Delete a sprite by ID. Returns true if it existed.
+    pub fn delete_sprite(&self, sprite_id: &str) -> StateResult<bool> {
+        let txn = self.db.begin_write().map_err(map_err!(Transaction))?;
+        let existed;
+        {
+            let mut table = txn.open_table(SPRITES).map_err(map_err!(Table))?;
+            existed = table.remove(sprite_id).map_err(map_err!(Write))?.is_some();
+        }
+        txn.commit().map_err(map_err!(Transaction))?;
+        debug!(%sprite_id, existed, "sprite deleted");
+        Ok(existed)
+    }
+
+    /// List sprites for a specific owner.
+    pub fn list_sprites_for_owner(&self, owner: &str) -> StateResult<Vec<SpriteSpec>> {
+        let txn = self.db.begin_read().map_err(map_err!(Transaction))?;
+        let table = txn.open_table(SPRITES).map_err(map_err!(Table))?;
+        let mut results = Vec::new();
+        for entry in table.iter().map_err(map_err!(Read))? {
+            let (_, value) = entry.map_err(map_err!(Read))?;
+            let spec: SpriteSpec =
+                serde_json::from_slice(value.value()).map_err(map_err!(Deserialize))?;
+            if spec.owner == owner {
+                results.push(spec);
+            }
+        }
+        Ok(results)
+    }
+
+    /// List sprites on a specific node.
+    pub fn list_sprites_on_node(&self, node_id: &str) -> StateResult<Vec<SpriteSpec>> {
+        let txn = self.db.begin_read().map_err(map_err!(Transaction))?;
+        let table = txn.open_table(SPRITES).map_err(map_err!(Table))?;
+        let mut results = Vec::new();
+        for entry in table.iter().map_err(map_err!(Read))? {
+            let (_, value) = entry.map_err(map_err!(Read))?;
+            let spec: SpriteSpec =
+                serde_json::from_slice(value.value()).map_err(map_err!(Deserialize))?;
+            if spec.node_id.as_deref() == Some(node_id) {
+                results.push(spec);
+            }
+        }
+        Ok(results)
+    }
+
+    // ── Metrics ────────────────────────────────────────────────
 
     /// Get recent metrics snapshots for a deployment (by key prefix scan).
     pub fn list_metrics_for_deployment(
@@ -643,6 +737,113 @@ mod tests {
         assert!(!store.delete_deployment("nope").unwrap());
         assert!(!store.delete_instance("nope").unwrap());
         assert!(!store.delete_node("nope").unwrap());
+    }
+
+    // ── Sprite CRUD ─────────────────────────────────────────────
+
+    fn test_sprite(id: &str, owner: &str) -> SpriteSpec {
+        SpriteSpec {
+            id: id.to_string(),
+            owner: owner.to_string(),
+            name: format!("{id}-workspace"),
+            image_version: "v1.0".to_string(),
+            resources: SpriteResources::default(),
+            storage_url: format!("s3://sprites/{id}"),
+            checkpoint_id: None,
+            status: SpriteStatus::Running,
+            node_id: Some("node-1".to_string()),
+            created_at: 1000,
+            last_active_at: 1000,
+        }
+    }
+
+    #[test]
+    fn sprite_put_and_get() {
+        let store = StateStore::open_in_memory().unwrap();
+        let spec = test_sprite("sprite-100", "alice");
+
+        store.put_sprite(&spec).unwrap();
+        let retrieved = store.get_sprite("sprite-100").unwrap();
+
+        assert_eq!(retrieved, Some(spec));
+    }
+
+    #[test]
+    fn sprite_list_all() {
+        let store = StateStore::open_in_memory().unwrap();
+        store.put_sprite(&test_sprite("s1", "alice")).unwrap();
+        store.put_sprite(&test_sprite("s2", "bob")).unwrap();
+        store.put_sprite(&test_sprite("s3", "alice")).unwrap();
+
+        let all = store.list_sprites().unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn sprite_list_by_owner() {
+        let store = StateStore::open_in_memory().unwrap();
+        store.put_sprite(&test_sprite("s1", "alice")).unwrap();
+        store.put_sprite(&test_sprite("s2", "bob")).unwrap();
+        store.put_sprite(&test_sprite("s3", "alice")).unwrap();
+
+        let alice = store.list_sprites_for_owner("alice").unwrap();
+        assert_eq!(alice.len(), 2);
+
+        let bob = store.list_sprites_for_owner("bob").unwrap();
+        assert_eq!(bob.len(), 1);
+    }
+
+    #[test]
+    fn sprite_list_by_node() {
+        let store = StateStore::open_in_memory().unwrap();
+        let mut s1 = test_sprite("s1", "alice");
+        s1.node_id = Some("node-1".to_string());
+        let mut s2 = test_sprite("s2", "bob");
+        s2.node_id = Some("node-2".to_string());
+        let mut s3 = test_sprite("s3", "alice");
+        s3.node_id = Some("node-1".to_string());
+
+        store.put_sprite(&s1).unwrap();
+        store.put_sprite(&s2).unwrap();
+        store.put_sprite(&s3).unwrap();
+
+        let node1 = store.list_sprites_on_node("node-1").unwrap();
+        assert_eq!(node1.len(), 2);
+
+        let node2 = store.list_sprites_on_node("node-2").unwrap();
+        assert_eq!(node2.len(), 1);
+    }
+
+    #[test]
+    fn sprite_delete() {
+        let store = StateStore::open_in_memory().unwrap();
+        store.put_sprite(&test_sprite("s1", "alice")).unwrap();
+
+        assert!(store.delete_sprite("s1").unwrap());
+        assert!(!store.delete_sprite("s1").unwrap());
+        assert!(store.get_sprite("s1").unwrap().is_none());
+    }
+
+    #[test]
+    fn sprite_status_transitions() {
+        let store = StateStore::open_in_memory().unwrap();
+        let mut spec = test_sprite("s1", "alice");
+        spec.status = SpriteStatus::Creating;
+        store.put_sprite(&spec).unwrap();
+
+        spec.status = SpriteStatus::Running;
+        store.put_sprite(&spec).unwrap();
+
+        spec.status = SpriteStatus::Paused;
+        store.put_sprite(&spec).unwrap();
+
+        spec.status = SpriteStatus::Sleeping;
+        spec.node_id = None;
+        store.put_sprite(&spec).unwrap();
+
+        let retrieved = store.get_sprite("s1").unwrap().unwrap();
+        assert_eq!(retrieved.status, SpriteStatus::Sleeping);
+        assert!(retrieved.node_id.is_none());
     }
 
     #[test]

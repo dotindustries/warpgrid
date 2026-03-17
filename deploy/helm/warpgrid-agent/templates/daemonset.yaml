@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "warpgrid-agent.fullname" . }}
+  labels:
+    {{- include "warpgrid-agent.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "warpgrid-agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "warpgrid-agent.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "warpgrid-agent.serviceAccountName" . }}
+      {{- end }}
+      hostPID: true
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - agent
+            - --control-plane
+            - {{ .Values.controlPlane | quote }}
+            - --auth-token
+            - $(WARPGRID_AGENT_TOKEN)
+            - --region
+            - {{ .Values.region | quote }}
+            - --address
+            - $(NODE_IP)
+            - --data-dir
+            - {{ .Values.dataDir | quote }}
+            {{- if .Values.capacity.memoryBytes }}
+            - --capacity-memory-bytes
+            - {{ .Values.capacity.memoryBytes | quote }}
+            {{- end }}
+            {{- if .Values.capacity.cpuWeight }}
+            - --capacity-cpu-weight
+            - {{ .Values.capacity.cpuWeight | quote }}
+            {{- end }}
+          env:
+            - name: RUST_LOG
+              value: "info,warpd=debug"
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: WARPGRID_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.existingSecret }}
+                  name: {{ .Values.existingSecret }}
+                  key: {{ .Values.existingSecretKey }}
+                  {{- else }}
+                  name: {{ include "warpgrid-agent.fullname" . }}
+                  key: token
+                  {{- end }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: dev-kvm
+              mountPath: /dev/kvm
+            - name: data
+              mountPath: {{ .Values.dataDir }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: dev-kvm
+          hostPath:
+            path: /dev/kvm
+            type: CharDevice
+        - name: data
+          {{- if .Values.hostPathData }}
+          hostPath:
+            path: {{ .Values.hostPathData }}
+            type: DirectoryOrCreate
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

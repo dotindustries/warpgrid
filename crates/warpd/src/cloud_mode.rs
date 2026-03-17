@@ -18,6 +18,7 @@ use tokio::sync::watch;
 use tracing::{info, warn};
 
 use crate::cloud::admin::admin_router;
+use crate::cloud::agent_tokens::AgentTokenStore;
 use crate::cloud::analytics::AnalyticsService;
 use crate::cloud::auth::AuthStore;
 use crate::cloud::billing::BillingService;
@@ -175,6 +176,11 @@ pub async fn run_cloud(
         }
     }
 
+    // ── Agent token store ───────────────────────────────────────
+
+    let agent_tokens = AgentTokenStore::with_libsql(cloud_conn.clone());
+    info!("agent token store initialized (persistent)");
+
     // ── Usage tracker ───────────────────────────────────────────
 
     let usage = UsageTracker::new();
@@ -229,6 +235,7 @@ pub async fn run_cloud(
         usage,
         logs: crate::cloud::routes::new_log_buffer(),
         admin_key,
+        agent_tokens,
     };
     let console_routes = console_router(cloud_state.clone());
     let admin_routes = admin_router(cloud_state.clone());
