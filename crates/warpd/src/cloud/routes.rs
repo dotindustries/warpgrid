@@ -54,9 +54,7 @@ pub async fn push_log(buffer: &LogBuffer, entry: LogEntry) {
 }
 
 /// Pre-built hello-world Wasm component for the playground.
-const PLAYGROUND_WASM: &[u8] = include_bytes!(
-    "../../../../tests/fixtures/async-rust-template/target/async-rust-template.component.wasm"
-);
+const PLAYGROUND_WASM: &[u8] = include_bytes!("../../assets/playground-hello.wasm");
 
 /// Rate limiter for playground: tracks IP → last request timestamp.
 pub type PlaygroundRateLimit = Arc<std::sync::Mutex<HashMap<std::net::IpAddr, std::time::Instant>>>;
