@@ -1,0 +1,19 @@
+[package]
+name = "sprite-init"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WarpGrid sprite-init — guest PID 1 supervisor with namespace setup and vsock communication"
+
+[[bin]]
+name = "sprite-init"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"

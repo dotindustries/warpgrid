@@ -19,3 +19,6 @@ pub const SERVICES: TableDefinition<&str, &[u8]> = TableDefinition::new("service
 
 /// Metrics snapshots keyed by `{deployment_id}:{epoch}`.
 pub const METRICS: TableDefinition<&str, &[u8]> = TableDefinition::new("metrics");
+
+/// Sprite specs keyed by `{sprite_id}`.
+pub const SPRITES: TableDefinition<&str, &[u8]> = TableDefinition::new("sprites");

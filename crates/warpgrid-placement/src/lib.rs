@@ -15,6 +15,8 @@ pub mod convert;
 pub mod placer;
 pub mod scorer;
 
+pub mod sprite_placement;
+
 pub use convert::{
     deployment_to_requirements, node_info_to_resources, node_info_to_resources_with_instances,
 };
@@ -24,3 +26,4 @@ pub use placer::{
 pub use scorer::{
     NodeResources, NodeScore, PlacementRequirements, ScoringWeights, rank_nodes, score_node,
 };
+pub use sprite_placement::{SpriteRequirements, rank_nodes_for_sprite, sprite_to_requirements};
