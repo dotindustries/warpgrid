@@ -11,6 +11,7 @@
 /vendor/componentize-js
 /vendor/wasmtime-async
 tests/fixtures/**/target/
+tests/fixtures/**/Cargo.lock
 test-apps/**/target/
 test-apps/**/Cargo.lock
 __pycache__/
