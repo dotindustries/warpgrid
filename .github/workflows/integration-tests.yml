@@ -196,7 +196,7 @@ jobs:
   # ── T4: TypeScript HTTP + Postgres ─────────────────────────────────
   t4-ts-http-postgres:
     name: "T4: TypeScript HTTP + Postgres"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45
 
     steps:
@@ -257,7 +257,7 @@ jobs:
   # ── T5: Bun HTTP + Postgres ────────────────────────────────────────
   t5-bun-http-postgres:
     name: "T5: Bun HTTP + Postgres"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45
 
     steps:
