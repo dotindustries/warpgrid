@@ -36,4 +36,4 @@ pub mod proto {
 
 pub use agent::NodeAgent;
 pub use membership::MembershipManager;
-pub use server::ClusterServer;
+pub use server::{ClusterServer, NoopTokenValidator, TokenValidator};

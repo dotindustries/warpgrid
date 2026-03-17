@@ -31,6 +31,10 @@ message JoinRequest {
   uint64 capacity_memory_bytes = 4;
   // Total CPU weight capacity.
   uint32 capacity_cpu_weight = 5;
+  // Agent auth token (required for BYOC agents connecting to cloud control plane).
+  // Format: wg_agent_<32 hex chars>. Validated server-side to bind the node
+  // to the owning namespace for tenant-scoped placement.
+  string auth_token = 6;
 }
 
 message JoinResponse {
@@ -40,6 +44,8 @@ message JoinResponse {
   repeated NodeMember members = 2;
   // Heartbeat interval in seconds.
   uint32 heartbeat_interval_secs = 3;
+  // Namespace this agent is bound to (set when auth_token was validated).
+  string namespace = 4;
 }
 
 // ── Leave ────────────────────────────────────────────────────
