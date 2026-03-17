@@ -10,7 +10,7 @@
 /vendor/tinygo
 /vendor/componentize-js
 /vendor/wasmtime-async
-tests/fixtures/fs-shim-guest/target/
+tests/fixtures/**/target/
 test-apps/**/target/
 test-apps/**/Cargo.lock
 __pycache__/
@@ -18,6 +18,6 @@ __pycache__/
 docs/GTM-BETA-LAUNCH-PLAN.md
 docs/IMPLEMENTATION-PLAN-PHASE2.md
 warpgrid.toml
-tests/fixtures/rust-sqlx-postgres-guest/target/
+.beads/daemon-error
 .gstack/
 .context/
