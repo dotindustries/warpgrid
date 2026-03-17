@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 warp-core.workspace = true
+warp-analyzer = { path = "../warp-analyzer" }
 warp-runtime = { path = "../warp-runtime" }
 warpgrid-state = { path = "../warpgrid-state" }
 warpgrid-scheduler = { path = "../warpgrid-scheduler" }
@@ -43,9 +44,9 @@ hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 toml = "0.8"
 libsql = "0.9"
+tempfile = "3"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 axum = { version = "0.8", features = ["tokio"] }
 warpgrid-placement = { path = "../warpgrid-placement" }
-tempfile = "3"

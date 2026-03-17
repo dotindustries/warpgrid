@@ -4,19 +4,20 @@
 //! via `include_str!`. No filesystem access needed at runtime.
 
 use axum::Router;
-use axum::response::Html;
+use axum::response::{Html, Redirect};
 use axum::routing::get;
 
 const LANDING_HTML: &str = include_str!("../../../../landing/index.html");
 const BENCHMARKS_HTML: &str = include_str!("../../../../landing/benchmarks.html");
-const PRICING_HTML: &str = include_str!("../../../../landing/pricing.html");
+const BLOG_DOCKER_VS_WASM_HTML: &str = include_str!("../../../../landing/blog/docker-vs-wasm.html");
 
 /// Build the landing page router.
 pub fn landing_router() -> Router {
     Router::new()
         .route("/", get(landing_page))
         .route("/benchmarks", get(benchmarks_page))
-        .route("/pricing", get(pricing_page))
+        .route("/pricing", get(pricing_redirect))
+        .route("/blog/docker-vs-wasm", get(blog_docker_vs_wasm))
 }
 
 async fn landing_page() -> Html<&'static str> {
@@ -27,8 +28,12 @@ async fn benchmarks_page() -> Html<&'static str> {
     Html(BENCHMARKS_HTML)
 }
 
-async fn pricing_page() -> Html<&'static str> {
-    Html(PRICING_HTML)
+async fn pricing_redirect() -> Redirect {
+    Redirect::permanent("/")
+}
+
+async fn blog_docker_vs_wasm() -> Html<&'static str> {
+    Html(BLOG_DOCKER_VS_WASM_HTML)
 }
 
 #[cfg(test)]
@@ -48,9 +53,8 @@ mod tests {
     }
 
     #[test]
-    fn pricing_page_has_proper_styling() {
-        assert!(PRICING_HTML.contains("--accent: #00e5a0"));
-        assert!(PRICING_HTML.contains("Outfit"));
-        assert!(PRICING_HTML.contains("$29"));
+    fn blog_post_has_content() {
+        assert!(BLOG_DOCKER_VS_WASM_HTML.contains("Docker"));
+        assert!(BLOG_DOCKER_VS_WASM_HTML.contains("WarpGrid"));
     }
 }

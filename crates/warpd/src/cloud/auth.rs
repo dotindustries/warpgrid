@@ -242,7 +242,7 @@ fn generate_api_key() -> String {
 }
 
 /// Generate a random user ID.
-fn generate_user_id() -> String {
+pub fn generate_user_id() -> String {
     let mut rng = rand::thread_rng();
     let bytes: [u8; 8] = rng.r#gen();
     format!("usr_{}", hex::encode(bytes))

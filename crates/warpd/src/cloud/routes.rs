@@ -3,13 +3,14 @@
 //! All routes require API key authentication via the `Authorization: Bearer wg_live_...` header.
 //! Routes are namespace-scoped — users can only see/modify their own resources.
 
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
@@ -52,6 +53,17 @@ pub async fn push_log(buffer: &LogBuffer, entry: LogEntry) {
     buf.push_back(entry);
 }
 
+/// Pre-built hello-world Wasm component for the playground.
+const PLAYGROUND_WASM: &[u8] = include_bytes!("../../assets/playground-hello.wasm");
+
+/// Rate limiter for playground: tracks IP → last request timestamp.
+pub type PlaygroundRateLimit = Arc<std::sync::Mutex<HashMap<std::net::IpAddr, std::time::Instant>>>;
+
+/// Create a new playground rate limiter.
+pub fn new_playground_rate_limit() -> PlaygroundRateLimit {
+    Arc::new(std::sync::Mutex::new(HashMap::new()))
+}
+
 /// Shared state for cloud API routes.
 #[derive(Clone)]
 pub struct CloudState {
@@ -66,6 +78,8 @@ pub struct CloudState {
     pub usage: UsageTracker,
     pub logs: LogBuffer,
     pub admin_key: Option<String>,
+    pub playground_rate_limit: PlaygroundRateLimit,
+    pub analyze_rate_limit: PlaygroundRateLimit,
 }
 
 /// Build the cloud API router with all routes.
@@ -99,6 +113,10 @@ pub fn cloud_router(cloud_state: CloudState) -> Router {
         .route("/api/v1/cloud/billing/checkout", post(billing_checkout))
         // Stripe webhook — no auth middleware (Stripe signs the payload)
         .route("/api/v1/webhooks/stripe", post(stripe_webhook))
+        // Playground — no auth, rate-limited by IP
+        .route("/api/v1/playground/start", post(playground_start))
+        // Analyzer — no auth, rate-limited by IP
+        .route("/api/v1/analyze", post(analyze_repo))
         .with_state(Arc::new(cloud_state))
 }
 
@@ -1091,7 +1109,7 @@ async fn billing_checkout(
 
     // Step 2: Create a Checkout session with the real Stripe customer ID.
     let success_url = "https://warpgrid.dev/console/settings?checkout=success";
-    let cancel_url = "https://warpgrid.dev/pricing";
+    let cancel_url = "https://warpgrid.dev/";
 
     match state
         .billing
@@ -1294,4 +1312,321 @@ async fn verify_domain(
             error_response(status, &e.to_string()).into_response()
         }
     }
+}
+
+// ── Playground ──────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct PlaygroundResponse {
+    success: bool,
+    api_key: String,
+    namespace: String,
+    deployment_id: String,
+    endpoint_url: String,
+    expires_in: u64,
+}
+
+/// Zero-auth endpoint: creates a temporary sandbox account and deploys
+/// the pre-built hello-world Wasm component. Rate-limited to 1 per IP per hour.
+async fn playground_start(
+    State(state): State<Arc<CloudState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    let ip = addr.ip();
+
+    // Rate limit: 1 playground per IP per hour.
+    {
+        let mut rate_map = state
+            .playground_rate_limit
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Clean up entries older than 1 hour.
+        let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(3600);
+        rate_map.retain(|_, ts| *ts > cutoff);
+
+        if let Some(last) = rate_map.get(&ip)
+            && last.elapsed() < std::time::Duration::from_secs(3600)
+        {
+            return error_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Playground limit: 1 per hour. Try the local quickstart instead.",
+            )
+            .into_response();
+        }
+        rate_map.insert(ip, std::time::Instant::now());
+    }
+
+    // Create a temporary playground account.
+    let playground_email = format!(
+        "playground-{}@warpgrid.dev",
+        &super::auth::generate_user_id()[..8]
+    );
+    let (api_key, user) = match state.auth.register(&playground_email).await {
+        Ok(result) => result,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Playground setup failed: {e}"),
+            )
+            .into_response();
+        }
+    };
+
+    // Deploy the pre-built hello-world Wasm.
+    let name = "hello";
+    let region = "iad";
+    let deployment_id = tenants::scoped_deployment_id(&user.namespace, name);
+    let wasm_hash = super::auth::hash_key(&format!("playground-{}", user.id));
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    // Store Wasm blob.
+    if let Err(e) = state
+        .cloud_db
+        .execute(
+            "INSERT OR IGNORE INTO cloud_wasm_blobs (hash, wasm, size_bytes, uploaded_at) VALUES (?, ?, ?, ?)",
+            libsql::params![
+                wasm_hash.clone(),
+                PLAYGROUND_WASM.to_vec(),
+                PLAYGROUND_WASM.len() as i64,
+                now
+            ],
+        )
+        .await
+    {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to store playground Wasm: {e}"),
+        )
+        .into_response();
+    }
+
+    // Create deployment record.
+    let spec = serde_json::json!({
+        "trigger": {"type": "http", "port": 8080},
+        "instances": {"min": 1, "max": 1},
+        "resources": {"memory_bytes": 16777216, "cpu_weight": 50},
+        "shims": {},
+        "env": {},
+    });
+
+    if let Err(e) = state
+        .cloud_db
+        .execute(
+            "INSERT INTO cloud_deployments (id, namespace, name, wasm_hash, region, status, spec_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)",
+            libsql::params![
+                deployment_id.clone(),
+                user.namespace.clone(),
+                name.to_string(),
+                wasm_hash.clone(),
+                region.to_string(),
+                spec.to_string(),
+                now,
+                now
+            ],
+        )
+        .await
+    {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to create playground deployment: {e}"),
+        )
+        .into_response();
+    }
+
+    // Mirror to redb for dashboard compat.
+    let redb_spec = warpgrid_state::DeploymentSpec {
+        id: deployment_id.clone(),
+        namespace: user.namespace.clone(),
+        name: name.to_string(),
+        source: format!("turso://{}", wasm_hash),
+        trigger: warpgrid_state::TriggerConfig::Http { port: Some(8080) },
+        instances: warpgrid_state::InstanceConstraints { min: 1, max: 1 },
+        resources: warpgrid_state::ResourceLimits {
+            memory_bytes: 16 * 1024 * 1024,
+            cpu_weight: 50,
+        },
+        scaling: None,
+        health: None,
+        shims: warpgrid_state::ShimsEnabled::default(),
+        env: std::collections::HashMap::new(),
+        created_at: now as u64,
+        updated_at: now as u64,
+    };
+    let _ = state.state_store.put_deployment(&redb_spec);
+
+    let endpoint_url = format!("https://{}-{}.warpgrid.dev", user.namespace, name);
+
+    push_log(
+        &state.logs,
+        LogEntry {
+            timestamp: now,
+            deployment_id: deployment_id.clone(),
+            level: "info".to_string(),
+            message: format!("Playground deployment created from {}", ip),
+        },
+    )
+    .await;
+
+    (
+        StatusCode::CREATED,
+        CloudResponse::ok(PlaygroundResponse {
+            success: true,
+            api_key,
+            namespace: user.namespace,
+            deployment_id,
+            endpoint_url,
+            expires_in: 3600,
+        }),
+    )
+        .into_response()
+}
+
+// ── Repo Analyzer ───────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct AnalyzeRequest {
+    repo_url: String,
+}
+
+/// Analyze a public GitHub repo for WarpGrid compatibility.
+/// No auth required, rate-limited to 3 per IP per hour.
+async fn analyze_repo(
+    State(state): State<Arc<CloudState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<AnalyzeRequest>,
+) -> impl IntoResponse {
+    let ip = addr.ip();
+
+    // Rate limit: 3 analyses per IP per hour.
+    {
+        let mut rate_map = state
+            .analyze_rate_limit
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(3600);
+        rate_map.retain(|_, ts| *ts > cutoff);
+
+        let count = rate_map
+            .values()
+            .filter(|ts| ts.elapsed() < std::time::Duration::from_secs(3600))
+            .count();
+        if rate_map.contains_key(&ip) && count >= 3 {
+            return error_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Analysis limit: 3 per hour. Install locally for unlimited use.",
+            )
+            .into_response();
+        }
+        rate_map.insert(ip, std::time::Instant::now());
+    }
+
+    // Validate URL: only https to known git hosts.
+    let url = body.repo_url.trim();
+    if !url.starts_with("https://github.com/")
+        && !url.starts_with("https://gitlab.com/")
+        && !url.starts_with("https://codeberg.org/")
+    {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Only public GitHub, GitLab, and Codeberg repositories are supported.",
+        )
+        .into_response();
+    }
+
+    // Sanitize: strip trailing slashes, .git suffix, query params.
+    let clean_url = url
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .split('?')
+        .next()
+        .unwrap_or(url);
+
+    // Create temp directory.
+    let tmp_dir = match tempfile::tempdir() {
+        Ok(d) => d,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Failed to create temp directory: {e}"),
+            )
+            .into_response();
+        }
+    };
+    let clone_path = tmp_dir.path().join("repo");
+
+    // Shallow clone with 30s timeout.
+    let clone_fut = tokio::process::Command::new("git")
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            "--single-branch",
+            clean_url,
+            clone_path.to_str().unwrap_or("/tmp/repo"),
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output();
+
+    let output = match tokio::time::timeout(std::time::Duration::from_secs(30), clone_fut).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            return error_response(StatusCode::BAD_GATEWAY, &format!("Git clone failed: {e}"))
+                .into_response();
+        }
+        Err(_) => {
+            return error_response(
+                StatusCode::GATEWAY_TIMEOUT,
+                "Repository clone timed out (30s). Try a smaller repo or install locally.",
+            )
+            .into_response();
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg = if stderr.contains("not found") || stderr.contains("does not exist") {
+            "Repository not found. Is it public?"
+        } else if stderr.contains("Authentication") || stderr.contains("Permission") {
+            "Repository requires authentication. Only public repos are supported."
+        } else {
+            "Could not clone repository. Check the URL and try again."
+        };
+        return error_response(StatusCode::BAD_GATEWAY, msg).into_response();
+    }
+
+    // Run the analyzer (pure static analysis, <1 second).
+    let report = match warp_analyzer::analyze(&clone_path, None) {
+        Ok(r) => r,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                &format!("Analysis failed: {e}. The project may use an unsupported language."),
+            )
+            .into_response();
+        }
+    };
+
+    // Compute compatibility percentage.
+    let total = report.dependencies.len().max(1) as f64;
+    let compatible = (total - report.blockers.len() as f64) / total * 100.0;
+
+    CloudResponse::ok(serde_json::json!({
+        "project_name": report.project_name,
+        "language": report.language,
+        "overall_verdict": report.overall_verdict,
+        "compatibility_pct": (compatible * 10.0).round() / 10.0,
+        "total_deps": report.dependencies.len(),
+        "compatible_deps": report.dependencies.len() - report.blockers.len() - report.shim_items.len(),
+        "shim_deps": report.shim_items.len(),
+        "blocked_deps": report.blockers.len(),
+        "blockers": report.blockers,
+        "shim_items": report.shim_items,
+        "suggested_config": report.suggested_config,
+    }))
+    .into_response()
 }

@@ -57,15 +57,18 @@ jobs:
           version: "v41.0.0"
 
       - name: Build T1
-        run: cargo build -p t1-rust-http-postgres 2>&1 || echo "BUILD_FAILED"
+        run: cd test-apps/t1-rust-http-postgres && cargo build 2>&1 || echo "BUILD_FAILED"
         continue-on-error: true
         id: build
+        env:
+          RUSTFLAGS: ""
 
       - name: Test T1
         if: steps.build.outcome == 'success'
-        run: cargo test -p t1-rust-http-postgres
+        run: cd test-apps/t1-rust-http-postgres && cargo test
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
+          RUSTFLAGS: ""
 
       - name: Upload test results
         if: always()
@@ -123,16 +126,19 @@ jobs:
           version: "v41.0.0"
 
       - name: Build T2
-        run: cargo build -p t2-rust-http-redis-postgres 2>&1 || echo "BUILD_FAILED"
+        run: cd test-apps/t2-rust-http-redis-postgres && cargo build 2>&1 || echo "BUILD_FAILED"
         continue-on-error: true
         id: build
+        env:
+          RUSTFLAGS: ""
 
       - name: Test T2
         if: steps.build.outcome == 'success'
-        run: cargo test -p t2-rust-http-redis-postgres
+        run: cd test-apps/t2-rust-http-redis-postgres && cargo test
         env:
           DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb"
           REDIS_URL: "redis://localhost:6379"
+          RUSTFLAGS: ""
 
       - name: Upload test results
         if: always()
@@ -171,6 +177,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache-dependency-path: test-apps/t3-go-http-postgres/go.sum
 
       - name: Build & Test T3
         run: test-apps/t3-go-http-postgres/test.sh
@@ -189,8 +196,8 @@ jobs:
   # ── T4: TypeScript HTTP + Postgres ─────────────────────────────────
   t4-ts-http-postgres:
     name: "T4: TypeScript HTTP + Postgres"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 15
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -224,6 +231,17 @@ jobs:
       - name: Install T4 dependencies
         run: npm ci --prefix test-apps/t4-ts-http-postgres
 
+      - name: Cache T4 standalone WASM
+        id: t4-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: test-apps/t4-ts-http-postgres/dist/handler.wasm
+          key: t4-wasm-${{ hashFiles('test-apps/t4-ts-http-postgres/src/handler-standalone.js', 'test-apps/t4-ts-http-postgres/wit-standalone/**') }}
+
+      - name: Build T4 standalone WASM
+        if: steps.t4-wasm-cache.outputs.cache-hit != 'true'
+        run: test-apps/t4-ts-http-postgres/build.sh --standalone
+
       - name: Build & Test T4
         run: test-apps/t4-ts-http-postgres/test.sh
 
@@ -239,8 +257,8 @@ jobs:
   # ── T5: Bun HTTP + Postgres ────────────────────────────────────────
   t5-bun-http-postgres:
     name: "T5: Bun HTTP + Postgres"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 15
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -277,6 +295,17 @@ jobs:
 
       - name: Install T5 dependencies
         run: bun install --frozen-lockfile --cwd test-apps/t5-bun-http-postgres
+
+      - name: Cache T5 standalone WASM
+        id: t5-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: test-apps/t5-bun-http-postgres/dist/handler.wasm
+          key: t5-wasm-${{ hashFiles('test-apps/t5-bun-http-postgres/src/handler-standalone.js', 'test-apps/t5-bun-http-postgres/wit-standalone/**') }}
+
+      - name: Build T5 standalone WASM
+        if: steps.t5-wasm-cache.outputs.cache-hit != 'true'
+        run: test-apps/t5-bun-http-postgres/build.sh --standalone
 
       - name: Build & Test T5
         run: test-apps/t5-bun-http-postgres/test.sh
@@ -327,7 +356,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip2
+          targets: wasm32-wasip2,wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
 
@@ -369,18 +398,20 @@ jobs:
         run: scripts/build-componentize-js.sh --npm
 
       - name: Build all T6 services
+        env:
+          RUSTFLAGS: ""
         run: |
-          echo "Building gateway (Rust)..."
-          cargo build -p t6-gateway-svc
+          echo "Building gateway-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/gateway-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
-          echo "Building user-svc (Go)..."
-          test-apps/t6-multi-service/user-svc/build.sh --standalone
+          echo "Building user-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/user-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
-          echo "Building notification-svc (TypeScript)..."
-          test-apps/t6-multi-service/notification-svc/build.sh --standalone
+          echo "Building notification-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/notification-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
-          echo "Building analytics-svc (Bun)..."
-          test-apps/t6-multi-service/analytics-svc/build.sh --standalone
+          echo "Building analytics-svc (Rust WASM component)..."
+          cd test-apps/t6-multi-service/analytics-svc && cargo build --target wasm32-unknown-unknown --release && cd "$GITHUB_WORKSPACE"
 
       - name: Test T6 multi-service integration
         run: scripts/test-all.sh --only t6

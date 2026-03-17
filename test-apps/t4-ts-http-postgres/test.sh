@@ -86,7 +86,11 @@ if [ ! -x "${JCO_BIN}" ]; then
 fi
 
 # Build the standalone handler (no warpgrid shim deps)
-if "${SCRIPT_DIR}/build.sh" --standalone 2>&1; then
+# Skip build if handler.wasm already exists (e.g. from CI cache)
+if [ -f "${SCRIPT_DIR}/dist/handler.wasm" ]; then
+    WASM_SIZE="$(wc -c < "${SCRIPT_DIR}/dist/handler.wasm" | tr -d ' ')"
+    pass "Standalone handler already built (${WASM_SIZE} bytes, cached)"
+elif "${SCRIPT_DIR}/build.sh" --standalone 2>&1; then
     if [ -f "${SCRIPT_DIR}/dist/handler.wasm" ]; then
         WASM_SIZE="$(wc -c < "${SCRIPT_DIR}/dist/handler.wasm" | tr -d ' ')"
         pass "Standalone handler compiled (${WASM_SIZE} bytes)"
