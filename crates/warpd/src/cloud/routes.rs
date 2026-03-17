@@ -1344,14 +1344,14 @@ async fn playground_start(
         let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(3600);
         rate_map.retain(|_, ts| *ts > cutoff);
 
-        if let Some(last) = rate_map.get(&ip) {
-            if last.elapsed() < std::time::Duration::from_secs(3600) {
-                return error_response(
-                    StatusCode::TOO_MANY_REQUESTS,
-                    "Playground limit: 1 per hour. Try the local quickstart instead.",
-                )
-                .into_response();
-            }
+        if let Some(last) = rate_map.get(&ip)
+            && last.elapsed() < std::time::Duration::from_secs(3600)
+        {
+            return error_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Playground limit: 1 per hour. Try the local quickstart instead.",
+            )
+            .into_response();
         }
         rate_map.insert(ip, std::time::Instant::now());
     }
