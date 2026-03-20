@@ -124,16 +124,38 @@ app-template:
     enabled: true  # Lock down network access
 ```
 
-### Phase 4: Marketing Agent Configuration (SOUL.md)
+### Phase 4: Marketing Agent Configuration (SOUL.md) — B2B Focus
 
-Create an "Eddie"-style marketing agent based on research. The SOUL.md will define:
+Create a B2B-adapted marketing agent inspired by Eddie's automation approach but tailored for enterprise/developer audiences. The SOUL.md will define:
 
-1. **Identity**: Marketing automation agent focused on B2C app content
-2. **Content strategy**: Faceless content pages — still images + text overlays, hook-first format
-3. **Platform rules**: Platform-specific formatting (X: hook + 1 concept + CTA, TikTok: short scripts, Instagram: visual-first)
-4. **Outreach parameters**: Influencer discovery criteria (follower range, engagement thresholds, niche alignment)
-5. **Reporting**: Daily KPI reporting to designated Telegram/Slack channel
-6. **Guardrails**: No API key exposure, rate limits on outreach (1000 emails/day, 100 DMs/day caps), brand voice consistency
+1. **Identity**: B2B marketing automation agent for WarpGrid (Wasm-native cluster orchestrator)
+2. **Content strategy**:
+   - **Thought leadership**: Technical blog posts, architecture deep-dives, benchmark comparisons
+   - **LinkedIn long-form**: Industry analysis, product narratives, engineering stories
+   - **X/Twitter threads**: Technical takes, product updates, community engagement
+   - **Email nurture sequences**: Drip campaigns for leads from docs/blog, conference follow-ups
+   - **Case studies & testimonials**: Automated drafting from customer success data
+3. **Platform rules**:
+   - **LinkedIn**: Professional tone, story-driven, value-first, carousel/document posts for technical content
+   - **X/Twitter**: Concise technical threads, 1 insight per tweet, link to blog/docs
+   - **Blog/SEO**: Long-form (1500-2500 words), keyword-optimized, structured with H2/H3s
+   - **Email**: Personalized subject lines, scannable formatting, clear next-step CTAs (demo, trial, docs)
+4. **Outreach parameters**:
+   - **Target personas**: DevOps leads, platform engineers, CTOs, VP Engineering at companies running K8s
+   - **Account-based signals**: Company size (50-500 eng), tech stack mentions (Kubernetes, Wasm, Rust), hiring signals
+   - **Partner/integration outreach**: Complementary tool vendors, cloud providers, conference organizers
+   - **No cold spam**: Warm outreach only — engage with their content first, then personalized message
+5. **Competitor monitoring**:
+   - Track competitor blogs, changelogs, pricing pages, GitHub activity
+   - Daily digest of competitor moves to Slack channel
+   - Identify positioning opportunities and gaps
+6. **Reporting**: Weekly pipeline-influence report to Slack — MQLs generated, content engagement, email open/click rates, LinkedIn impressions
+7. **Guardrails**:
+   - No API key exposure, strict brand voice (technical but approachable)
+   - Human approval required before publishing blog posts or sending outreach emails
+   - Rate limits: 50 personalized emails/day, 20 LinkedIn connection requests/day
+   - Never disparage competitors — focus on WarpGrid's strengths
+   - All claims must be verifiable (benchmarks, features, customer quotes)
 
 ### Phase 5: Skills Installation
 
@@ -141,13 +163,13 @@ Skills to install from ClawHub (configured in init-skills):
 
 | Skill | Purpose |
 |-------|---------|
-| `social-content` | Multi-platform content generation |
-| `copywriting` | Marketing copy & hooks |
-| `web-scrape` | Competitor monitoring, trend research |
-| `email-send` | Outreach email automation |
-| `image-gen` | Still image/overlay generation |
-| `calendar` | Content scheduling |
-| `analytics` | KPI tracking & reporting |
+| `copywriting` | B2B marketing copy, LinkedIn posts, blog drafts |
+| `web-scrape` | Competitor monitoring, prospect research, tech stack detection |
+| `email-send` | Nurture sequences, personalized outreach |
+| `analytics` | Pipeline metrics, content performance, weekly reporting |
+| `calendar` | Content calendar, publishing schedule |
+| `social-content` | LinkedIn/X post generation & scheduling |
+| `seo-content` | Keyword research, blog SEO optimization (Rank template) |
 
 ### Phase 6: Security Hardening
 
@@ -220,8 +242,10 @@ kubectl exec -n openclaw deployment/openclaw -c main -- \
 
 3. **Cost**: Anthropic API usage is pay-as-you-go. Monitor token consumption via `/status` command and built-in usage tracking.
 
-4. **Content moderation**: Add explicit guardrails in SOUL.md to prevent off-brand content or policy violations on social platforms.
+4. **Content moderation**: All blog posts and outreach emails require human approval before publishing. Social posts (LinkedIn/X) can be auto-posted after a 1-hour review window with Slack notification.
 
-5. **Rate limiting**: Social platform APIs have rate limits. Configure the agent's outreach caps conservatively to avoid account bans.
+5. **Rate limiting**: B2B outreach must be conservative — 50 emails/day, 20 LinkedIn requests/day. Quality over quantity. Avoid account bans and maintain professional reputation.
 
 6. **Backup**: Regularly back up the PVC containing agent memory and configuration. Runtime changes (paired devices, learned preferences) live on disk.
+
+7. **B2B tone calibration**: The agent must maintain technical credibility. No hype, no "revolutionary/game-changing" language. Focus on concrete benchmarks, architecture advantages, and developer experience.
