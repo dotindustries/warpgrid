@@ -1,0 +1,17 @@
+# ClawHub skills to install at pod init via init-skills container.
+# One skill per line. Comments and blank lines are ignored.
+
+# Content creation & publishing
+copywriting
+social-content
+seo-content
+
+# Research & monitoring
+web-scrape
+
+# Outreach & communication
+email-send
+
+# Scheduling & reporting
+calendar
+analytics

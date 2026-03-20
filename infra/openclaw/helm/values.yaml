@@ -1,0 +1,110 @@
+# OpenClaw Helm values for B2B marketing agent ("Marketeer")
+# Chart: serhanekicii/openclaw-helm v1.5.5
+#
+# Install:
+#   helm repo add openclaw https://serhanekicii.github.io/openclaw-helm
+#   helm install openclaw openclaw/openclaw -n openclaw -f values.yaml
+
+app-template:
+  # Preserve runtime config changes (agent memory, paired devices, learned preferences)
+  configMode: merge
+
+  controllers:
+    main:
+      replicas: 1          # OpenClaw is single-instance — do NOT scale horizontally
+      strategy: Recreate   # Required for single-instance stateful workload
+
+      containers:
+        main:
+          image:
+            repository: ghcr.io/openclaw/openclaw
+            tag: "2026.3.13-1"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          envFrom:
+            - secretRef:
+                name: openclaw-env-secret
+          probes:
+            liveness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /health
+                  port: 18789
+                initialDelaySeconds: 30
+                periodSeconds: 30
+                failureThreshold: 3
+            readiness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /health
+                  port: 18789
+                initialDelaySeconds: 10
+                periodSeconds: 10
+
+        # Chromium sidecar for browser automation (competitor scraping, content posting)
+        chromium:
+          enabled: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+      initContainers:
+        # Auto-install B2B marketing skills from ClawHub at pod startup
+        init-skills:
+          enabled: true
+
+  # Security context — non-root, read-only root FS, drop all capabilities
+  defaultPodOptions:
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      runAsNonRoot: true
+
+  persistence:
+    data:
+      enabled: true
+      size: 10Gi
+      accessMode: ReadWriteOnce
+      # storageClass: ""  # Uncomment and set for your cluster's StorageClass
+
+  service:
+    main:
+      ports:
+        http:
+          port: 18789
+
+  # Ingress — disabled by default; enable for external access
+  ingress:
+    main:
+      enabled: false
+      # className: nginx
+      # hosts:
+      #   - host: marketeer.yourcompany.com
+      #     paths:
+      #       - path: /
+      #         pathType: Prefix
+      #         service:
+      #           name: main
+      #           port: http
+      # tls:
+      #   - secretName: marketeer-tls
+      #     hosts:
+      #       - marketeer.yourcompany.com
+
+  # Network policies — enable for production
+  networkPolicy:
+    enabled: false  # Use infra/openclaw/network-policy.yaml for custom policies
