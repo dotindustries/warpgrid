@@ -47,7 +47,7 @@ walkdir = "2"
 regex = "1"
 semver = "1"
 
-wasmtime = { version = "41", features = ["component-model", "async", "component-model-async"] }
+wasmtime = { version = "42", features = ["component-model", "async", "component-model-async"] }
 wasmtime-wasi = { version = "41", features = ["p3"] }
 wat = "1"
 
