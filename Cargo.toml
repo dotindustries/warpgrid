@@ -48,7 +48,7 @@ regex = "1"
 semver = "1"
 
 wasmtime = { version = "41", features = ["component-model", "async", "component-model-async"] }
-wasmtime-wasi = { version = "41", features = ["p3"] }
+wasmtime-wasi = { version = "44", features = ["p3"] }
 wat = "1"
 
 # Internal crates
